@@ -117,3 +117,39 @@ func TestLoadTiered(t *testing.T) {
 		t.Error("expected system default 'function-length'")
 	}
 }
+
+func TestLoadFromFile_WithProvider(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/policies.yaml"
+	yaml := `provider:
+  name: ollama
+  ollama:
+    model: test-model
+    base_url: http://test:1234
+  openrouter:
+    model: test-router-model
+policies:
+  test-policy:
+    description: "Test"
+    severity: "warning"
+    instruction: "Do the thing"
+    enabled: true
+`
+	os.WriteFile(path, []byte(yaml), 0644)
+	cfg, err := LoadFromFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Provider.Name != "ollama" {
+		t.Errorf("expected provider name 'ollama', got %q", cfg.Provider.Name)
+	}
+	if cfg.Provider.Ollama.Model != "test-model" {
+		t.Errorf("expected ollama model 'test-model', got %q", cfg.Provider.Ollama.Model)
+	}
+	if cfg.Provider.Ollama.BaseURL != "http://test:1234" {
+		t.Errorf("expected base_url 'http://test:1234', got %q", cfg.Provider.Ollama.BaseURL)
+	}
+	if cfg.Provider.OpenRouter.Model != "test-router-model" {
+		t.Errorf("expected openrouter model 'test-router-model', got %q", cfg.Provider.OpenRouter.Model)
+	}
+}

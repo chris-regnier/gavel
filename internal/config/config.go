@@ -18,7 +18,26 @@ type Policy struct {
 
 // Config holds the full gavel configuration.
 type Config struct {
+	Provider ProviderConfig    `yaml:"provider"`
 	Policies map[string]Policy `yaml:"policies"`
+}
+
+// ProviderConfig specifies which LLM provider to use
+type ProviderConfig struct {
+	Name       string           `yaml:"name"`
+	Ollama     OllamaConfig     `yaml:"ollama"`
+	OpenRouter OpenRouterConfig `yaml:"openrouter"`
+}
+
+// OllamaConfig holds Ollama-specific settings
+type OllamaConfig struct {
+	Model   string `yaml:"model"`
+	BaseURL string `yaml:"base_url"`
+}
+
+// OpenRouterConfig holds OpenRouter-specific settings
+type OpenRouterConfig struct {
+	Model string `yaml:"model"`
 }
 
 // MergeConfigs merges configs in order of increasing precedence.
