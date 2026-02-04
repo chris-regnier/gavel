@@ -1,8 +1,18 @@
 package config
 
-// SystemDefaults returns built-in default policies.
+// SystemDefaults returns built-in default policies and provider config.
 func SystemDefaults() *Config {
 	return &Config{
+		Provider: ProviderConfig{
+			Name: "openrouter",
+			Ollama: OllamaConfig{
+				Model:   "gpt-oss:20b",
+				BaseURL: "http://localhost:11434",
+			},
+			OpenRouter: OpenRouterConfig{
+				Model: "anthropic/claude-sonnet-4",
+			},
+		},
 		Policies: map[string]Policy{
 			"shall-be-merged": {
 				Description: "Shall this code be merged?",

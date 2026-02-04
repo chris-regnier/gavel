@@ -239,3 +239,19 @@ func TestConfig_Validate_OpenRouterMissingAPIKey(t *testing.T) {
 		t.Errorf("expected specific error message, got: %v", err)
 	}
 }
+
+func TestSystemDefaults_IncludesProvider(t *testing.T) {
+	cfg := SystemDefaults()
+	if cfg.Provider.Name != "openrouter" {
+		t.Errorf("expected default provider 'openrouter', got %q", cfg.Provider.Name)
+	}
+	if cfg.Provider.Ollama.Model != "gpt-oss:20b" {
+		t.Errorf("expected ollama model 'gpt-oss:20b', got %q", cfg.Provider.Ollama.Model)
+	}
+	if cfg.Provider.Ollama.BaseURL != "http://localhost:11434" {
+		t.Errorf("expected ollama base_url 'http://localhost:11434', got %q", cfg.Provider.Ollama.BaseURL)
+	}
+	if cfg.Provider.OpenRouter.Model != "anthropic/claude-sonnet-4" {
+		t.Errorf("expected openrouter model 'anthropic/claude-sonnet-4', got %q", cfg.Provider.OpenRouter.Model)
+	}
+}
