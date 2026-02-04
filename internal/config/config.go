@@ -69,6 +69,22 @@ func MergeConfigs(configs ...*Config) *Config {
 		if cfg == nil {
 			continue
 		}
+
+		// Merge provider config - non-empty string fields override
+		if cfg.Provider.Name != "" {
+			result.Provider.Name = cfg.Provider.Name
+		}
+		if cfg.Provider.Ollama.Model != "" {
+			result.Provider.Ollama.Model = cfg.Provider.Ollama.Model
+		}
+		if cfg.Provider.Ollama.BaseURL != "" {
+			result.Provider.Ollama.BaseURL = cfg.Provider.Ollama.BaseURL
+		}
+		if cfg.Provider.OpenRouter.Model != "" {
+			result.Provider.OpenRouter.Model = cfg.Provider.OpenRouter.Model
+		}
+
+		// Merge policies (existing logic)
 		for name, policy := range cfg.Policies {
 			existing, ok := result.Policies[name]
 			if !ok {

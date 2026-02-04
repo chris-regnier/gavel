@@ -255,3 +255,70 @@ func TestSystemDefaults_IncludesProvider(t *testing.T) {
 		t.Errorf("expected openrouter model 'anthropic/claude-sonnet-4', got %q", cfg.Provider.OpenRouter.Model)
 	}
 }
+
+func TestMergeConfigs_ProviderOverride(t *testing.T) {
+	system := &Config{
+		Provider: ProviderConfig{
+			Name: "openrouter",
+			Ollama: OllamaConfig{
+				Model:   "default-ollama",
+				BaseURL: "http://localhost:11434",
+			},
+			OpenRouter: OpenRouterConfig{
+				Model: "default-openrouter",
+			},
+		},
+	}
+	project := &Config{
+		Provider: ProviderConfig{
+			Name: "ollama",
+			Ollama: OllamaConfig{
+				Model: "custom-model",
+			},
+		},
+	}
+	merged := MergeConfigs(system, project)
+
+	if merged.Provider.Name != "ollama" {
+		t.Errorf("expected provider name 'ollama', got %q", merged.Provider.Name)
+	}
+	if merged.Provider.Ollama.Model != "custom-model" {
+		t.Errorf("expected ollama model 'custom-model', got %q", merged.Provider.Ollama.Model)
+	}
+	if merged.Provider.Ollama.BaseURL != "http://localhost:11434" {
+		t.Errorf("expected base_url preserved from system, got %q", merged.Provider.Ollama.BaseURL)
+	}
+	if merged.Provider.OpenRouter.Model != "default-openrouter" {
+		t.Errorf("expected openrouter model preserved, got %q", merged.Provider.OpenRouter.Model)
+	}
+}
+
+func TestMergeConfigs_ProviderPartialOverride(t *testing.T) {
+	system := &Config{
+		Provider: ProviderConfig{
+			Name: "openrouter",
+			Ollama: OllamaConfig{
+				Model:   "default-model",
+				BaseURL: "http://localhost:11434",
+			},
+		},
+	}
+	machine := &Config{
+		Provider: ProviderConfig{
+			Ollama: OllamaConfig{
+				BaseURL: "http://custom:9999",
+			},
+		},
+	}
+	merged := MergeConfigs(system, machine)
+
+	if merged.Provider.Name != "openrouter" {
+		t.Errorf("expected provider name preserved, got %q", merged.Provider.Name)
+	}
+	if merged.Provider.Ollama.BaseURL != "http://custom:9999" {
+		t.Errorf("expected base_url overridden, got %q", merged.Provider.Ollama.BaseURL)
+	}
+	if merged.Provider.Ollama.Model != "default-model" {
+		t.Errorf("expected model preserved, got %q", merged.Provider.Ollama.Model)
+	}
+}
