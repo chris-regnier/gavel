@@ -4,17 +4,17 @@ package config
 func SystemDefaults() *Config {
 	return &Config{
 		Policies: map[string]Policy{
-			"error-handling": {
-				Description: "Public functions must handle errors explicitly",
-				Severity:    "warning",
-				Instruction: "Check that all public functions either return an error or handle errors from called functions. Flag functions that silently discard errors.",
+			"shall-be-merged": {
+				Description: "Shall this code be merged?",
+				Severity:    "error",
+				Instruction: "Shall this code be blocked from merging? Flag code that is risky, sloppy, untested, hard to understand, or unecessarily complex. ",
 				Enabled:     true,
 			},
 			"function-length": {
 				Description: "Functions should not exceed a reasonable length",
 				Severity:    "note",
 				Instruction: "Flag functions longer than 50 lines. Consider whether the function could be decomposed.",
-				Enabled:     true,
+				Enabled:     false,
 			},
 		},
 	}
