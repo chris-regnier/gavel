@@ -9,6 +9,16 @@ client<llm> OpenRouter {
   }
 }
 
+// Ollama client for local LLM analysis
+client<llm> Ollama {
+  provider "openai-generic"
+  retry_policy Exponential
+  options {
+    base_url "http://localhost:11434/v1"
+    model "gpt-oss:20b"
+  }
+}
+
 retry_policy Exponential {
   max_retries 2
   strategy {
