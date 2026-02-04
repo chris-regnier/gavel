@@ -1,0 +1,136 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+
+	"github.com/spf13/cobra"
+
+	"github.com/chris-regnier/gavel/internal/config"
+	"github.com/chris-regnier/gavel/internal/evaluator"
+	"github.com/chris-regnier/gavel/internal/input"
+	"github.com/chris-regnier/gavel/internal/sarif"
+	"github.com/chris-regnier/gavel/internal/store"
+)
+
+var (
+	flagFiles     []string
+	flagDiff      string
+	flagDir       string
+	flagOutput    string
+	flagPolicyDir string
+	flagRegoDir   string
+)
+
+func init() {
+	analyzeCmd := &cobra.Command{
+		Use:   "analyze",
+		Short: "Analyze code against policies",
+		RunE:  runAnalyze,
+	}
+
+	analyzeCmd.Flags().StringSliceVar(&flagFiles, "files", nil, "Files to analyze")
+	analyzeCmd.Flags().StringVar(&flagDiff, "diff", "", "Path to diff file (or - for stdin)")
+	analyzeCmd.Flags().StringVar(&flagDir, "dir", "", "Directory to analyze")
+	analyzeCmd.Flags().StringVar(&flagOutput, "output", ".gavel/results", "Output directory for results")
+	analyzeCmd.Flags().StringVar(&flagPolicyDir, "policies", ".gavel", "Directory containing policies.yaml")
+	analyzeCmd.Flags().StringVar(&flagRegoDir, "rego", ".gavel/rego", "Directory containing Rego policies")
+
+	rootCmd.AddCommand(analyzeCmd)
+}
+
+func runAnalyze(cmd *cobra.Command, args []string) error {
+	ctx := context.Background()
+
+	// Load configuration
+	machineConfig := os.ExpandEnv("$HOME/.config/gavel/policies.yaml")
+	projectConfig := flagPolicyDir + "/policies.yaml"
+	cfg, err := config.LoadTiered(machineConfig, projectConfig)
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
+
+	// Read input
+	h := input.NewHandler()
+	var artifacts []input.Artifact
+	var inputScope string
+
+	switch {
+	case len(flagFiles) > 0:
+		artifacts, err = h.ReadFiles(flagFiles)
+		inputScope = "files"
+	case flagDiff != "":
+		var diffContent string
+		if flagDiff == "-" {
+			data, readErr := os.ReadFile("/dev/stdin")
+			if readErr != nil {
+				return readErr
+			}
+			diffContent = string(data)
+		} else {
+			data, readErr := os.ReadFile(flagDiff)
+			if readErr != nil {
+				return readErr
+			}
+			diffContent = string(data)
+		}
+		artifacts, err = h.ReadDiff(diffContent)
+		inputScope = "diff"
+	case flagDir != "":
+		artifacts, err = h.ReadDirectory(flagDir)
+		inputScope = "directory"
+	default:
+		return fmt.Errorf("specify --files, --diff, or --dir")
+	}
+	if err != nil {
+		return fmt.Errorf("reading input: %w", err)
+	}
+
+	// TODO: Replace with real BAML client once generated
+	// For now, create empty results to demonstrate the pipeline
+	_ = artifacts
+	results := []sarif.Result{}
+	rules := []sarif.ReportingDescriptor{}
+	for name, p := range cfg.Policies {
+		if p.Enabled {
+			rules = append(rules, sarif.ReportingDescriptor{
+				ID:               name,
+				ShortDescription: sarif.Message{Text: p.Description},
+				DefaultConfig:    &sarif.ReportingConfiguration{Level: p.Severity},
+			})
+		}
+	}
+
+	// Assemble SARIF
+	sarifLog := sarif.Assemble(results, rules, inputScope)
+
+	// Store results
+	fs := store.NewFileStore(flagOutput)
+	id, err := fs.WriteSARIF(ctx, sarifLog)
+	if err != nil {
+		return fmt.Errorf("storing SARIF: %w", err)
+	}
+
+	// Evaluate with Rego
+	eval, err := evaluator.NewEvaluator(flagRegoDir)
+	if err != nil {
+		return fmt.Errorf("creating evaluator: %w", err)
+	}
+
+	verdict, err := eval.Evaluate(ctx, sarifLog)
+	if err != nil {
+		return fmt.Errorf("evaluating: %w", err)
+	}
+
+	if err := fs.WriteVerdict(ctx, id, verdict); err != nil {
+		return fmt.Errorf("storing verdict: %w", err)
+	}
+
+	// Output verdict
+	out, _ := json.MarshalIndent(verdict, "", "  ")
+	fmt.Println(string(out))
+
+	return nil
+}
