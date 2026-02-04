@@ -53,6 +53,11 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
+	// Validate configuration
+	if err := cfg.Validate(); err != nil {
+		return fmt.Errorf("invalid config: %w", err)
+	}
+
 	// Read input
 	h := input.NewHandler()
 	var artifacts []input.Artifact
@@ -90,7 +95,7 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 	}
 
 	// Analyze with BAML
-	client := analyzer.NewBAMLLiveClient()
+	client := analyzer.NewBAMLLiveClient(cfg.Provider)
 	a := analyzer.NewAnalyzer(client)
 	results, err := a.Analyze(ctx, artifacts, cfg.Policies)
 	if err != nil {
