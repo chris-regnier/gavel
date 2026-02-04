@@ -40,6 +40,23 @@ type OpenRouterConfig struct {
 	Model string `yaml:"model"`
 }
 
+// Validate checks that the configuration is valid and ready to use
+func (c *Config) Validate() error {
+	if c.Provider.Name != "ollama" && c.Provider.Name != "openrouter" {
+		return fmt.Errorf("provider.name must be 'ollama' or 'openrouter', got: %s", c.Provider.Name)
+	}
+
+	if c.Provider.Name == "ollama" && c.Provider.Ollama.Model == "" {
+		return fmt.Errorf("provider.ollama.model is required when using Ollama")
+	}
+
+	if c.Provider.Name == "openrouter" && os.Getenv("OPENROUTER_API_KEY") == "" {
+		return fmt.Errorf("OPENROUTER_API_KEY environment variable required for OpenRouter")
+	}
+
+	return nil
+}
+
 // MergeConfigs merges configs in order of increasing precedence.
 // Later configs override earlier ones. Non-zero string fields override;
 // Enabled always takes effect from the higher tier.

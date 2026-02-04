@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -151,5 +152,90 @@ policies:
 	}
 	if cfg.Provider.OpenRouter.Model != "test-router-model" {
 		t.Errorf("expected openrouter model 'test-router-model', got %q", cfg.Provider.OpenRouter.Model)
+	}
+}
+
+func TestConfig_Validate_ValidOllama(t *testing.T) {
+	cfg := &Config{
+		Provider: ProviderConfig{
+			Name: "ollama",
+			Ollama: OllamaConfig{
+				Model:   "test-model",
+				BaseURL: "http://localhost:11434",
+			},
+		},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("expected valid config, got error: %v", err)
+	}
+}
+
+func TestConfig_Validate_ValidOpenRouter(t *testing.T) {
+	os.Setenv("OPENROUTER_API_KEY", "test-key")
+	defer os.Unsetenv("OPENROUTER_API_KEY")
+
+	cfg := &Config{
+		Provider: ProviderConfig{
+			Name: "openrouter",
+			OpenRouter: OpenRouterConfig{
+				Model: "anthropic/claude-sonnet-4",
+			},
+		},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("expected valid config, got error: %v", err)
+	}
+}
+
+func TestConfig_Validate_InvalidProviderName(t *testing.T) {
+	cfg := &Config{
+		Provider: ProviderConfig{
+			Name: "invalid",
+		},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Error("expected validation error for invalid provider name")
+	}
+	if !strings.Contains(err.Error(), "must be 'ollama' or 'openrouter'") {
+		t.Errorf("expected specific error message, got: %v", err)
+	}
+}
+
+func TestConfig_Validate_OllamaMissingModel(t *testing.T) {
+	cfg := &Config{
+		Provider: ProviderConfig{
+			Name: "ollama",
+			Ollama: OllamaConfig{
+				BaseURL: "http://localhost:11434",
+			},
+		},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Error("expected validation error for missing ollama model")
+	}
+	if !strings.Contains(err.Error(), "provider.ollama.model is required") {
+		t.Errorf("expected specific error message, got: %v", err)
+	}
+}
+
+func TestConfig_Validate_OpenRouterMissingAPIKey(t *testing.T) {
+	os.Unsetenv("OPENROUTER_API_KEY")
+
+	cfg := &Config{
+		Provider: ProviderConfig{
+			Name: "openrouter",
+			OpenRouter: OpenRouterConfig{
+				Model: "anthropic/claude-sonnet-4",
+			},
+		},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Error("expected validation error for missing OPENROUTER_API_KEY")
+	}
+	if !strings.Contains(err.Error(), "OPENROUTER_API_KEY") {
+		t.Errorf("expected specific error message, got: %v", err)
 	}
 }
