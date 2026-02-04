@@ -1,13 +1,25 @@
-# yaml-language-server: $schema=https://taskfile.dev/schema.json
-
 version: '3'
 
 vars:
-  GREETING: Hello, world!
+  BINARY: gavel
 
 tasks:
   default:
-    desc: Print a greeting message
     cmds:
-      - echo "{{.GREETING}}"
-    silent: true
+      - task: build
+
+  build:
+    cmds:
+      - go build -o {{.BINARY}} ./cmd/gavel
+
+  test:
+    cmds:
+      - go test ./... -v
+
+  generate:
+    cmds:
+      - baml-cli generate
+
+  lint:
+    cmds:
+      - go vet ./...
