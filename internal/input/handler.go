@@ -1,9 +1,11 @@
 package input
 
 import (
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 )
 
 type Kind int
@@ -31,6 +33,10 @@ func (h *Handler) ReadFiles(paths []string) ([]Artifact, error) {
 		data, err := os.ReadFile(p)
 		if err != nil {
 			return nil, err
+		}
+		if !utf8.Valid(data) {
+			slog.Warn("skipping file with invalid UTF-8", "path", p)
+			continue
 		}
 		artifacts = append(artifacts, Artifact{
 			Path:    p,
@@ -88,6 +94,10 @@ func (h *Handler) ReadDirectory(dir string) ([]Artifact, error) {
 		data, err := os.ReadFile(path)
 		if err != nil {
 			return err
+		}
+		if !utf8.Valid(data) {
+			slog.Warn("skipping file with invalid UTF-8", "path", path)
+			return nil
 		}
 		artifacts = append(artifacts, Artifact{
 			Path:    path,
