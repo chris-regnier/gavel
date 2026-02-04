@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/chris-regnier/gavel/internal/analyzer"
 	"github.com/chris-regnier/gavel/internal/config"
 	"github.com/chris-regnier/gavel/internal/evaluator"
 	"github.com/chris-regnier/gavel/internal/input"
@@ -88,10 +89,14 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("reading input: %w", err)
 	}
 
-	// TODO: Replace with real BAML client once generated
-	// For now, create empty results to demonstrate the pipeline
-	_ = artifacts
-	results := []sarif.Result{}
+	// Analyze with BAML
+	client := analyzer.NewBAMLLiveClient()
+	a := analyzer.NewAnalyzer(client)
+	results, err := a.Analyze(ctx, artifacts, cfg.Policies)
+	if err != nil {
+		return fmt.Errorf("analyzing: %w", err)
+	}
+
 	rules := []sarif.ReportingDescriptor{}
 	for name, p := range cfg.Policies {
 		if p.Enabled {
