@@ -20,9 +20,7 @@ jobs:
           cache: true
 
       - name: Install BAML CLI
-        run: |
-          curl -fsSL https://raw.githubusercontent.com/BoundaryML/baml/main/install.sh | bash
-          echo "$HOME/.baml/bin" >> $GITHUB_PATH
+        run: go install github.com/boundaryml/baml/baml-cli@latest
 
       - name: Install Task
         uses: go-task/setup-task@v1
