@@ -46,8 +46,20 @@ func (c *BAMLLiveClient) AnalyzeCode(ctx context.Context, code string, policies 
 }
 
 func (c *BAMLLiveClient) analyzeWithOllama(ctx context.Context, code string, policies string) ([]types.Finding, error) {
-	// Use WithClient to select the Ollama client at runtime
-	return baml_client.AnalyzeCode(ctx, code, policies, baml_client.WithClient("Ollama"))
+	// Use WithClient to select the Ollama client and WithEnv to configure model/base_url
+	env := map[string]string{
+		"OLLAMA_MODEL": c.providerConfig.Ollama.Model,
+	}
+	// Only set base_url if non-empty, otherwise use system default
+	if c.providerConfig.Ollama.BaseURL != "" {
+		env["OLLAMA_BASE_URL"] = c.providerConfig.Ollama.BaseURL
+	} else {
+		env["OLLAMA_BASE_URL"] = "http://localhost:11434/v1"
+	}
+	return baml_client.AnalyzeCode(ctx, code, policies,
+		baml_client.WithClient("Ollama"),
+		baml_client.WithEnv(env),
+	)
 }
 
 func (c *BAMLLiveClient) analyzeWithOpenRouter(ctx context.Context, code string, policies string) ([]types.Finding, error) {

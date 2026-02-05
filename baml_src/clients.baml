@@ -14,8 +14,8 @@ client<llm> Ollama {
   provider "openai-generic"
   retry_policy Exponential
   options {
-    base_url "http://localhost:11434/v1"
-    model "gpt-oss:20b"
+    base_url env.OLLAMA_BASE_URL
+    model env.OLLAMA_MODEL
   }
 }
 
