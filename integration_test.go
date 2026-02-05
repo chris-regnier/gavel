@@ -14,7 +14,7 @@ import (
 
 type mockClient struct{}
 
-func (m *mockClient) AnalyzeCode(ctx context.Context, code string, policies string) ([]analyzer.Finding, error) {
+func (m *mockClient) AnalyzeCode(ctx context.Context, code string, policies string, additionalContext string) ([]analyzer.Finding, error) {
 	return []analyzer.Finding{
 		{
 			RuleID:         "error-handling",
@@ -43,7 +43,7 @@ func TestFullPipeline(t *testing.T) {
 
 	// 3. Analyze
 	a := analyzer.NewAnalyzer(&mockClient{})
-	results, err := a.Analyze(ctx, artifacts, cfg.Policies)
+	results, err := a.Analyze(ctx, artifacts, cfg.Policies, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

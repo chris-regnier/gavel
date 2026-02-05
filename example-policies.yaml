@@ -1,0 +1,72 @@
+# Example gavel policies configuration showing additional context feature
+
+provider:
+  name: openrouter  # or "ollama" for local LLM
+  openrouter:
+    model: anthropic/claude-sonnet-4
+  ollama:
+    model: gpt-oss:20b
+    base_url: http://localhost:11434
+
+policies:
+  # Example 1: Code documentation checker with docs as context
+  # Only runs on Go files, includes all markdown docs as context
+  documentation-quality:
+    description: "Ensure code is properly documented"
+    severity: warning
+    instruction: "Check that public functions and types have clear documentation comments"
+    enabled: true
+    additional_contexts:
+      - pattern: "docs/**/*.md"
+        only_for: "*.go"
+      - pattern: "README.md"
+        only_for: "*.go"
+
+  # Example 2: Style guide enforcement with style guide as context
+  # Includes style guide for all code files
+  style-guide-compliance:
+    description: "Enforce project style guidelines"
+    severity: warning
+    instruction: "Check code against the style guide provided in additional context"
+    enabled: true
+    additional_contexts:
+      - pattern: "STYLE_GUIDE.md"
+
+  # Example 3: Markdown proofreader with grammar rules
+  # Only runs on markdown files, includes grammar/writing rules
+  markdown-quality:
+    description: "Check markdown for writing quality"
+    severity: note
+    instruction: "Review markdown content for clarity, grammar, and style according to the writing guide"
+    enabled: true
+    additional_contexts:
+      - pattern: "docs/WRITING_GUIDE.md"
+        only_for: "*.md"
+
+  # Example 4: API design review with API standards
+  # Only runs on files in api/ directory, includes API design docs
+  api-design-review:
+    description: "Review API design against standards"
+    severity: error
+    instruction: "Ensure API endpoints follow the design patterns and conventions in the API guide"
+    enabled: true
+    additional_contexts:
+      - pattern: "docs/api-design/*.md"
+        only_for: "api/**/*.go"
+
+  # Example 5: Security review with security guidelines
+  security-review:
+    description: "Check for security issues"
+    severity: error
+    instruction: "Identify potential security vulnerabilities based on the security guidelines"
+    enabled: true
+    additional_contexts:
+      - pattern: "SECURITY.md"
+      - pattern: "docs/security/*.md"
+
+  # Traditional policy without additional context
+  error-handling:
+    description: "Proper error handling"
+    severity: warning
+    instruction: "Check that errors are properly handled and not ignored"
+    enabled: true

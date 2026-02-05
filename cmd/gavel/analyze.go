@@ -10,6 +10,7 @@ import (
 
 	"github.com/chris-regnier/gavel/internal/analyzer"
 	"github.com/chris-regnier/gavel/internal/config"
+	gavelcontext "github.com/chris-regnier/gavel/internal/context"
 	"github.com/chris-regnier/gavel/internal/evaluator"
 	"github.com/chris-regnier/gavel/internal/input"
 	"github.com/chris-regnier/gavel/internal/sarif"
@@ -97,7 +98,15 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 	// Analyze with BAML
 	client := analyzer.NewBAMLLiveClient(cfg.Provider)
 	a := analyzer.NewAnalyzer(client)
-	results, err := a.Analyze(ctx, artifacts, cfg.Policies)
+	
+	// Create context loader - use current directory as base for glob patterns
+	baseDir := "."
+	if flagDir != "" {
+		baseDir = flagDir
+	}
+	contextLoader := gavelcontext.NewLoader(baseDir)
+	
+	results, err := a.Analyze(ctx, artifacts, cfg.Policies, contextLoader)
 	if err != nil {
 		return fmt.Errorf("analyzing: %w", err)
 	}

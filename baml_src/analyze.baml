@@ -10,7 +10,7 @@ class Finding {
   confidence float @description("0.0 to 1.0, how confident you are in this finding")
 }
 
-function AnalyzeCode(code: string, policies: string) -> Finding[] {
+function AnalyzeCode(code: string, policies: string, additionalContext: string) -> Finding[] {
   client OpenRouter
   prompt #"
     You are a precise code analyzer. Analyze the following code against the given policies.
@@ -26,6 +26,11 @@ function AnalyzeCode(code: string, policies: string) -> Finding[] {
     ---
     {{ policies }}
     ---
+
+    {% if additionalContext %}
+    {{ additionalContext }}
+    ---
+    {% endif %}
 
     Code:
     ---

@@ -6,13 +6,14 @@ import (
 	"strings"
 
 	"github.com/chris-regnier/gavel/internal/config"
+	gavelcontext "github.com/chris-regnier/gavel/internal/context"
 	"github.com/chris-regnier/gavel/internal/input"
 	"github.com/chris-regnier/gavel/internal/sarif"
 )
 
 // BAMLClient defines the interface for the BAML-based code analysis client.
 type BAMLClient interface {
-	AnalyzeCode(ctx context.Context, code string, policies string) ([]Finding, error)
+	AnalyzeCode(ctx context.Context, code string, policies string, additionalContext string) ([]Finding, error)
 }
 
 // Finding represents a single finding returned by the BAML analysis.
@@ -51,7 +52,9 @@ func FormatPolicies(policies map[string]config.Policy) string {
 }
 
 // Analyze runs the BAML client against each artifact and returns SARIF results.
-func (a *Analyzer) Analyze(ctx context.Context, artifacts []input.Artifact, policies map[string]config.Policy) ([]sarif.Result, error) {
+// If contextLoader is provided, it will load additional context files for each artifact
+// based on the policy's AdditionalContexts configuration.
+func (a *Analyzer) Analyze(ctx context.Context, artifacts []input.Artifact, policies map[string]config.Policy, contextLoader *gavelcontext.Loader) ([]sarif.Result, error) {
 	policyText := FormatPolicies(policies)
 	if policyText == "" {
 		return nil, nil
@@ -60,7 +63,28 @@ func (a *Analyzer) Analyze(ctx context.Context, artifacts []input.Artifact, poli
 	var allResults []sarif.Result
 
 	for _, art := range artifacts {
-		findings, err := a.client.AnalyzeCode(ctx, art.Content, policyText)
+		// Build additional context for this artifact
+		var contextText string
+		if contextLoader != nil {
+			// Collect all context selectors from enabled policies
+			var allSelectors []config.ContextSelector
+			for _, p := range policies {
+				if p.Enabled && len(p.AdditionalContexts) > 0 {
+					allSelectors = append(allSelectors, p.AdditionalContexts...)
+				}
+			}
+			
+			// Load context files
+			if len(allSelectors) > 0 {
+				contextFiles, err := contextLoader.LoadForArtifact(art.Path, allSelectors)
+				if err != nil {
+					return nil, fmt.Errorf("loading context for %s: %w", art.Path, err)
+				}
+				contextText = gavelcontext.FormatContext(contextFiles)
+			}
+		}
+
+		findings, err := a.client.AnalyzeCode(ctx, art.Content, policyText, contextText)
 		if err != nil {
 			return nil, fmt.Errorf("analyzing %s: %w", art.Path, err)
 		}

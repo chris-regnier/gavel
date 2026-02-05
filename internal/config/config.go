@@ -9,11 +9,23 @@ import (
 )
 
 // Policy defines a single analysis policy.
+// ContextSelector defines a glob pattern for additional context files
+// and optional filters for which artifacts should receive this context.
+type ContextSelector struct {
+	// Pattern is a glob pattern for files to include as context (e.g., "docs/*", "*.md")
+	Pattern string `yaml:"pattern"`
+	
+	// OnlyFor is an optional glob pattern - if set, only artifacts matching this pattern
+	// will receive the additional context (e.g., "*.go", "*.md")
+	OnlyFor string `yaml:"only_for,omitempty"`
+}
+
 type Policy struct {
-	Description string `yaml:"description"`
-	Severity    string `yaml:"severity"`
-	Instruction string `yaml:"instruction"`
-	Enabled     bool   `yaml:"enabled"`
+	Description        string            `yaml:"description"`
+	Severity           string            `yaml:"severity"`
+	Instruction        string            `yaml:"instruction"`
+	Enabled            bool              `yaml:"enabled"`
+	AdditionalContexts []ContextSelector `yaml:"additional_contexts,omitempty"`
 }
 
 // Config holds the full gavel configuration.
@@ -100,6 +112,10 @@ func MergeConfigs(configs ...*Config) *Config {
 			}
 			if policy.Instruction != "" {
 				existing.Instruction = policy.Instruction
+			}
+			// AdditionalContexts: if specified, override completely
+			if len(policy.AdditionalContexts) > 0 {
+				existing.AdditionalContexts = policy.AdditionalContexts
 			}
 			// Enabled: if the higher tier explicitly sets Enabled to true, use it.
 			// If Enabled is false (the zero value), only apply it when no string

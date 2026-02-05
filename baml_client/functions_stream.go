@@ -43,7 +43,7 @@ func (s *StreamValue[TStream, TFinal]) Stream() *TStream {
 }
 
 // / Streaming version of AnalyzeCode
-func (*stream) AnalyzeCode(ctx context.Context, code string, policies string, opts ...CallOptionFunc) (<-chan StreamValue[[]stream_types.Finding, []types.Finding], error) {
+func (*stream) AnalyzeCode(ctx context.Context, code string, policies string, additionalContext string, opts ...CallOptionFunc) (<-chan StreamValue[[]stream_types.Finding, []types.Finding], error) {
 
 	var callOpts callOption
 	for _, opt := range opts {
@@ -51,7 +51,7 @@ func (*stream) AnalyzeCode(ctx context.Context, code string, policies string, op
 	}
 
 	args := baml.BamlFunctionArguments{
-		Kwargs: map[string]any{"code": code, "policies": policies},
+		Kwargs: map[string]any{"code": code, "policies": policies, "additionalContext": additionalContext},
 		Env:    getEnvVars(callOpts.env),
 	}
 
