@@ -10,7 +10,22 @@ This document describes the release process for Gavel using GoReleaser.
 
 ## Automated Release Process
 
-Releases are fully automated via GitHub Actions when you push a git tag:
+Releases are fully automated via GitHub Actions when you push a git tag.
+
+**Recommended method** (using Task):
+
+```bash
+task release VERSION=v0.1.0
+```
+
+This command will:
+- Validate the version format (must be `vX.Y.Z`)
+- Ensure working directory is clean
+- Run tests to verify everything passes
+- Create an annotated git tag
+- Push the tag to trigger the release workflow
+
+**Manual method** (if preferred):
 
 ```bash
 # Create and push a new version tag

@@ -23,3 +23,22 @@ tasks:
   lint:
     cmds:
       - go vet ./...
+
+  release:
+    desc: "Cut a new release tag (usage: task release VERSION=v0.1.0)"
+    vars:
+      VERSION: '{{.VERSION | default ""}}'
+    preconditions:
+      - sh: '[ -n "{{.VERSION}}" ]'
+        msg: "VERSION is required (e.g., task release VERSION=v0.1.0)"
+      - sh: 'echo "{{.VERSION}}" | grep -qE "^v[0-9]+\.[0-9]+\.[0-9]+$"'
+        msg: "VERSION must follow semver format with v prefix (e.g., v0.1.0)"
+      - sh: '[ -z "$(git status --porcelain)" ]'
+        msg: "Working directory must be clean before creating a release"
+    cmds:
+      - echo "Running tests before creating tag {{.VERSION}}..."
+      - task: test
+      - echo "Creating and pushing tag {{.VERSION}}..."
+      - git tag -a {{.VERSION}} -m "Release {{.VERSION}}"
+      - git push origin {{.VERSION}}
+      - echo "✓ Tag {{.VERSION}} created and pushed. GitHub Actions will build the release."
