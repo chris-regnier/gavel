@@ -19,14 +19,31 @@ Source Code → BAML Analyzer → SARIF Assembler → Rego Evaluator → Verdict
 
 ## Installation
 
-### Prerequisites
+### Download Pre-built Binaries
+
+Download the latest release for your platform from the [releases page](https://github.com/chris-regnier/gavel/releases).
+
+```bash
+# macOS (arm64)
+curl -L https://github.com/chris-regnier/gavel/releases/latest/download/gavel_<version>_Darwin_arm64.tar.gz | tar xz
+sudo mv gavel /usr/local/bin/
+
+# Linux (amd64)
+curl -L https://github.com/chris-regnier/gavel/releases/latest/download/gavel_<version>_Linux_x86_64.tar.gz | tar xz
+sudo mv gavel /usr/local/bin/
+
+# Windows (amd64)
+# Download the .zip file from the releases page and extract
+```
+
+### Build from Source
+
+#### Prerequisites
 
 - Go 1.25+
 - [Task](https://taskfile.dev/) (task runner)
 - [BAML CLI](https://docs.boundaryml.com/) (for regenerating the LLM client)
 - An [OpenRouter](https://openrouter.ai/) API key
-
-### Build
 
 ```bash
 task build
@@ -209,6 +226,36 @@ go test ./internal/config/ -run TestMergeOverrides -v
 
 # Run the integration test
 go test -run TestIntegration -v
+```
+
+### Releasing
+
+Releases are automated via GitHub Actions and [GoReleaser](https://goreleaser.com/). To create a new release:
+
+```bash
+# Tag a new version (following semver)
+git tag -a v0.1.0 -m "Release v0.1.0"
+git push origin v0.1.0
+
+# GitHub Actions will automatically:
+# 1. Run tests and linter
+# 2. Generate BAML client
+# 3. Build binaries for multiple platforms
+# 4. Create a GitHub release with changelog
+# 5. Upload release artifacts
+```
+
+To test the release process locally without publishing:
+
+```bash
+# Install goreleaser
+go install github.com/goreleaser/goreleaser/v2@latest
+
+# Run a local snapshot build
+goreleaser release --snapshot --clean
+
+# Check the dist/ directory for built artifacts
+ls -la dist/
 ```
 
 ### BAML

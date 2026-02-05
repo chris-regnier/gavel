@@ -7,9 +7,31 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var (
+	// Version information injected by goreleaser
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
+
 var rootCmd = &cobra.Command{
-	Use:   "gavel",
-	Short: "AI-powered code analysis with structured output",
+	Use:     "gavel",
+	Short:   "AI-powered code analysis with structured output",
+	Version: version,
+}
+
+var versionCmd = &cobra.Command{
+	Use:   "version",
+	Short: "Print version information",
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Printf("gavel %s\n", version)
+		fmt.Printf("  commit: %s\n", commit)
+		fmt.Printf("  built at: %s\n", date)
+	},
+}
+
+func init() {
+	rootCmd.AddCommand(versionCmd)
 }
 
 func main() {
