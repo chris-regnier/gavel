@@ -7,7 +7,7 @@ func SystemDefaults() *Config {
 			Name: "openrouter",
 			Ollama: OllamaConfig{
 				Model:   "gpt-oss:20b",
-				BaseURL: "http://localhost:11434",
+				BaseURL: "http://localhost:11434/v1",
 			},
 			OpenRouter: OpenRouterConfig{
 				Model: "anthropic/claude-sonnet-4",

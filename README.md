@@ -127,7 +127,7 @@ provider:
   name: ollama
   ollama:
     model: gpt-oss:20b
-    base_url: http://localhost:11434  # optional, this is the default
+    base_url: http://localhost:11434/v1  # optional, this is the default
 
 policies:
   shall-be-merged:

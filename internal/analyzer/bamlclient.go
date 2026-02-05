@@ -46,15 +46,13 @@ func (c *BAMLLiveClient) AnalyzeCode(ctx context.Context, code string, policies 
 }
 
 func (c *BAMLLiveClient) analyzeWithOllama(ctx context.Context, code string, policies string) ([]types.Finding, error) {
-	// For now, call generated BAML client directly
-	// TODO: May need to configure base_url and model from c.providerConfig.Ollama
-	return baml_client.AnalyzeCode(ctx, code, policies)
+	// Use WithClient to select the Ollama client at runtime
+	return baml_client.AnalyzeCode(ctx, code, policies, baml_client.WithClient("Ollama"))
 }
 
 func (c *BAMLLiveClient) analyzeWithOpenRouter(ctx context.Context, code string, policies string) ([]types.Finding, error) {
-	// Call generated BAML client
-	// TODO: May need to configure model from c.providerConfig.OpenRouter
-	return baml_client.AnalyzeCode(ctx, code, policies)
+	// Use WithClient to select the OpenRouter client at runtime
+	return baml_client.AnalyzeCode(ctx, code, policies, baml_client.WithClient("OpenRouter"))
 }
 
 func convertFindings(bamlFindings []types.Finding) []Finding {

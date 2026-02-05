@@ -248,8 +248,8 @@ func TestSystemDefaults_IncludesProvider(t *testing.T) {
 	if cfg.Provider.Ollama.Model != "gpt-oss:20b" {
 		t.Errorf("expected ollama model 'gpt-oss:20b', got %q", cfg.Provider.Ollama.Model)
 	}
-	if cfg.Provider.Ollama.BaseURL != "http://localhost:11434" {
-		t.Errorf("expected ollama base_url 'http://localhost:11434', got %q", cfg.Provider.Ollama.BaseURL)
+	if cfg.Provider.Ollama.BaseURL != "http://localhost:11434/v1" {
+		t.Errorf("expected ollama base_url 'http://localhost:11434/v1', got %q", cfg.Provider.Ollama.BaseURL)
 	}
 	if cfg.Provider.OpenRouter.Model != "anthropic/claude-sonnet-4" {
 		t.Errorf("expected openrouter model 'anthropic/claude-sonnet-4', got %q", cfg.Provider.OpenRouter.Model)
