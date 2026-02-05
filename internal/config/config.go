@@ -18,7 +18,43 @@ type Policy struct {
 
 // Config holds the full gavel configuration.
 type Config struct {
+	Provider ProviderConfig    `yaml:"provider"`
 	Policies map[string]Policy `yaml:"policies"`
+}
+
+// ProviderConfig specifies which LLM provider to use
+type ProviderConfig struct {
+	Name       string           `yaml:"name"`
+	Ollama     OllamaConfig     `yaml:"ollama"`
+	OpenRouter OpenRouterConfig `yaml:"openrouter"`
+}
+
+// OllamaConfig holds Ollama-specific settings
+type OllamaConfig struct {
+	Model   string `yaml:"model"`
+	BaseURL string `yaml:"base_url"`
+}
+
+// OpenRouterConfig holds OpenRouter-specific settings
+type OpenRouterConfig struct {
+	Model string `yaml:"model"`
+}
+
+// Validate checks that the configuration is valid and ready to use
+func (c *Config) Validate() error {
+	if c.Provider.Name != "ollama" && c.Provider.Name != "openrouter" {
+		return fmt.Errorf("provider.name must be 'ollama' or 'openrouter', got: %s", c.Provider.Name)
+	}
+
+	if c.Provider.Name == "ollama" && c.Provider.Ollama.Model == "" {
+		return fmt.Errorf("provider.ollama.model is required when using Ollama")
+	}
+
+	if c.Provider.Name == "openrouter" && os.Getenv("OPENROUTER_API_KEY") == "" {
+		return fmt.Errorf("OPENROUTER_API_KEY environment variable required for OpenRouter")
+	}
+
+	return nil
 }
 
 // MergeConfigs merges configs in order of increasing precedence.
@@ -33,6 +69,22 @@ func MergeConfigs(configs ...*Config) *Config {
 		if cfg == nil {
 			continue
 		}
+
+		// Merge provider config - non-empty string fields override
+		if cfg.Provider.Name != "" {
+			result.Provider.Name = cfg.Provider.Name
+		}
+		if cfg.Provider.Ollama.Model != "" {
+			result.Provider.Ollama.Model = cfg.Provider.Ollama.Model
+		}
+		if cfg.Provider.Ollama.BaseURL != "" {
+			result.Provider.Ollama.BaseURL = cfg.Provider.Ollama.BaseURL
+		}
+		if cfg.Provider.OpenRouter.Model != "" {
+			result.Provider.OpenRouter.Model = cfg.Provider.OpenRouter.Model
+		}
+
+		// Merge policies (existing logic)
 		for name, policy := range cfg.Policies {
 			existing, ok := result.Policies[name]
 			if !ok {

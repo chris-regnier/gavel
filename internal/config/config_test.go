@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -115,5 +116,209 @@ func TestLoadTiered(t *testing.T) {
 	}
 	if _, ok := cfg.Policies["function-length"]; !ok {
 		t.Error("expected system default 'function-length'")
+	}
+}
+
+func TestLoadFromFile_WithProvider(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/policies.yaml"
+	yaml := `provider:
+  name: ollama
+  ollama:
+    model: test-model
+    base_url: http://test:1234
+  openrouter:
+    model: test-router-model
+policies:
+  test-policy:
+    description: "Test"
+    severity: "warning"
+    instruction: "Do the thing"
+    enabled: true
+`
+	os.WriteFile(path, []byte(yaml), 0644)
+	cfg, err := LoadFromFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Provider.Name != "ollama" {
+		t.Errorf("expected provider name 'ollama', got %q", cfg.Provider.Name)
+	}
+	if cfg.Provider.Ollama.Model != "test-model" {
+		t.Errorf("expected ollama model 'test-model', got %q", cfg.Provider.Ollama.Model)
+	}
+	if cfg.Provider.Ollama.BaseURL != "http://test:1234" {
+		t.Errorf("expected base_url 'http://test:1234', got %q", cfg.Provider.Ollama.BaseURL)
+	}
+	if cfg.Provider.OpenRouter.Model != "test-router-model" {
+		t.Errorf("expected openrouter model 'test-router-model', got %q", cfg.Provider.OpenRouter.Model)
+	}
+}
+
+func TestConfig_Validate_ValidOllama(t *testing.T) {
+	cfg := &Config{
+		Provider: ProviderConfig{
+			Name: "ollama",
+			Ollama: OllamaConfig{
+				Model:   "test-model",
+				BaseURL: "http://localhost:11434",
+			},
+		},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("expected valid config, got error: %v", err)
+	}
+}
+
+func TestConfig_Validate_ValidOpenRouter(t *testing.T) {
+	os.Setenv("OPENROUTER_API_KEY", "test-key")
+	defer os.Unsetenv("OPENROUTER_API_KEY")
+
+	cfg := &Config{
+		Provider: ProviderConfig{
+			Name: "openrouter",
+			OpenRouter: OpenRouterConfig{
+				Model: "anthropic/claude-sonnet-4",
+			},
+		},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("expected valid config, got error: %v", err)
+	}
+}
+
+func TestConfig_Validate_InvalidProviderName(t *testing.T) {
+	cfg := &Config{
+		Provider: ProviderConfig{
+			Name: "invalid",
+		},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Error("expected validation error for invalid provider name")
+	}
+	if !strings.Contains(err.Error(), "must be 'ollama' or 'openrouter'") {
+		t.Errorf("expected specific error message, got: %v", err)
+	}
+}
+
+func TestConfig_Validate_OllamaMissingModel(t *testing.T) {
+	cfg := &Config{
+		Provider: ProviderConfig{
+			Name: "ollama",
+			Ollama: OllamaConfig{
+				BaseURL: "http://localhost:11434",
+			},
+		},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Error("expected validation error for missing ollama model")
+	}
+	if !strings.Contains(err.Error(), "provider.ollama.model is required") {
+		t.Errorf("expected specific error message, got: %v", err)
+	}
+}
+
+func TestConfig_Validate_OpenRouterMissingAPIKey(t *testing.T) {
+	os.Unsetenv("OPENROUTER_API_KEY")
+
+	cfg := &Config{
+		Provider: ProviderConfig{
+			Name: "openrouter",
+			OpenRouter: OpenRouterConfig{
+				Model: "anthropic/claude-sonnet-4",
+			},
+		},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Error("expected validation error for missing OPENROUTER_API_KEY")
+	}
+	if !strings.Contains(err.Error(), "OPENROUTER_API_KEY") {
+		t.Errorf("expected specific error message, got: %v", err)
+	}
+}
+
+func TestSystemDefaults_IncludesProvider(t *testing.T) {
+	cfg := SystemDefaults()
+	if cfg.Provider.Name != "openrouter" {
+		t.Errorf("expected default provider 'openrouter', got %q", cfg.Provider.Name)
+	}
+	if cfg.Provider.Ollama.Model != "gpt-oss:20b" {
+		t.Errorf("expected ollama model 'gpt-oss:20b', got %q", cfg.Provider.Ollama.Model)
+	}
+	if cfg.Provider.Ollama.BaseURL != "http://localhost:11434/v1" {
+		t.Errorf("expected ollama base_url 'http://localhost:11434/v1', got %q", cfg.Provider.Ollama.BaseURL)
+	}
+	if cfg.Provider.OpenRouter.Model != "anthropic/claude-sonnet-4" {
+		t.Errorf("expected openrouter model 'anthropic/claude-sonnet-4', got %q", cfg.Provider.OpenRouter.Model)
+	}
+}
+
+func TestMergeConfigs_ProviderOverride(t *testing.T) {
+	system := &Config{
+		Provider: ProviderConfig{
+			Name: "openrouter",
+			Ollama: OllamaConfig{
+				Model:   "default-ollama",
+				BaseURL: "http://localhost:11434",
+			},
+			OpenRouter: OpenRouterConfig{
+				Model: "default-openrouter",
+			},
+		},
+	}
+	project := &Config{
+		Provider: ProviderConfig{
+			Name: "ollama",
+			Ollama: OllamaConfig{
+				Model: "custom-model",
+			},
+		},
+	}
+	merged := MergeConfigs(system, project)
+
+	if merged.Provider.Name != "ollama" {
+		t.Errorf("expected provider name 'ollama', got %q", merged.Provider.Name)
+	}
+	if merged.Provider.Ollama.Model != "custom-model" {
+		t.Errorf("expected ollama model 'custom-model', got %q", merged.Provider.Ollama.Model)
+	}
+	if merged.Provider.Ollama.BaseURL != "http://localhost:11434" {
+		t.Errorf("expected base_url preserved from system, got %q", merged.Provider.Ollama.BaseURL)
+	}
+	if merged.Provider.OpenRouter.Model != "default-openrouter" {
+		t.Errorf("expected openrouter model preserved, got %q", merged.Provider.OpenRouter.Model)
+	}
+}
+
+func TestMergeConfigs_ProviderPartialOverride(t *testing.T) {
+	system := &Config{
+		Provider: ProviderConfig{
+			Name: "openrouter",
+			Ollama: OllamaConfig{
+				Model:   "default-model",
+				BaseURL: "http://localhost:11434",
+			},
+		},
+	}
+	machine := &Config{
+		Provider: ProviderConfig{
+			Ollama: OllamaConfig{
+				BaseURL: "http://custom:9999",
+			},
+		},
+	}
+	merged := MergeConfigs(system, machine)
+
+	if merged.Provider.Name != "openrouter" {
+		t.Errorf("expected provider name preserved, got %q", merged.Provider.Name)
+	}
+	if merged.Provider.Ollama.BaseURL != "http://custom:9999" {
+		t.Errorf("expected base_url overridden, got %q", merged.Provider.Ollama.BaseURL)
+	}
+	if merged.Provider.Ollama.Model != "default-model" {
+		t.Errorf("expected model preserved, got %q", merged.Provider.Ollama.Model)
 	}
 }

@@ -115,6 +115,67 @@ Gavel writes two files per run to `.gavel/results/<id>/`:
 | `reject` | Block the merge | Any error-level finding with confidence > 0.8 |
 | `review` | Needs human review | All other cases (default) |
 
+### Using Ollama (Local LLMs)
+
+Gavel supports local LLM analysis via [Ollama](https://ollama.ai/):
+
+#### 1. Install and start Ollama
+
+```bash
+# macOS
+brew install ollama
+
+# Start Ollama server
+ollama serve
+```
+
+#### 2. Pull a model
+
+```bash
+ollama pull gpt-oss:20b
+```
+
+#### 3. Configure Gavel
+
+Create or edit `.gavel/policies.yaml`:
+
+```yaml
+provider:
+  name: ollama
+  ollama:
+    model: gpt-oss:20b
+    base_url: http://localhost:11434/v1  # optional, this is the default
+
+policies:
+  shall-be-merged:
+    enabled: true
+    severity: error
+```
+
+#### 4. Run analysis
+
+```bash
+./gavel analyze --dir ./src
+```
+
+#### Switching between providers
+
+**To use OpenRouter instead:**
+
+```yaml
+provider:
+  name: openrouter
+  openrouter:
+    model: anthropic/claude-sonnet-4
+```
+
+Then set your API key:
+
+```bash
+export OPENROUTER_API_KEY=your-key-here
+./gavel analyze --dir ./src
+```
+
 ## Configuration
 
 Gavel uses a tiered policy configuration system. Policies are merged in order of precedence (highest wins):

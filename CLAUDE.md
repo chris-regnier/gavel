@@ -49,7 +49,27 @@ Input Handler → BAML Analyzer → SARIF Assembler → Rego Evaluator → Verdi
 
 ## BAML
 
-Source templates live in `baml_src/`. Generated Go client is in `baml_client/` (do not edit). After changing `.baml` files, run `task generate`. The LLM provider is OpenRouter (`OPENROUTER_API_KEY` env var), model `anthropic/claude-sonnet-4`.
+Source templates live in `baml_src/`. Generated Go client is in `baml_client/` (do not edit).
+
+Gavel supports two LLM providers:
+- **OpenRouter** (default): Requires `OPENROUTER_API_KEY` env var, model `anthropic/claude-sonnet-4`
+- **Ollama** (local): Requires Ollama running at configured base_url (default: `http://localhost:11434`), model `gpt-oss:20b`
+
+Provider selection is configured in `.gavel/policies.yaml` via the `provider` section:
+
+```yaml
+provider:
+  name: ollama  # or "openrouter"
+  ollama:
+    model: gpt-oss:20b
+    base_url: http://localhost:11434
+  openrouter:
+    model: anthropic/claude-sonnet-4
+```
+
+The BAML client wrapper (`internal/analyzer/bamlclient.go`) dispatches to the appropriate generated client based on this config at runtime.
+
+After changing `.baml` files, run `task generate`. The LLM provider is selected via config, not environment variables.
 
 ## Rego
 
