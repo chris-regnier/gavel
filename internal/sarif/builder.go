@@ -1,6 +1,12 @@
 package sarif
 
-import "github.com/chris-regnier/gavel/internal/config"
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+
+	"github.com/chris-regnier/gavel/internal/config"
+)
 
 // Assembler provides a builder pattern for constructing SARIF logs with cache metadata
 type Assembler struct {
@@ -114,4 +120,25 @@ func convertPoliciesForJSON(policies map[string]PolicyMetadata) map[string]inter
 		}
 	}
 	return result
+}
+
+// ComputeCacheKey generates deterministic hash from cache metadata
+func (m *CacheMetadata) ComputeCacheKey() string {
+	data := struct {
+		File     string
+		Provider string
+		Model    string
+		BAML     string
+		Policies map[string]PolicyMetadata
+	}{
+		File:     m.FileHash,
+		Provider: m.Provider,
+		Model:    m.Model,
+		BAML:     m.BAMLVersion,
+		Policies: m.Policies,
+	}
+
+	b, _ := json.Marshal(data)
+	h := sha256.Sum256(b)
+	return hex.EncodeToString(h[:])
 }

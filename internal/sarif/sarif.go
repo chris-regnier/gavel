@@ -1,11 +1,5 @@
 package sarif
 
-import (
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
-)
-
 const SchemaURI = "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json"
 const Version = "2.1.0"
 
@@ -101,25 +95,4 @@ type CacheMetadata struct {
 type PolicyMetadata struct {
 	Instruction string
 	Version     string
-}
-
-// ComputeCacheKey generates deterministic hash from cache metadata
-func (m *CacheMetadata) ComputeCacheKey() string {
-	data := struct {
-		File     string
-		Provider string
-		Model    string
-		BAML     string
-		Policies map[string]PolicyMetadata
-	}{
-		File:     m.FileHash,
-		Provider: m.Provider,
-		Model:    m.Model,
-		BAML:     m.BAMLVersion,
-		Policies: m.Policies,
-	}
-
-	b, _ := json.Marshal(data)
-	h := sha256.Sum256(b)
-	return hex.EncodeToString(h[:])
 }
