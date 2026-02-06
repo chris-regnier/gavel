@@ -19,6 +19,36 @@ client<llm> Ollama {
   }
 }
 
+// Anthropic client for Claude API
+client<llm> Anthropic {
+  provider "anthropic"
+  retry_policy Exponential
+  options {
+    api_key env.ANTHROPIC_API_KEY
+    model env.ANTHROPIC_MODEL
+  }
+}
+
+// AWS Bedrock client for Claude models on Bedrock
+client<llm> Bedrock {
+  provider "aws-bedrock"
+  retry_policy Exponential
+  options {
+    region env.BEDROCK_REGION
+    model env.BEDROCK_MODEL
+  }
+}
+
+// OpenAI client for GPT models
+client<llm> OpenAI {
+  provider "openai"
+  retry_policy Exponential
+  options {
+    api_key env.OPENAI_API_KEY
+    model env.OPENAI_MODEL
+  }
+}
+
 retry_policy Exponential {
   max_retries 2
   strategy {
