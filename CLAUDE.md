@@ -51,21 +51,66 @@ Input Handler → BAML Analyzer → SARIF Assembler → Rego Evaluator → Verdi
 
 Source templates live in `baml_src/`. Generated Go client is in `baml_client/` (do not edit).
 
-Gavel supports two LLM providers:
-- **Ollama** (default, local): Requires Ollama running at configured base_url (default: `http://localhost:11434`), model `gpt-oss:20b`
-- **OpenRouter**: Requires `OPENROUTER_API_KEY` env var, model `anthropic/claude-sonnet-4`
+Gavel supports multiple LLM providers:
+
+**Supported Providers:**
+1. **Ollama** (local, free): Requires Ollama running at configured base_url (default: `http://localhost:11434/v1`), model `gpt-oss:20b`
+2. **OpenRouter** (unified API): Requires `OPENROUTER_API_KEY` env var, model `anthropic/claude-sonnet-4`
+3. **Anthropic** (direct API): Requires `ANTHROPIC_API_KEY` env var, supports all Claude models
+4. **Bedrock** (AWS): Requires AWS credentials, supports Claude models on AWS Bedrock
+5. **OpenAI** (direct API): Requires `OPENAI_API_KEY` env var, supports GPT-4 and other OpenAI models
+
+**Fast Models for Quick Analysis:**
+- **Ollama**: `qwen2.5-coder:7b`, `deepseek-coder-v2:16b` (local, free, very fast)
+- **OpenRouter**: `google/gemini-2.0-flash-001`, `anthropic/claude-3.5-haiku`, `deepseek/deepseek-chat`
+- **Anthropic**: `claude-3-5-haiku-20241022` (fast, lower cost than Sonnet)
+- **Bedrock**: `anthropic.claude-3-5-haiku-*` (fast Haiku on AWS)
+- **OpenAI**: `gpt-4o-mini` (fast, cost-effective)
+
+**Provider Configuration:**
 
 Provider selection is configured in `.gavel/policies.yaml` via the `provider` section:
 
 ```yaml
+# Ollama (local)
 provider:
-  name: ollama  # or "openrouter"
+  name: ollama
   ollama:
-    model: gpt-oss:20b
-    base_url: http://localhost:11434
+    model: qwen2.5-coder:7b  # fast local model
+    base_url: http://localhost:11434/v1
+
+# OpenRouter (unified API)
+provider:
+  name: openrouter
   openrouter:
-    model: anthropic/claude-sonnet-4
+    model: google/gemini-2.0-flash-001  # very fast
+
+# Anthropic (direct API)
+provider:
+  name: anthropic
+  anthropic:
+    model: claude-sonnet-4-20250514  # or claude-3-5-haiku-20241022 for speed
+
+# AWS Bedrock
+provider:
+  name: bedrock
+  bedrock:
+    model: anthropic.claude-sonnet-4-5-v2:0
+    region: us-east-1
+
+# OpenAI
+provider:
+  name: openai
+  openai:
+    model: gpt-4o  # or gpt-4o-mini for speed
 ```
+
+**Model Selection Guidance:**
+- **Quality priority**: Anthropic Claude Opus 4.5/4.6 > Sonnet 4/4.5 > OpenAI GPT-4o
+- **Speed priority**: Ollama local models > Gemini Flash > Claude Haiku > GPT-4o-mini
+- **Cost priority**: Ollama (free) > DeepSeek > GPT-4o-mini > Claude Haiku > GPT-4o > Claude Sonnet > Claude Opus
+
+See `example-configs.yaml` for detailed provider examples with performance/cost comparisons.
 
 The BAML client wrapper (`internal/analyzer/bamlclient.go`) dispatches to the appropriate generated client based on this config at runtime.
 
