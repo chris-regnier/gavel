@@ -79,7 +79,7 @@ func (a *Assembler) Build() *Log {
 
 	// Add cache metadata to each result if configured
 	if a.cacheMetadata != nil {
-		cacheKey := a.cacheMetadata.ComputeCacheKey()
+		cacheKey := computeCacheKey(a.cacheMetadata)
 
 		analyzerMetadata := map[string]interface{}{
 			"provider": a.cacheMetadata.Provider,
@@ -122,8 +122,8 @@ func convertPoliciesForJSON(policies map[string]PolicyMetadata) map[string]inter
 	return result
 }
 
-// ComputeCacheKey generates deterministic hash from cache metadata
-func (m *CacheMetadata) ComputeCacheKey() string {
+// computeCacheKey generates deterministic hash from cache metadata
+func computeCacheKey(m *CacheMetadata) string {
 	data := struct {
 		File     string
 		Provider string
