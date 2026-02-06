@@ -6,11 +6,21 @@ func SystemDefaults() *Config {
 		Provider: ProviderConfig{
 			Name: "ollama",
 			Ollama: OllamaConfig{
-				Model:   "gpt-oss:20b",
+				Model:   "qwen2.5-coder:7b",
 				BaseURL: "http://localhost:11434/v1",
 			},
 			OpenRouter: OpenRouterConfig{
-				Model: "anthropic/claude-sonnet-4",
+				Model: "anthropic/claude-haiku-4-5",
+			},
+			Anthropic: AnthropicConfig{
+				Model: "claude-haiku-4-5",
+			},
+			Bedrock: BedrockConfig{
+				Model:  "anthropic.claude-haiku-4-5-v1:0",
+				Region: "us-east-1",
+			},
+			OpenAI: OpenAIConfig{
+				Model: "gpt-5.2",
 			},
 		},
 		Persona: "code-reviewer",

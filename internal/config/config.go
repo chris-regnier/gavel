@@ -37,9 +37,12 @@ type Config struct {
 
 // ProviderConfig specifies which LLM provider to use
 type ProviderConfig struct {
-	Name       string           `yaml:"name"`
-	Ollama     OllamaConfig     `yaml:"ollama"`
-	OpenRouter OpenRouterConfig `yaml:"openrouter"`
+	Name       string            `yaml:"name"`
+	Ollama     OllamaConfig      `yaml:"ollama"`
+	OpenRouter OpenRouterConfig  `yaml:"openrouter"`
+	Anthropic  AnthropicConfig   `yaml:"anthropic"`
+	Bedrock    BedrockConfig     `yaml:"bedrock"`
+	OpenAI     OpenAIConfig      `yaml:"openai"`
 }
 
 // OllamaConfig holds Ollama-specific settings
@@ -53,18 +56,68 @@ type OpenRouterConfig struct {
 	Model string `yaml:"model"`
 }
 
+// AnthropicConfig holds Anthropic API-specific settings
+type AnthropicConfig struct {
+	Model string `yaml:"model"`
+}
+
+// BedrockConfig holds AWS Bedrock-specific settings
+type BedrockConfig struct {
+	Model  string `yaml:"model"`
+	Region string `yaml:"region"`
+}
+
+// OpenAIConfig holds OpenAI API-specific settings
+type OpenAIConfig struct {
+	Model string `yaml:"model"`
+}
+
 // Validate checks that the configuration is valid and ready to use
 func (c *Config) Validate() error {
-	if c.Provider.Name != "ollama" && c.Provider.Name != "openrouter" {
-		return fmt.Errorf("provider.name must be 'ollama' or 'openrouter', got: %s", c.Provider.Name)
+	validProviders := map[string]bool{
+		"ollama":     true,
+		"openrouter": true,
+		"anthropic":  true,
+		"bedrock":    true,
+		"openai":     true,
 	}
 
-	if c.Provider.Name == "ollama" && c.Provider.Ollama.Model == "" {
-		return fmt.Errorf("provider.ollama.model is required when using Ollama")
+	if !validProviders[c.Provider.Name] {
+		return fmt.Errorf("provider.name must be one of: ollama, openrouter, anthropic, bedrock, openai; got: %s", c.Provider.Name)
 	}
 
-	if c.Provider.Name == "openrouter" && os.Getenv("OPENROUTER_API_KEY") == "" {
-		return fmt.Errorf("OPENROUTER_API_KEY environment variable required for OpenRouter")
+	switch c.Provider.Name {
+	case "ollama":
+		if c.Provider.Ollama.Model == "" {
+			return fmt.Errorf("provider.ollama.model is required when using Ollama")
+		}
+	case "openrouter":
+		if os.Getenv("OPENROUTER_API_KEY") == "" {
+			return fmt.Errorf("OPENROUTER_API_KEY environment variable required for OpenRouter")
+		}
+	case "anthropic":
+		if c.Provider.Anthropic.Model == "" {
+			return fmt.Errorf("provider.anthropic.model is required when using Anthropic")
+		}
+		if os.Getenv("ANTHROPIC_API_KEY") == "" {
+			return fmt.Errorf("ANTHROPIC_API_KEY environment variable required for Anthropic")
+		}
+	case "bedrock":
+		if c.Provider.Bedrock.Model == "" {
+			return fmt.Errorf("provider.bedrock.model is required when using Bedrock")
+		}
+		if c.Provider.Bedrock.Region == "" {
+			return fmt.Errorf("provider.bedrock.region is required when using Bedrock")
+		}
+		// AWS credentials are typically loaded from environment or ~/.aws/credentials
+		// We'll validate them at runtime when making the actual call
+	case "openai":
+		if c.Provider.OpenAI.Model == "" {
+			return fmt.Errorf("provider.openai.model is required when using OpenAI")
+		}
+		if os.Getenv("OPENAI_API_KEY") == "" {
+			return fmt.Errorf("OPENAI_API_KEY environment variable required for OpenAI")
+		}
 	}
 
 	// Validate persona field
@@ -105,6 +158,18 @@ func MergeConfigs(configs ...*Config) *Config {
 		}
 		if cfg.Provider.OpenRouter.Model != "" {
 			result.Provider.OpenRouter.Model = cfg.Provider.OpenRouter.Model
+		}
+		if cfg.Provider.Anthropic.Model != "" {
+			result.Provider.Anthropic.Model = cfg.Provider.Anthropic.Model
+		}
+		if cfg.Provider.Bedrock.Model != "" {
+			result.Provider.Bedrock.Model = cfg.Provider.Bedrock.Model
+		}
+		if cfg.Provider.Bedrock.Region != "" {
+			result.Provider.Bedrock.Region = cfg.Provider.Bedrock.Region
+		}
+		if cfg.Provider.OpenAI.Model != "" {
+			result.Provider.OpenAI.Model = cfg.Provider.OpenAI.Model
 		}
 
 		// Merge persona - non-empty string overrides
