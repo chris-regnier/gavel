@@ -47,12 +47,14 @@ func (m ReviewModel) renderDetailsPane(width, height int) string {
 	b.WriteString(detailsHeaderStyle.Render("Details"))
 	b.WriteString("\n\n")
 
-	if len(m.findings) == 0 {
+	filteredFindings := m.getFilteredFindings()
+
+	if len(filteredFindings) == 0 {
 		b.WriteString("No findings to display")
-	} else if m.currentFinding >= len(m.findings) {
+	} else if m.currentFinding >= len(filteredFindings) {
 		b.WriteString("Invalid finding index")
 	} else {
-		finding := m.findings[m.currentFinding]
+		finding := filteredFindings[m.currentFinding]
 
 		// Rule ID and severity
 		severityStyle := lipgloss.NewStyle()

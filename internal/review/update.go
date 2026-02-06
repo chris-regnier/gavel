@@ -25,15 +25,17 @@ func (m ReviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 
 		case "n": // Next finding
-			if len(m.findings) > 0 {
-				m.currentFinding = (m.currentFinding + 1) % len(m.findings)
+			filtered := m.getFilteredFindings()
+			if len(filtered) > 0 {
+				m.currentFinding = (m.currentFinding + 1) % len(filtered)
 			}
 
 		case "p": // Previous finding
-			if len(m.findings) > 0 {
+			filtered := m.getFilteredFindings()
+			if len(filtered) > 0 {
 				m.currentFinding--
 				if m.currentFinding < 0 {
-					m.currentFinding = len(m.findings) - 1
+					m.currentFinding = len(filtered) - 1
 				}
 			}
 
@@ -56,12 +58,15 @@ func (m ReviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "e": // Filter: errors only
 			m.filter = FilterErrors
+			m.currentFinding = 0 // Reset to first finding
 
 		case "w": // Filter: warnings+
 			m.filter = FilterWarnings
+			m.currentFinding = 0 // Reset to first finding
 
 		case "f": // Filter: all
 			m.filter = FilterAll
+			m.currentFinding = 0 // Reset to first finding
 		}
 	}
 

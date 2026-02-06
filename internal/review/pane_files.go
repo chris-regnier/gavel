@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/chris-regnier/gavel/internal/sarif"
 )
 
 var (
@@ -34,7 +35,8 @@ var (
 func (m ReviewModel) renderFilesPane(width, height int) string {
 	var b strings.Builder
 
-	files := m.getFileList()
+	filteredFiles := m.getFilteredFiles()
+	files := m.getFileListFromMap(filteredFiles)
 
 	// Header
 	b.WriteString(lipgloss.NewStyle().
@@ -45,7 +47,7 @@ func (m ReviewModel) renderFilesPane(width, height int) string {
 
 	// File list
 	for i, file := range files {
-		count := len(m.files[file])
+		count := len(filteredFiles[file])
 		indicator := "  "
 		style := fileItemStyle
 
@@ -79,6 +81,16 @@ func (m ReviewModel) renderFilesPane(width, height int) string {
 func (m *ReviewModel) getFileList() []string {
 	files := make([]string, 0, len(m.files))
 	for file := range m.files {
+		files = append(files, file)
+	}
+	sort.Strings(files)
+	return files
+}
+
+// getFileListFromMap returns a sorted list of file paths from a file map
+func (m *ReviewModel) getFileListFromMap(fileMap map[string][]sarif.Result) []string {
+	files := make([]string, 0, len(fileMap))
+	for file := range fileMap {
 		files = append(files, file)
 	}
 	sort.Strings(files)
