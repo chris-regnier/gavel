@@ -8,9 +8,65 @@ tasks:
     cmds:
       - task: build
 
+  # Build binary for current platform (local development)
   build:
+    desc: Build gavel binary for current platform
+    deps: [generate]
     cmds:
-      - go build -o {{.BINARY}} ./cmd/gavel
+      - mkdir -p dist
+      - |
+        CGO_ENABLED=1 go build \
+          -ldflags="-s -w -X main.version={{.VERSION}} -X main.commit={{.COMMIT}} -X main.date={{.DATE}}" \
+          -o dist/gavel{{.EXT}} \
+          ./cmd/gavel
+    vars:
+      VERSION:
+        sh: git describe --tags --always --dirty
+      COMMIT:
+        sh: git rev-parse HEAD
+      DATE:
+        sh: date -u +%Y-%m-%dT%H:%M:%SZ
+      EXT:
+        sh: '[ "$(go env GOOS)" = "windows" ] && echo ".exe" || echo ""'
+
+  # Build release binaries for current platform (all architectures)
+  build:release:
+    desc: Build release binaries for current OS (amd64 + arm64)
+    deps: [generate]
+    cmds:
+      - mkdir -p dist
+      - task: build:release:arch
+        vars: {ARCH: amd64}
+      - task: build:release:arch
+        vars: {ARCH: arm64}
+
+  build:release:arch:
+    internal: true
+    cmds:
+      - |
+        CGO_ENABLED=1 GOOS={{.GOOS}} GOARCH={{.ARCH}} go build \
+          -ldflags="-s -w -X main.version={{.VERSION}} -X main.commit={{.COMMIT}} -X main.date={{.DATE}}" \
+          -o dist/gavel_{{.OS_TITLE}}_{{.ARCH_NAME}}{{.EXT}} \
+          ./cmd/gavel
+      - |
+        cd dist && tar -czf gavel_{{.VERSION}}_{{.OS_TITLE}}_{{.ARCH_NAME}}.tar.gz \
+          gavel_{{.OS_TITLE}}_{{.ARCH_NAME}}{{.EXT}}
+      - cd dist && shasum -a 256 gavel_{{.VERSION}}_{{.OS_TITLE}}_{{.ARCH_NAME}}.tar.gz >> checksums.txt
+    vars:
+      VERSION:
+        sh: git describe --tags --always --dirty
+      COMMIT:
+        sh: git rev-parse HEAD
+      DATE:
+        sh: date -u +%Y-%m-%dT%H:%M:%SZ
+      GOOS:
+        sh: go env GOOS
+      OS_TITLE:
+        sh: '[ "$(go env GOOS)" = "darwin" ] && echo "Darwin" || echo "Linux"'
+      ARCH_NAME:
+        sh: '[ "{{.ARCH}}" = "amd64" ] && echo "x86_64" || echo "{{.ARCH}}"'
+      EXT:
+        sh: '[ "$(go env GOOS)" = "windows" ] && echo ".exe" || echo ""'
 
   test:
     cmds:
@@ -42,3 +98,9 @@ tasks:
       - git tag -a {{.VERSION}} -m "Release {{.VERSION}}"
       - git push origin {{.VERSION}}
       - echo "✓ Tag {{.VERSION}} created and pushed. GitHub Actions will build the release."
+
+  analyze:
+    desc: "Use gavel to analyze Gavel's code with current settings"
+    deps: [build]
+    cmds:
+      - ./dist/gavel analyze --dir ./internal/

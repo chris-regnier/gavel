@@ -95,3 +95,33 @@ specialized expert perspectives: code quality, architecture, or security.
 ## Rego
 
 Default gate policy is in `internal/evaluator/default.rego`. Package `gavel.gate`, queried for `data.gavel.gate.decision`. Returns "reject" (error + confidence > 0.8), "merge" (no results), or "review" (default). Uses `import rego.v1` syntax (OPA v1.13.1).
+
+## Release Process
+
+Gavel uses Task-based builds with GitHub Actions for multi-platform releases.
+
+**Creating a release:**
+```bash
+# Tag the release
+task release VERSION=v0.2.0
+
+# Push the tag
+git push origin v0.2.0
+```
+
+**Build workflow:**
+1. Linux and macOS runners build natively with CGO enabled
+2. Each platform produces amd64 and arm64 binaries
+3. Binaries are archived as `.tar.gz` with checksums
+4. Final job creates GitHub release with all artifacts
+
+**Local development build:**
+```bash
+task build              # Current platform only
+task build:release      # All architectures for current OS
+```
+
+**Requirements:**
+- CGO must be enabled (BAML dependency requires it)
+- macOS builds require Xcode tools
+- Linux builds use system GCC
