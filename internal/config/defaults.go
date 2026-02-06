@@ -12,6 +12,16 @@ func SystemDefaults() *Config {
 			OpenRouter: OpenRouterConfig{
 				Model: "anthropic/claude-sonnet-4",
 			},
+			Anthropic: AnthropicConfig{
+				Model: "claude-sonnet-4-20250514",
+			},
+			Bedrock: BedrockConfig{
+				Model:  "anthropic.claude-sonnet-4-5-v2:0",
+				Region: "us-east-1",
+			},
+			OpenAI: OpenAIConfig{
+				Model: "gpt-4o",
+			},
 		},
 		Persona: "code-reviewer",
 		Policies: map[string]Policy{

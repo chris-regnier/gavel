@@ -197,7 +197,7 @@ func TestConfig_Validate_InvalidProviderName(t *testing.T) {
 	if err == nil {
 		t.Error("expected validation error for invalid provider name")
 	}
-	if !strings.Contains(err.Error(), "must be 'ollama' or 'openrouter'") {
+	if !strings.Contains(err.Error(), "must be one of") {
 		t.Errorf("expected specific error message, got: %v", err)
 	}
 }

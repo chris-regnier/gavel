@@ -1,0 +1,108 @@
+# Gavel Provider Configuration Examples
+# Copy sections from this file to ~/.config/gavel/policies.yaml or .gavel/policies.yaml
+
+# ============================================================================
+# Ollama (Local, Free)
+# ============================================================================
+# Requires Ollama running locally with the specified model installed
+# Fast models: qwen2.5-coder:7b, deepseek-coder-v2:16b, codestral:22b
+provider:
+  name: ollama
+  ollama:
+    model: gpt-oss:20b          # or qwen2.5-coder:7b for faster analysis
+    base_url: http://localhost:11434/v1
+
+# ============================================================================
+# OpenRouter (Unified API, Pay-per-use)
+# ============================================================================
+# Requires: OPENROUTER_API_KEY environment variable
+# Fast models: google/gemini-2.0-flash-001, anthropic/claude-3.5-haiku, deepseek/deepseek-chat
+provider:
+  name: openrouter
+  openrouter:
+    model: anthropic/claude-sonnet-4        # flagship quality
+    # model: anthropic/claude-3.5-haiku     # faster, lower cost
+    # model: google/gemini-2.0-flash-001    # very fast
+    # model: deepseek/deepseek-chat         # fast and cheap
+
+# ============================================================================
+# Anthropic Direct API (Official Claude API)
+# ============================================================================
+# Requires: ANTHROPIC_API_KEY environment variable
+# Fast models: claude-3-5-haiku-20241022
+provider:
+  name: anthropic
+  anthropic:
+    model: claude-sonnet-4-20250514         # latest flagship
+    # model: claude-3-5-haiku-20241022      # faster, lower cost
+    # model: claude-opus-4-5-20251101       # highest quality
+
+# ============================================================================
+# AWS Bedrock (Enterprise, AWS-hosted)
+# ============================================================================
+# Requires: AWS credentials configured (via ~/.aws/credentials or environment)
+# Bedrock model IDs use different format than API model names
+# Fast models: anthropic.claude-3-5-haiku-*
+provider:
+  name: bedrock
+  bedrock:
+    model: anthropic.claude-sonnet-4-5-v2:0     # Sonnet 4.5
+    region: us-east-1
+    # model: anthropic.claude-opus-4-5-v1:0     # Opus 4.5 (higher quality, slower)
+    # model: anthropic.claude-opus-4-6-v1:0     # Opus 4.6 (when available)
+    # model: anthropic.claude-3-5-haiku-*       # Haiku (faster)
+
+# ============================================================================
+# OpenAI (GPT models)
+# ============================================================================
+# Requires: OPENAI_API_KEY environment variable
+# Fast models: gpt-4o-mini
+provider:
+  name: openai
+  openai:
+    model: gpt-4o                               # flagship model
+    # model: gpt-4o-mini                        # faster, lower cost
+    # model: o1-preview                         # reasoning model (slower)
+
+# ============================================================================
+# Performance Recommendations
+# ============================================================================
+#
+# For SPEED (fastest to slowest):
+# 1. Ollama qwen2.5-coder:7b (local, free, very fast)
+# 2. OpenRouter google/gemini-2.0-flash-001 (cloud, very fast)
+# 3. Anthropic claude-3-5-haiku (cloud, fast)
+# 4. OpenAI gpt-4o-mini (cloud, fast)
+# 5. OpenRouter deepseek/deepseek-chat (cloud, fast and cheap)
+#
+# For QUALITY (best to good):
+# 1. Anthropic claude-opus-4-5 / Bedrock opus-4-5/4-6 (highest quality)
+# 2. Anthropic claude-sonnet-4 / Bedrock sonnet-4-5 (excellent quality)
+# 3. OpenAI gpt-4o (very good quality)
+# 4. OpenRouter anthropic/claude-sonnet-4 (same as Anthropic direct)
+# 5. Ollama gpt-oss:20b (good for local)
+#
+# For COST (cheapest to most expensive):
+# 1. Ollama (free, runs locally)
+# 2. OpenRouter deepseek/deepseek-chat (~$0.14/$0.28 per 1M tokens)
+# 3. OpenAI gpt-4o-mini (~$0.15/$0.60 per 1M tokens)
+# 4. Anthropic claude-3-5-haiku (~$0.80/$4.00 per 1M tokens)
+# 5. OpenAI gpt-4o (~$2.50/$10.00 per 1M tokens)
+# 6. Anthropic claude-sonnet-4 (~$3.00/$15.00 per 1M tokens)
+# 7. Anthropic claude-opus-4-5 (~$15.00/$75.00 per 1M tokens)
+
+# ============================================================================
+# Policy Configuration (same for all providers)
+# ============================================================================
+policies:
+  shall-be-merged:
+    description: "Shall this code be merged?"
+    severity: error
+    instruction: "Shall this code be blocked from merging? Flag code that is risky, sloppy, untested, hard to understand, or unnecessarily complex."
+    enabled: true
+
+  function-length:
+    description: "Functions should not exceed a reasonable length"
+    severity: note
+    instruction: "Flag functions longer than 50 lines. Consider whether the function could be decomposed."
+    enabled: false

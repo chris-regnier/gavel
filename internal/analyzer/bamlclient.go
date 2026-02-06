@@ -34,6 +34,12 @@ func (c *BAMLLiveClient) AnalyzeCode(ctx context.Context, code string, policies 
 		results, err = c.analyzeWithOllama(ctx, code, policies, personaPrompt, additionalContext)
 	case "openrouter":
 		results, err = c.analyzeWithOpenRouter(ctx, code, policies, personaPrompt, additionalContext)
+	case "anthropic":
+		results, err = c.analyzeWithAnthropic(ctx, code, policies, personaPrompt, additionalContext)
+	case "bedrock":
+		results, err = c.analyzeWithBedrock(ctx, code, policies, personaPrompt, additionalContext)
+	case "openai":
+		results, err = c.analyzeWithOpenAI(ctx, code, policies, personaPrompt, additionalContext)
 	default:
 		return nil, fmt.Errorf("unknown provider: %s", c.providerConfig.Name)
 	}
@@ -65,6 +71,40 @@ func (c *BAMLLiveClient) analyzeWithOllama(ctx context.Context, code string, pol
 func (c *BAMLLiveClient) analyzeWithOpenRouter(ctx context.Context, code string, policies string, personaPrompt string, additionalContext string) ([]types.Finding, error) {
 	// Use WithClient to select the OpenRouter client at runtime
 	return baml_client.AnalyzeCode(ctx, code, policies, personaPrompt, additionalContext, baml_client.WithClient("OpenRouter"))
+}
+
+func (c *BAMLLiveClient) analyzeWithAnthropic(ctx context.Context, code string, policies string, personaPrompt string, additionalContext string) ([]types.Finding, error) {
+	// Use WithClient to select the Anthropic client and WithEnv to configure model
+	env := map[string]string{
+		"ANTHROPIC_MODEL": c.providerConfig.Anthropic.Model,
+	}
+	return baml_client.AnalyzeCode(ctx, code, policies, personaPrompt, additionalContext,
+		baml_client.WithClient("Anthropic"),
+		baml_client.WithEnv(env),
+	)
+}
+
+func (c *BAMLLiveClient) analyzeWithBedrock(ctx context.Context, code string, policies string, personaPrompt string, additionalContext string) ([]types.Finding, error) {
+	// Use WithClient to select the Bedrock client and WithEnv to configure model and region
+	env := map[string]string{
+		"BEDROCK_MODEL":  c.providerConfig.Bedrock.Model,
+		"BEDROCK_REGION": c.providerConfig.Bedrock.Region,
+	}
+	return baml_client.AnalyzeCode(ctx, code, policies, personaPrompt, additionalContext,
+		baml_client.WithClient("Bedrock"),
+		baml_client.WithEnv(env),
+	)
+}
+
+func (c *BAMLLiveClient) analyzeWithOpenAI(ctx context.Context, code string, policies string, personaPrompt string, additionalContext string) ([]types.Finding, error) {
+	// Use WithClient to select the OpenAI client and WithEnv to configure model
+	env := map[string]string{
+		"OPENAI_MODEL": c.providerConfig.OpenAI.Model,
+	}
+	return baml_client.AnalyzeCode(ctx, code, policies, personaPrompt, additionalContext,
+		baml_client.WithClient("OpenAI"),
+		baml_client.WithEnv(env),
+	)
 }
 
 func convertFindings(bamlFindings []types.Finding) []Finding {
