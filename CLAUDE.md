@@ -46,6 +46,7 @@ Input Handler → BAML Analyzer → SARIF Assembler → Rego Evaluator → Verdi
 - **SARIF extensions**: All gavel-specific data lives in `Properties map[string]interface{}` with `gavel/` prefix keys.
 - **Rego evaluator** (`internal/evaluator/evaluator.go`): Default policy is embedded via `//go:embed default.rego`. Custom `.rego` files from a directory override it. Rego receives the full SARIF log as JSON input; it never sees source code.
 - **Storage** (`internal/store/`): `Store` interface with filesystem implementation. IDs are `<timestamp>-<hex>` directories under `.gavel/results/`.
+- **Cache metadata & cross-environment sharing**: SARIF results include `gavel/cache_key` (deterministic hash of file content + policies + model + BAML templates) and `gavel/analyzer` metadata (provider, model, policies used). Cache keys enable sharing results across CI and local environments when analysis inputs match. Cache invalidation only occurs when LLM inputs change (file content, policy instructions, model, BAML templates), NOT when Rego policies or severity levels change (those only affect verdict evaluation, not SARIF generation).
 
 ## BAML
 
