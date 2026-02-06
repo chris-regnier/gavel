@@ -36,6 +36,9 @@ type ReviewModel struct {
 	accepted map[string]bool
 	rejected map[string]bool
 	comments map[string]string
+
+	width  int
+	height int
 }
 
 // NewReviewModel creates a new ReviewModel from a SARIF log
