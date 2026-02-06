@@ -14,7 +14,7 @@ import (
 
 type mockClient struct{}
 
-func (m *mockClient) AnalyzeCode(ctx context.Context, code string, policies string, additionalContext string) ([]analyzer.Finding, error) {
+func (m *mockClient) AnalyzeCode(ctx context.Context, code string, policies string, personaPrompt string, additionalContext string) ([]analyzer.Finding, error) {
 	return []analyzer.Finding{
 		{
 			RuleID:         "error-handling",
@@ -43,7 +43,11 @@ func TestFullPipeline(t *testing.T) {
 
 	// 3. Analyze
 	a := analyzer.NewAnalyzer(&mockClient{})
-	results, err := a.Analyze(ctx, artifacts, cfg.Policies, nil)
+	personaPrompt, err := analyzer.GetPersonaPrompt(ctx, cfg.Persona)
+	if err != nil {
+		t.Fatal(err)
+	}
+	results, err := a.Analyze(ctx, artifacts, cfg.Policies, personaPrompt)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +56,7 @@ func TestFullPipeline(t *testing.T) {
 	}
 
 	// 4. Assemble SARIF
-	sarifLog := sarif.Assemble(results, nil, "files")
+	sarifLog := sarif.Assemble(results, nil, "files", cfg.Persona)
 	if len(sarifLog.Runs[0].Results) != 1 {
 		t.Fatalf("expected 1 SARIF result, got %d", len(sarifLog.Runs[0].Results))
 	}

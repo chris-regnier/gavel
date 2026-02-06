@@ -14,7 +14,7 @@ import (
 type ContextSelector struct {
 	// Pattern is a glob pattern for files to include as context (e.g., "docs/*", "*.md")
 	Pattern string `yaml:"pattern"`
-	
+
 	// OnlyFor is an optional glob pattern - if set, only artifacts matching this pattern
 	// will receive the additional context (e.g., "*.go", "*.md")
 	OnlyFor string `yaml:"only_for,omitempty"`
@@ -31,6 +31,7 @@ type Policy struct {
 // Config holds the full gavel configuration.
 type Config struct {
 	Provider ProviderConfig    `yaml:"provider"`
+	Persona  string            `yaml:"persona"` // AI expert role
 	Policies map[string]Policy `yaml:"policies"`
 }
 
@@ -66,6 +67,16 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("OPENROUTER_API_KEY environment variable required for OpenRouter")
 	}
 
+	// Validate persona field
+	validPersonas := map[string]bool{
+		"code-reviewer": true,
+		"architect":     true,
+		"security":      true,
+	}
+	if c.Persona != "" && !validPersonas[c.Persona] {
+		return fmt.Errorf("unknown persona: %s (valid: code-reviewer, architect, security)", c.Persona)
+	}
+
 	return nil
 }
 
@@ -96,6 +107,11 @@ func MergeConfigs(configs ...*Config) *Config {
 			result.Provider.OpenRouter.Model = cfg.Provider.OpenRouter.Model
 		}
 
+		// Merge persona - non-empty string overrides
+		if cfg.Persona != "" {
+			result.Persona = cfg.Persona
+		}
+
 		// Merge policies (existing logic)
 		for name, policy := range cfg.Policies {
 			existing, ok := result.Policies[name]
@@ -113,10 +129,6 @@ func MergeConfigs(configs ...*Config) *Config {
 			if policy.Instruction != "" {
 				existing.Instruction = policy.Instruction
 			}
-			// AdditionalContexts: if specified, override completely
-			if len(policy.AdditionalContexts) > 0 {
-				existing.AdditionalContexts = policy.AdditionalContexts
-			}
 			// Enabled: if the higher tier explicitly sets Enabled to true, use it.
 			// If Enabled is false (the zero value), only apply it when no string
 			// fields are set—indicating a deliberate disable directive rather than
@@ -125,6 +137,10 @@ func MergeConfigs(configs ...*Config) *Config {
 				existing.Enabled = true
 			} else if policy.Description == "" && policy.Severity == "" && policy.Instruction == "" {
 				existing.Enabled = false
+			}
+			// AdditionalContexts: if specified, override completely
+			if len(policy.AdditionalContexts) > 0 {
+				existing.AdditionalContexts = policy.AdditionalContexts
 			}
 			result.Policies[name] = existing
 		}

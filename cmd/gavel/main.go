@@ -31,6 +31,13 @@ var versionCmd = &cobra.Command{
 }
 
 func init() {
+	// Add --persona flag globally (available to all subcommands)
+	rootCmd.PersistentFlags().String(
+		"persona",
+		"",
+		"Persona to use for analysis (code-reviewer, architect, security). Overrides config.",
+	)
+
 	rootCmd.AddCommand(versionCmd)
 }
 

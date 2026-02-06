@@ -322,3 +322,77 @@ func TestMergeConfigs_ProviderPartialOverride(t *testing.T) {
 		t.Errorf("expected model preserved, got %q", merged.Provider.Ollama.Model)
 	}
 }
+
+func TestConfigValidation_Persona(t *testing.T) {
+	tests := []struct {
+		name    string
+		persona string
+		wantErr bool
+	}{
+		{"valid code-reviewer", "code-reviewer", false},
+		{"valid architect", "architect", false},
+		{"valid security", "security", false},
+		{"invalid persona", "invalid", true},
+		{"empty uses default", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{
+				Provider: ProviderConfig{
+					Name: "ollama",
+					Ollama: OllamaConfig{
+						Model:   "test-model",
+						BaseURL: "http://localhost:11434",
+					},
+				},
+				Persona: tt.persona,
+			}
+			err := cfg.Validate()
+			if tt.wantErr && err == nil {
+				t.Error("expected validation error, got nil")
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("expected no error, got: %v", err)
+			}
+			if tt.wantErr && err != nil && !strings.Contains(err.Error(), "unknown persona") {
+				t.Errorf("expected 'unknown persona' error, got: %v", err)
+			}
+		})
+	}
+}
+
+func TestSystemDefaults_IncludesPersona(t *testing.T) {
+	cfg := SystemDefaults()
+	if cfg.Persona != "code-reviewer" {
+		t.Errorf("expected default persona 'code-reviewer', got %q", cfg.Persona)
+	}
+}
+
+func TestMergeConfigs_PersonaOverride(t *testing.T) {
+	system := &Config{
+		Persona: "code-reviewer",
+	}
+	project := &Config{
+		Persona: "security",
+	}
+	merged := MergeConfigs(system, project)
+
+	if merged.Persona != "security" {
+		t.Errorf("expected persona 'security', got %q", merged.Persona)
+	}
+}
+
+func TestMergeConfigs_PersonaPreserved(t *testing.T) {
+	system := &Config{
+		Persona: "architect",
+	}
+	project := &Config{
+		Persona: "",
+	}
+	merged := MergeConfigs(system, project)
+
+	if merged.Persona != "architect" {
+		t.Errorf("expected persona 'architect' preserved, got %q", merged.Persona)
+	}
+}

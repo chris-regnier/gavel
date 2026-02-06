@@ -1,7 +1,7 @@
 package sarif
 
 // Assemble creates a SARIF log from analysis results, deduplicating overlapping findings.
-func Assemble(results []Result, rules []ReportingDescriptor, inputScope string) *Log {
+func Assemble(results []Result, rules []ReportingDescriptor, inputScope, persona string) *Log {
 	deduped := dedup(results)
 
 	log := NewLog("gavel", "0.1.0")
@@ -9,6 +9,7 @@ func Assemble(results []Result, rules []ReportingDescriptor, inputScope string) 
 	log.Runs[0].Results = deduped
 	log.Runs[0].Properties = map[string]interface{}{
 		"gavel/inputScope": inputScope,
+		"gavel/persona":    persona,
 	}
 
 	return log

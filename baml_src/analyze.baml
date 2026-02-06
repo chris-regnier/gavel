@@ -10,32 +10,43 @@ class Finding {
   confidence float @description("0.0 to 1.0, how confident you are in this finding")
 }
 
-function AnalyzeCode(code: string, policies: string, additionalContext: string) -> Finding[] {
+function AnalyzeCode(
+  code: string,
+  policies: string,
+  personaPrompt: string,
+  additionalContext: string
+) -> Finding[] {
   client OpenRouter
   prompt #"
-    You are a precise code analyzer. Analyze the following code against the given policies.
-    For each policy violation found, produce a finding. If no violations are found
-    for a policy, do not produce a finding for it.
+    {{ personaPrompt }}
 
-    Be precise about line numbers. Be concise in messages. Be thorough in explanations.
-    Set confidence based on how certain you are — use lower confidence for ambiguous cases.
+    {% if additionalContext != "" %}
+    ===== ADDITIONAL CONTEXT =====
+    The following context may be relevant to your analysis:
 
-    Only report genuine issues. Do not fabricate findings.
-
-    Policies:
-    ---
-    {{ policies }}
-    ---
-
-    {% if additionalContext %}
     {{ additionalContext }}
-    ---
+
+    ===== END CONTEXT =====
     {% endif %}
 
-    Code:
-    ---
+    ===== POLICIES TO CHECK =====
+    Analyze the code against these specific policies. Only report genuine violations.
+    If a policy doesn't apply to this code, don't force a finding.
+
+    {{ policies }}
+
+    ===== CODE TO ANALYZE =====
     {{ code }}
-    ---
+
+    ===== INSTRUCTIONS =====
+    For each policy violation or issue you find:
+    1. Identify the exact line numbers where it occurs
+    2. Write a concise message (one sentence)
+    3. Provide a detailed explanation following your persona's tone
+    4. Suggest a specific, actionable recommendation
+    5. Assign an appropriate confidence level based on the guidance above
+
+    Only report genuine issues. Quality over quantity.
 
     {{ ctx.output_format }}
   "#
