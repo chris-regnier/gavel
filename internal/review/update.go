@@ -2,6 +2,8 @@ package review
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -22,6 +24,11 @@ func (m ReviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "q", "ctrl+c":
+			// Save review state before quitting
+			if err := m.saveState(); err != nil {
+				// Log error but don't prevent quit
+				fmt.Fprintf(os.Stderr, "Warning: failed to save review state: %v\n", err)
+			}
 			return m, tea.Quit
 
 		case "n": // Next finding
@@ -89,4 +96,29 @@ func (m *ReviewModel) getFindingID(idx int) string {
 	}
 
 	return fmt.Sprintf("%s:%s:%d", result.RuleID, filePath, line)
+}
+
+// saveState saves the current review state to disk
+func (m *ReviewModel) saveState() error {
+	// Generate SARIF ID from run metadata
+	sarifID := "review-session"
+	if len(m.sarif.Runs) > 0 && m.sarif.Runs[0].Tool.Driver.Name != "" {
+		sarifID = m.sarif.Runs[0].Tool.Driver.Name
+	}
+
+	// Determine save path
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("getting home dir: %w", err)
+	}
+
+	stateDir := filepath.Join(homeDir, ".gavel", "review-state")
+	if err := os.MkdirAll(stateDir, 0755); err != nil {
+		return fmt.Errorf("creating state dir: %w", err)
+	}
+
+	statePath := filepath.Join(stateDir, sarifID+".json")
+
+	// Save using persistence function
+	return SaveReviewState(m, sarifID, statePath)
 }
