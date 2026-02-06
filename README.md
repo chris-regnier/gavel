@@ -43,7 +43,7 @@ sudo mv gavel /usr/local/bin/
 - Go 1.25+
 - [Task](https://taskfile.dev/) (task runner)
 - [BAML CLI](https://docs.boundaryml.com/) (for regenerating the LLM client)
-- An [OpenRouter](https://openrouter.ai/) API key
+- An LLM provider (see [Supported Providers](#supported-providers) below)
 
 ```bash
 task build
@@ -51,11 +51,28 @@ task build
 
 This produces a `gavel` binary in the project root.
 
+## Quick Start
+
+```bash
+# 1. Set up a provider (example: Ollama for local/free usage)
+ollama pull qwen2.5-coder:7b
+
+# 2. Configure Gavel (creates .gavel/policies.yaml)
+cat > .gavel/policies.yaml <<EOF
+provider:
+  name: ollama
+  ollama:
+    model: qwen2.5-coder:7b
+    base_url: http://localhost:11434/v1
+EOF
+
+# 3. Analyze your code
+./gavel analyze --dir ./src
+```
+
 ## Usage
 
 ```bash
-export OPENROUTER_API_KEY=your-key-here
-
 # Analyze a directory
 ./gavel analyze --dir ./src
 
@@ -115,66 +132,154 @@ Gavel writes two files per run to `.gavel/results/<id>/`:
 | `reject` | Block the merge | Any error-level finding with confidence > 0.8 |
 | `review` | Needs human review | All other cases (default) |
 
-### Using Ollama (Local LLMs)
+## Supported Providers
 
-Gavel supports local LLM analysis via [Ollama](https://ollama.ai/):
+Gavel supports multiple LLM providers to fit different needs:
 
-#### 1. Install and start Ollama
+| Provider | Type | Cost | Speed | Best For |
+|----------|------|------|-------|----------|
+| **Ollama** | Local | Free | ⚡⚡⚡ Fast | Local development, privacy-sensitive work |
+| **OpenRouter** | Cloud API | Pay-per-use | ⚡⚡ Variable | Easy access to many models |
+| **Anthropic** | Cloud API | Premium | ⚡⚡ Fast | Production workloads, highest quality |
+| **AWS Bedrock** | AWS Cloud | Premium | ⚡⚡ Fast | Enterprise AWS environments |
+| **OpenAI** | Cloud API | Moderate | ⚡⚡⚡ Fast | General purpose, GPT-4 users |
+
+### Ollama (Local, Free)
+
+Perfect for local development and privacy-sensitive work.
 
 ```bash
-# macOS
-brew install ollama
+# Install Ollama
+curl -fsSL https://ollama.ai/install.sh | sh
 
-# Start Ollama server
-ollama serve
-```
+# Pull a fast code model
+ollama pull qwen2.5-coder:7b
 
-#### 2. Pull a model
-
-```bash
-ollama pull gpt-oss:20b
-```
-
-#### 3. Configure Gavel
-
-Create or edit `.gavel/policies.yaml`:
-
-```yaml
+# Configure in .gavel/policies.yaml
 provider:
   name: ollama
   ollama:
-    model: gpt-oss:20b
-    base_url: http://localhost:11434/v1  # optional, this is the default
+    model: qwen2.5-coder:7b
+    base_url: http://localhost:11434/v1
 
-policies:
-  shall-be-merged:
-    enabled: true
-    severity: error
-```
-
-#### 4. Run analysis
-
-```bash
+# Run analysis
 ./gavel analyze --dir ./src
 ```
 
-#### Switching between providers
+**Fast Ollama models:** `qwen2.5-coder:7b`, `deepseek-coder-v2:16b`, `codestral:22b`
 
-**To use OpenRouter instead:**
+### OpenRouter (Cloud, Pay-per-use)
 
-```yaml
+Access multiple models through a unified API.
+
+```bash
+# Get API key from https://openrouter.ai/keys
+export OPENROUTER_API_KEY=sk-or-...
+
+# Configure in .gavel/policies.yaml
 provider:
   name: openrouter
   openrouter:
-    model: anthropic/claude-sonnet-4
-```
+    model: google/gemini-2.0-flash-001  # very fast
 
-Then set your API key:
-
-```bash
-export OPENROUTER_API_KEY=your-key-here
+# Run analysis
 ./gavel analyze --dir ./src
 ```
+
+**Recommended models:**
+- `google/gemini-2.0-flash-001` - Very fast, excellent value
+- `anthropic/claude-3.5-haiku` - Fast Claude, good quality
+- `deepseek/deepseek-chat` - Very cheap, surprisingly good
+- `anthropic/claude-sonnet-4` - Highest quality
+
+### Anthropic (Direct API)
+
+Direct access to Claude models for production workloads.
+
+```bash
+# Get API key from https://console.anthropic.com/
+export ANTHROPIC_API_KEY=sk-ant-...
+
+# Configure in .gavel/policies.yaml
+provider:
+  name: anthropic
+  anthropic:
+    model: claude-sonnet-4-20250514
+
+# Run analysis
+./gavel analyze --dir ./src
+```
+
+**Available models:**
+- `claude-sonnet-4-20250514` - Latest flagship, excellent quality
+- `claude-3-5-haiku-20241022` - Fast, lower cost
+- `claude-opus-4-5-20251101` - Highest quality
+
+### AWS Bedrock (Enterprise)
+
+Claude models on AWS infrastructure for enterprise deployments.
+
+```bash
+# Configure AWS credentials
+aws configure
+
+# Configure in .gavel/policies.yaml
+provider:
+  name: bedrock
+  bedrock:
+    model: anthropic.claude-sonnet-4-5-v2:0
+    region: us-east-1
+
+# Run analysis
+./gavel analyze --dir ./src
+```
+
+**Available models:**
+- `anthropic.claude-sonnet-4-5-v2:0` - Sonnet 4.5
+- `anthropic.claude-opus-4-5-v1:0` - Opus 4.5
+- `anthropic.claude-3-5-haiku-20241022-v1:0` - Fast Haiku
+
+### OpenAI (Cloud API)
+
+GPT models for general-purpose code analysis.
+
+```bash
+# Get API key from https://platform.openai.com/api-keys
+export OPENAI_API_KEY=sk-proj-...
+
+# Configure in .gavel/policies.yaml
+provider:
+  name: openai
+  openai:
+    model: gpt-4o
+
+# Run analysis
+./gavel analyze --dir ./src
+```
+
+**Recommended models:**
+- `gpt-4o` - Latest GPT-4, excellent quality
+- `gpt-4o-mini` - Fast, cost-effective
+- `o1-preview` - Reasoning model (slower)
+
+### Provider Comparison & Selection
+
+**For Speed:**
+1. Ollama `qwen2.5-coder:7b` (local, 1-3 sec/file)
+2. OpenRouter `google/gemini-2.0-flash-001` (cloud, 2-5 sec/file)
+3. OpenAI `gpt-4o-mini` (cloud, 2-5 sec/file)
+
+**For Quality:**
+1. Anthropic Claude Opus 4.5
+2. Anthropic Claude Sonnet 4
+3. OpenAI GPT-4o
+
+**For Cost:**
+1. Ollama (free, local)
+2. OpenRouter DeepSeek (~$0.20 per 100 files)
+3. OpenAI GPT-4o-mini (~$0.40 per 100 files)
+
+**Detailed provider documentation:** See [docs/PROVIDERS.md](docs/PROVIDERS.md) and [example-configs.yaml](example-configs.yaml)
 
 ## Personas
 
@@ -212,6 +317,14 @@ Gavel uses a tiered policy configuration system. Policies are merged in order of
 ### Policy Format
 
 ```yaml
+# Provider configuration (required)
+provider:
+  name: ollama  # or: openrouter, anthropic, bedrock, openai
+  ollama:
+    model: qwen2.5-coder:7b
+    base_url: http://localhost:11434/v1
+
+# Analysis policies
 policies:
   shall-be-merged:
     description: "Shall this code be merged?"
@@ -348,7 +461,7 @@ ls -la dist/
 
 LLM prompt templates live in `baml_src/`. After editing `.baml` files, run `task generate` to regenerate the Go client in `baml_client/`. The generated code should not be edited by hand.
 
-The default LLM provider is Ollama with `gpt-oss:20b` running locally.
+BAML client definitions for all providers are in `baml_src/clients.baml`. The default provider is Ollama with `gpt-oss:20b` running locally.
 
 ## License
 
