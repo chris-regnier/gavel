@@ -21,7 +21,7 @@ import (
 	"github.com/chris-regnier/gavel/baml_client/types"
 )
 
-func AnalyzeCode(ctx context.Context, code string, policies string, additionalContext string, opts ...CallOptionFunc) ([]types.Finding, error) {
+func AnalyzeCode(ctx context.Context, code string, policies string, personaPrompt string, additionalContext string, opts ...CallOptionFunc) ([]types.Finding, error) {
 
 	var callOpts callOption
 	for _, opt := range opts {
@@ -37,7 +37,7 @@ func AnalyzeCode(ctx context.Context, code string, policies string, additionalCo
 	}
 
 	args := baml.BamlFunctionArguments{
-		Kwargs: map[string]any{"code": code, "policies": policies, "additionalContext": additionalContext},
+		Kwargs: map[string]any{"code": code, "policies": policies, "personaPrompt": personaPrompt, "additionalContext": additionalContext},
 		Env:    getEnvVars(callOpts.env),
 	}
 

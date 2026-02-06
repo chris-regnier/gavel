@@ -10,7 +10,6 @@ import (
 
 	"github.com/chris-regnier/gavel/internal/analyzer"
 	"github.com/chris-regnier/gavel/internal/config"
-	gavelcontext "github.com/chris-regnier/gavel/internal/context"
 	"github.com/chris-regnier/gavel/internal/evaluator"
 	"github.com/chris-regnier/gavel/internal/input"
 	"github.com/chris-regnier/gavel/internal/sarif"
@@ -54,9 +53,20 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
-	// Validate configuration
+	// Override persona from CLI flag if provided
+	if personaFlag, _ := cmd.Flags().GetString("persona"); personaFlag != "" {
+		cfg.Persona = personaFlag
+	}
+
+	// Validate configuration (including persona)
 	if err := cfg.Validate(); err != nil {
-		return fmt.Errorf("invalid config: %w", err)
+		return fmt.Errorf("invalid configuration: %w", err)
+	}
+
+	// Get persona prompt from BAML
+	personaPrompt, err := analyzer.GetPersonaPrompt(ctx, cfg.Persona)
+	if err != nil {
+		return fmt.Errorf("loading persona %s: %w", cfg.Persona, err)
 	}
 
 	// Read input
@@ -98,15 +108,7 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 	// Analyze with BAML
 	client := analyzer.NewBAMLLiveClient(cfg.Provider)
 	a := analyzer.NewAnalyzer(client)
-	
-	// Create context loader - use current directory as base for glob patterns
-	baseDir := "."
-	if flagDir != "" {
-		baseDir = flagDir
-	}
-	contextLoader := gavelcontext.NewLoader(baseDir)
-	
-	results, err := a.Analyze(ctx, artifacts, cfg.Policies, contextLoader)
+	results, err := a.Analyze(ctx, artifacts, cfg.Policies, personaPrompt)
 	if err != nil {
 		return fmt.Errorf("analyzing: %w", err)
 	}
@@ -123,7 +125,7 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 	}
 
 	// Assemble SARIF
-	sarifLog := sarif.Assemble(results, rules, inputScope)
+	sarifLog := sarif.Assemble(results, rules, inputScope, cfg.Persona)
 
 	// Store results
 	fs := store.NewFileStore(flagOutput)

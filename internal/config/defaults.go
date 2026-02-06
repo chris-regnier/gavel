@@ -13,6 +13,7 @@ func SystemDefaults() *Config {
 				Model: "anthropic/claude-sonnet-4",
 			},
 		},
+		Persona: "code-reviewer",
 		Policies: map[string]Policy{
 			"shall-be-merged": {
 				Description: "Shall this code be merged?",

@@ -25,15 +25,15 @@ func NewBAMLLiveClient(cfg config.ProviderConfig) *BAMLLiveClient {
 }
 
 // AnalyzeCode calls the appropriate BAML client based on provider config.
-func (c *BAMLLiveClient) AnalyzeCode(ctx context.Context, code string, policies string, additionalContext string) ([]Finding, error) {
+func (c *BAMLLiveClient) AnalyzeCode(ctx context.Context, code string, policies string, personaPrompt string, additionalContext string) ([]Finding, error) {
 	var results []types.Finding
 	var err error
 
 	switch c.providerConfig.Name {
 	case "ollama":
-		results, err = c.analyzeWithOllama(ctx, code, policies, additionalContext)
+		results, err = c.analyzeWithOllama(ctx, code, policies, personaPrompt, additionalContext)
 	case "openrouter":
-		results, err = c.analyzeWithOpenRouter(ctx, code, policies, additionalContext)
+		results, err = c.analyzeWithOpenRouter(ctx, code, policies, personaPrompt, additionalContext)
 	default:
 		return nil, fmt.Errorf("unknown provider: %s", c.providerConfig.Name)
 	}
@@ -45,7 +45,7 @@ func (c *BAMLLiveClient) AnalyzeCode(ctx context.Context, code string, policies 
 	return convertFindings(results), nil
 }
 
-func (c *BAMLLiveClient) analyzeWithOllama(ctx context.Context, code string, policies string, additionalContext string) ([]types.Finding, error) {
+func (c *BAMLLiveClient) analyzeWithOllama(ctx context.Context, code string, policies string, personaPrompt string, additionalContext string) ([]types.Finding, error) {
 	// Use WithClient to select the Ollama client and WithEnv to configure model/base_url
 	env := map[string]string{
 		"OLLAMA_MODEL": c.providerConfig.Ollama.Model,
@@ -56,15 +56,15 @@ func (c *BAMLLiveClient) analyzeWithOllama(ctx context.Context, code string, pol
 	} else {
 		env["OLLAMA_BASE_URL"] = "http://localhost:11434/v1"
 	}
-	return baml_client.AnalyzeCode(ctx, code, policies, additionalContext,
+	return baml_client.AnalyzeCode(ctx, code, policies, personaPrompt, additionalContext,
 		baml_client.WithClient("Ollama"),
 		baml_client.WithEnv(env),
 	)
 }
 
-func (c *BAMLLiveClient) analyzeWithOpenRouter(ctx context.Context, code string, policies string, additionalContext string) ([]types.Finding, error) {
+func (c *BAMLLiveClient) analyzeWithOpenRouter(ctx context.Context, code string, policies string, personaPrompt string, additionalContext string) ([]types.Finding, error) {
 	// Use WithClient to select the OpenRouter client at runtime
-	return baml_client.AnalyzeCode(ctx, code, policies, additionalContext, baml_client.WithClient("OpenRouter"))
+	return baml_client.AnalyzeCode(ctx, code, policies, personaPrompt, additionalContext, baml_client.WithClient("OpenRouter"))
 }
 
 func convertFindings(bamlFindings []types.Finding) []Finding {

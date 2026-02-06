@@ -2,12 +2,10 @@ package analyzer
 
 import (
 	"context"
-	"os"
 	"strings"
 	"testing"
 
 	"github.com/chris-regnier/gavel/internal/config"
-	gavelcontext "github.com/chris-regnier/gavel/internal/context"
 	"github.com/chris-regnier/gavel/internal/input"
 )
 
@@ -16,7 +14,7 @@ type mockBAMLClient struct {
 	err      error
 }
 
-func (m *mockBAMLClient) AnalyzeCode(ctx context.Context, code string, policies string, additionalContext string) ([]Finding, error) {
+func (m *mockBAMLClient) AnalyzeCode(ctx context.Context, code string, policies string, personaPrompt string, additionalContext string) ([]Finding, error) {
 	return m.findings, m.err
 }
 
@@ -50,7 +48,7 @@ func TestAnalyzer_Analyze(t *testing.T) {
 		},
 	}
 
-	results, err := a.Analyze(context.Background(), artifacts, policies, nil)
+	results, err := a.Analyze(context.Background(), artifacts, policies, "test persona prompt")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +77,7 @@ func TestAnalyzer_SkipsDisabledPolicies(t *testing.T) {
 		},
 	}
 
-	results, err := a.Analyze(context.Background(), []input.Artifact{{Content: "code"}}, policies, nil)
+	results, err := a.Analyze(context.Background(), []input.Artifact{{Content: "code"}}, policies, "test persona prompt")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,68 +99,4 @@ func TestFormatPolicies(t *testing.T) {
 	if strings.Contains(text, "rule-b") {
 		t.Error("did not expect disabled rule-b in output")
 	}
-}
-
-func TestAnalyzer_WithAdditionalContext(t *testing.T) {
-	// Create temp directory with context files
-	tmpDir := t.TempDir()
-	readmePath := tmpDir + "/README.md"
-	if err := os.WriteFile(readmePath, []byte("# Test README"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	
-	var capturedContext string
-	
-	mockCapture := &mockBAMLClientCapture{
-		capturedContext: &capturedContext,
-		findings:        []Finding{},
-	}
-	
-	a := NewAnalyzer(mockCapture)
-	
-	artifacts := []input.Artifact{
-		{Path: "main.go", Content: "package main", Kind: input.KindFile},
-	}
-	
-	policies := map[string]config.Policy{
-		"test-rule": {
-			Description: "Test",
-			Severity:    "warning",
-			Instruction: "Test instruction",
-			Enabled:     true,
-			AdditionalContexts: []config.ContextSelector{
-				{Pattern: "*.md"},
-			},
-		},
-	}
-	
-	contextLoader := gavelcontext.NewLoader(tmpDir)
-	_, err := a.Analyze(context.Background(), artifacts, policies, contextLoader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	
-	if capturedContext == "" {
-		t.Error("expected context to be passed, got empty string")
-	}
-	
-	if !strings.Contains(capturedContext, "README.md") {
-		t.Errorf("expected context to contain README.md, got: %s", capturedContext)
-	}
-	
-	if !strings.Contains(capturedContext, "Test README") {
-		t.Errorf("expected context to contain README content, got: %s", capturedContext)
-	}
-}
-
-// mockBAMLClientCapture is a mock that captures the additionalContext parameter
-type mockBAMLClientCapture struct {
-	capturedContext *string
-	findings        []Finding
-	err             error
-}
-
-func (m *mockBAMLClientCapture) AnalyzeCode(ctx context.Context, code string, policies string, additionalContext string) ([]Finding, error) {
-	*m.capturedContext = additionalContext
-	return m.findings, m.err
 }

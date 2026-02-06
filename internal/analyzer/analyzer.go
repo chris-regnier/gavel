@@ -6,14 +6,13 @@ import (
 	"strings"
 
 	"github.com/chris-regnier/gavel/internal/config"
-	gavelcontext "github.com/chris-regnier/gavel/internal/context"
 	"github.com/chris-regnier/gavel/internal/input"
 	"github.com/chris-regnier/gavel/internal/sarif"
 )
 
 // BAMLClient defines the interface for the BAML-based code analysis client.
 type BAMLClient interface {
-	AnalyzeCode(ctx context.Context, code string, policies string, additionalContext string) ([]Finding, error)
+	AnalyzeCode(ctx context.Context, code string, policies string, personaPrompt string, additionalContext string) ([]Finding, error)
 }
 
 // Finding represents a single finding returned by the BAML analysis.
@@ -52,9 +51,9 @@ func FormatPolicies(policies map[string]config.Policy) string {
 }
 
 // Analyze runs the BAML client against each artifact and returns SARIF results.
-// If contextLoader is provided, it will load additional context files for each artifact
-// based on the policy's AdditionalContexts configuration.
-func (a *Analyzer) Analyze(ctx context.Context, artifacts []input.Artifact, policies map[string]config.Policy, contextLoader *gavelcontext.Loader) ([]sarif.Result, error) {
+// The personaPrompt provides the expert perspective for analysis (from GetPersonaPrompt).
+// The additionalContext parameter is reserved for future context selectors (Phase 2).
+func (a *Analyzer) Analyze(ctx context.Context, artifacts []input.Artifact, policies map[string]config.Policy, personaPrompt string) ([]sarif.Result, error) {
 	policyText := FormatPolicies(policies)
 	if policyText == "" {
 		return nil, nil
@@ -62,29 +61,11 @@ func (a *Analyzer) Analyze(ctx context.Context, artifacts []input.Artifact, poli
 
 	var allResults []sarif.Result
 
-	for _, art := range artifacts {
-		// Build additional context for this artifact
-		var contextText string
-		if contextLoader != nil {
-			// Collect all context selectors from enabled policies
-			var allSelectors []config.ContextSelector
-			for _, p := range policies {
-				if p.Enabled && len(p.AdditionalContexts) > 0 {
-					allSelectors = append(allSelectors, p.AdditionalContexts...)
-				}
-			}
-			
-			// Load context files
-			if len(allSelectors) > 0 {
-				contextFiles, err := contextLoader.LoadForArtifact(art.Path, allSelectors)
-				if err != nil {
-					return nil, fmt.Errorf("loading context for %s: %w", art.Path, err)
-				}
-				contextText = gavelcontext.FormatContext(contextFiles)
-			}
-		}
+	// MVP: Empty additional context (Phase 2 will add context selectors)
+	additionalContext := ""
 
-		findings, err := a.client.AnalyzeCode(ctx, art.Content, policyText, contextText)
+	for _, art := range artifacts {
+		findings, err := a.client.AnalyzeCode(ctx, art.Content, policyText, personaPrompt, additionalContext)
 		if err != nil {
 			return nil, fmt.Errorf("analyzing %s: %w", art.Path, err)
 		}

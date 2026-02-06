@@ -71,6 +71,27 @@ The BAML client wrapper (`internal/analyzer/bamlclient.go`) dispatches to the ap
 
 After changing `.baml` files, run `task generate`. The LLM provider is selected via config, not environment variables.
 
+## Personas
+
+Gavel uses BAML to implement switchable analysis personas. Different personas provide
+specialized expert perspectives: code quality, architecture, or security.
+
+**Implementation:**
+- `internal/analyzer/personas.go` - Persona prompt constants and selection logic
+- `internal/config/config.go` - Persona configuration field
+- `docs/personas-feature-design.md` - Full design document
+
+**To add a new persona:**
+1. Add prompt constant to `internal/analyzer/personas.go`
+2. Add case to `GetPersonaPrompt()` switch
+3. Add to valid personas map in `internal/config/config.go` validation
+4. Update documentation
+
+**Current personas:**
+- `code-reviewer` (default): Code quality, error handling, testability
+- `architect`: Scalability, API design, service boundaries
+- `security`: OWASP Top 10, auth/authz, injection vulnerabilities
+
 ## Rego
 
 Default gate policy is in `internal/evaluator/default.rego`. Package `gavel.gate`, queried for `data.gavel.gate.decision`. Returns "reject" (error + confidence > 0.8), "merge" (no results), or "review" (default). Uses `import rego.v1` syntax (OPA v1.13.1).

@@ -15,7 +15,7 @@ func TestAssemble(t *testing.T) {
 		{ID: "rule-b", ShortDescription: Message{Text: "Rule B"}},
 	}
 
-	log := Assemble(results, rules, "diff")
+	log := Assemble(results, rules, "diff", "code-reviewer")
 
 	if len(log.Runs) != 1 {
 		t.Fatalf("expected 1 run, got %d", len(log.Runs))
@@ -32,6 +32,9 @@ func TestAssemble(t *testing.T) {
 	}
 	if run.Properties["gavel/inputScope"] != "diff" {
 		t.Errorf("expected inputScope 'diff', got %v", run.Properties["gavel/inputScope"])
+	}
+	if run.Properties["gavel/persona"] != "code-reviewer" {
+		t.Errorf("expected persona 'code-reviewer', got %v", run.Properties["gavel/persona"])
 	}
 }
 
@@ -55,7 +58,7 @@ func TestAssemble_Dedup(t *testing.T) {
 		},
 	}
 
-	log := Assemble(results, nil, "files")
+	log := Assemble(results, nil, "files", "architect")
 	if len(log.Runs[0].Results) != 1 {
 		t.Errorf("expected dedup to 1 result, got %d", len(log.Runs[0].Results))
 	}

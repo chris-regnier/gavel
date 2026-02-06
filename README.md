@@ -176,6 +176,31 @@ export OPENROUTER_API_KEY=your-key-here
 ./gavel analyze --dir ./src
 ```
 
+## Personas
+
+Gavel supports different analysis personas for specialized code review:
+
+- `code-reviewer` (default): Focuses on code quality, bugs, and best practices
+- `architect`: Focuses on system design, scalability, and API patterns
+- `security`: Focuses on vulnerabilities and OWASP Top 10
+
+### Using Personas
+
+**Via config** (`.gavel/policies.yaml`):
+```yaml
+persona: security
+```
+
+**Via CLI flag**:
+```bash
+gavel analyze --persona architect --dir ./src
+```
+
+Different personas provide specialized expertise:
+- Use `code-reviewer` for daily PR reviews
+- Use `architect` for architecture reviews
+- Use `security` for security audits before releases
+
 ## Configuration
 
 Gavel uses a tiered policy configuration system. Policies are merged in order of precedence (highest wins):
