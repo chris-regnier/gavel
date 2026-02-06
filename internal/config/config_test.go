@@ -242,8 +242,8 @@ func TestConfig_Validate_OpenRouterMissingAPIKey(t *testing.T) {
 
 func TestSystemDefaults_IncludesProvider(t *testing.T) {
 	cfg := SystemDefaults()
-	if cfg.Provider.Name != "openrouter" {
-		t.Errorf("expected default provider 'openrouter', got %q", cfg.Provider.Name)
+	if cfg.Provider.Name != "ollama" {
+		t.Errorf("expected default provider 'ollama', got %q", cfg.Provider.Name)
 	}
 	if cfg.Provider.Ollama.Model != "gpt-oss:20b" {
 		t.Errorf("expected ollama model 'gpt-oss:20b', got %q", cfg.Provider.Ollama.Model)

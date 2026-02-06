@@ -4,7 +4,7 @@ package config
 func SystemDefaults() *Config {
 	return &Config{
 		Provider: ProviderConfig{
-			Name: "openrouter",
+			Name: "ollama",
 			Ollama: OllamaConfig{
 				Model:   "gpt-oss:20b",
 				BaseURL: "http://localhost:11434/v1",
