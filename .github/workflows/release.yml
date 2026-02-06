@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  goreleaser:
+  build-linux:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -31,17 +31,105 @@ jobs:
       - name: Install Task
         uses: go-task/setup-task@v1
 
-      - name: Generate BAML Client
-        run: task generate
+      - name: Run Tests
+        run: task test
+
+      - name: Build Linux binaries
+        run: task build:release
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-linux
+          path: dist/
+          retention-days: 1
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Install BAML CLI
+        run: go install github.com/boundaryml/baml/baml-cli@latest
+
+      - name: Install goimports
+        run: go install golang.org/x/tools/cmd/goimports@latest
+
+      - name: Install Task
+        uses: go-task/setup-task@v1
 
       - name: Run Tests
         run: task test
 
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
+      - name: Build macOS binaries
+        run: task build:release
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
         with:
-          distribution: goreleaser
-          version: '~> v2'
-          args: release --clean
+          name: dist-macos
+          path: dist/
+          retention-days: 1
+
+  release:
+    needs: [build-linux, build-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download Linux artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-linux
+          path: dist-linux/
+
+      - name: Download macOS artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-macos
+          path: dist-macos/
+
+      - name: Merge checksums
+        run: |
+          mkdir -p dist
+          cat dist-linux/checksums.txt dist-macos/checksums.txt > dist/checksums.txt
+          cp dist-linux/*.tar.gz dist/ 2>/dev/null || true
+          cp dist-macos/*.tar.gz dist/ 2>/dev/null || true
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Get previous tag
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+
+          # Generate changelog
+          if [ -n "$PREV_TAG" ]; then
+            echo "## Changes since $PREV_TAG" > CHANGELOG.md
+            echo "" >> CHANGELOG.md
+            git log $PREV_TAG..HEAD --pretty=format:"- %s (%h)" --no-merges >> CHANGELOG.md
+          else
+            echo "## Initial Release" > CHANGELOG.md
+          fi
+
+          cat CHANGELOG.md
+
+      - name: Create Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create ${{ github.ref_name }} \
+            --title "Gavel ${{ github.ref_name }}" \
+            --notes-file CHANGELOG.md \
+            dist/*.tar.gz \
+            dist/checksums.txt
