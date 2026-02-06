@@ -245,14 +245,14 @@ func TestSystemDefaults_IncludesProvider(t *testing.T) {
 	if cfg.Provider.Name != "ollama" {
 		t.Errorf("expected default provider 'ollama', got %q", cfg.Provider.Name)
 	}
-	if cfg.Provider.Ollama.Model != "gpt-oss:20b" {
-		t.Errorf("expected ollama model 'gpt-oss:20b', got %q", cfg.Provider.Ollama.Model)
+	if cfg.Provider.Ollama.Model != "qwen2.5-coder:7b" {
+		t.Errorf("expected ollama model 'qwen2.5-coder:7b', got %q", cfg.Provider.Ollama.Model)
 	}
 	if cfg.Provider.Ollama.BaseURL != "http://localhost:11434/v1" {
 		t.Errorf("expected ollama base_url 'http://localhost:11434/v1', got %q", cfg.Provider.Ollama.BaseURL)
 	}
-	if cfg.Provider.OpenRouter.Model != "anthropic/claude-sonnet-4" {
-		t.Errorf("expected openrouter model 'anthropic/claude-sonnet-4', got %q", cfg.Provider.OpenRouter.Model)
+	if cfg.Provider.OpenRouter.Model != "anthropic/claude-3-5-haiku-20241022" {
+		t.Errorf("expected openrouter model 'anthropic/claude-3-5-haiku-20241022', got %q", cfg.Provider.OpenRouter.Model)
 	}
 }
 

@@ -187,10 +187,10 @@ provider:
 ```
 
 **Recommended models:**
-- `google/gemini-2.0-flash-001` - Very fast, excellent value
-- `anthropic/claude-3.5-haiku` - Fast Claude, good quality
+- `google/gemini-2.0-flash-exp` - Very fast, excellent value
+- `anthropic/claude-3-5-haiku-20241022` - Fast Claude Haiku 3.5, good quality
 - `deepseek/deepseek-chat` - Very cheap, surprisingly good
-- `anthropic/claude-sonnet-4` - Highest quality
+- `anthropic/claude-3-5-sonnet-20241022` - High quality Sonnet
 
 ### Anthropic (Direct API)
 
@@ -204,16 +204,16 @@ export ANTHROPIC_API_KEY=sk-ant-...
 provider:
   name: anthropic
   anthropic:
-    model: claude-sonnet-4-20250514
+    model: claude-3-5-haiku-20241022
 
 # Run analysis
 ./gavel analyze --dir ./src
 ```
 
 **Available models:**
-- `claude-sonnet-4-20250514` - Latest flagship, excellent quality
-- `claude-3-5-haiku-20241022` - Fast, lower cost
-- `claude-opus-4-5-20251101` - Highest quality
+- `claude-3-5-haiku-20241022` - Fast, cost-effective (recommended)
+- `claude-3-5-sonnet-20241022` - High quality, balanced
+- `claude-opus-4-6-20260205` - Highest quality, released Feb 5, 2026
 
 ### AWS Bedrock (Enterprise)
 
@@ -227,7 +227,7 @@ aws configure
 provider:
   name: bedrock
   bedrock:
-    model: anthropic.claude-sonnet-4-5-v2:0
+    model: anthropic.claude-3-5-haiku-20241022-v1:0
     region: us-east-1
 
 # Run analysis
@@ -235,9 +235,9 @@ provider:
 ```
 
 **Available models:**
-- `anthropic.claude-sonnet-4-5-v2:0` - Sonnet 4.5
-- `anthropic.claude-opus-4-5-v1:0` - Opus 4.5
-- `anthropic.claude-3-5-haiku-20241022-v1:0` - Fast Haiku
+- `anthropic.claude-3-5-haiku-20241022-v1:0` - Fast Haiku 3.5 (recommended)
+- `global.anthropic.claude-sonnet-4-5-20250929-v1:0` - Sonnet 4.5 (global endpoint)
+- `anthropic.claude-opus-4-6-20260205-v1:0` - Opus 4.6 (highest quality, released Feb 5, 2026)
 
 ### OpenAI (Cloud API)
 
@@ -251,33 +251,33 @@ export OPENAI_API_KEY=sk-proj-...
 provider:
   name: openai
   openai:
-    model: gpt-4o
+    model: gpt-5.2
 
 # Run analysis
 ./gavel analyze --dir ./src
 ```
 
 **Recommended models:**
-- `gpt-4o` - Latest GPT-4, excellent quality
-- `gpt-4o-mini` - Fast, cost-effective
-- `o1-preview` - Reasoning model (slower)
+- `gpt-5.3-codex` - Latest coding-specialized model (recommended for code analysis)
+- `gpt-5.2` - Newest flagship general model
+- `o3-mini` - Fast reasoning model for math/science/coding
 
 ### Provider Comparison & Selection
 
 **For Speed:**
 1. Ollama `qwen2.5-coder:7b` (local, 1-3 sec/file)
-2. OpenRouter `google/gemini-2.0-flash-001` (cloud, 2-5 sec/file)
-3. OpenAI `gpt-4o-mini` (cloud, 2-5 sec/file)
+2. OpenRouter `google/gemini-2.0-flash-exp` (cloud, 2-5 sec/file)
+3. Anthropic `claude-3-5-haiku-20241022` (cloud, 3-6 sec/file)
 
 **For Quality:**
-1. Anthropic Claude Opus 4.5
-2. Anthropic Claude Sonnet 4
-3. OpenAI GPT-4o
+1. Anthropic Claude Opus 4.6 (released Feb 5, 2026)
+2. Anthropic Claude Sonnet 4.5
+3. OpenAI GPT-5.3-Codex (for code analysis)
 
 **For Cost:**
 1. Ollama (free, local)
 2. OpenRouter DeepSeek (~$0.20 per 100 files)
-3. OpenAI GPT-4o-mini (~$0.40 per 100 files)
+3. Anthropic Claude Haiku 3.5 (~$2.40 per 100 files)
 
 **Detailed provider documentation:** See [docs/PROVIDERS.md](docs/PROVIDERS.md) and [example-configs.yaml](example-configs.yaml)
 

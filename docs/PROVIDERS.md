@@ -65,10 +65,10 @@ provider:
 ```
 
 **Recommended models:**
-- `google/gemini-2.0-flash-001` - Very fast, excellent value (~$0.10/$0.30 per 1M tokens)
-- `anthropic/claude-3.5-haiku` - Fast Claude, good quality (~$0.80/$4.00 per 1M tokens)
+- `google/gemini-2.0-flash-exp` - Very fast, excellent value (~$0.10/$0.30 per 1M tokens)
+- `anthropic/claude-3-5-haiku-20241022` - Fast Claude Haiku 3.5, good quality (~$0.80/$4.00 per 1M tokens)
 - `deepseek/deepseek-chat` - Very cheap, surprisingly good (~$0.14/$0.28 per 1M tokens)
-- `anthropic/claude-sonnet-4` - Highest quality (~$3.00/$15.00 per 1M tokens)
+- `anthropic/claude-3-5-sonnet-20241022` - High quality Sonnet (~$3.00/$15.00 per 1M tokens)
 
 ### Anthropic (Direct API)
 
@@ -83,13 +83,13 @@ export ANTHROPIC_API_KEY=sk-ant-...
 provider:
   name: anthropic
   anthropic:
-    model: claude-sonnet-4-20250514  # Latest Sonnet
+    model: claude-3-5-haiku-20241022  # Fast, cost-effective (recommended)
 ```
 
 **Available models:**
-- `claude-sonnet-4-20250514` - Latest flagship model, excellent quality
-- `claude-3-5-haiku-20241022` - Fast, lower cost (~$0.80/$4.00 vs ~$3/$15 per 1M tokens)
-- `claude-opus-4-5-20251101` - Highest quality (when you need the absolute best)
+- `claude-3-5-haiku-20241022` - Fast Haiku 3.5, cost-effective (~$0.80/$4.00 per 1M tokens) **(recommended)**
+- `claude-3-5-sonnet-20241022` - High quality Sonnet 3.5 (~$3.00/$15.00 per 1M tokens)
+- `claude-opus-4-6-20260205` - Highest quality Opus 4.6, released Feb 5, 2026 (~$15.00/$75.00 per 1M tokens)
 
 ### AWS Bedrock (Enterprise)
 
@@ -108,14 +108,14 @@ export AWS_REGION=us-east-1
 provider:
   name: bedrock
   bedrock:
-    model: anthropic.claude-sonnet-4-5-v2:0
+    model: anthropic.claude-3-5-haiku-20241022-v1:0
     region: us-east-1
 ```
 
 **Available models (by region):**
-- `anthropic.claude-sonnet-4-5-v2:0` - Sonnet 4.5 (excellent quality)
-- `anthropic.claude-opus-4-5-v1:0` - Opus 4.5 (highest quality, when available)
-- `anthropic.claude-3-5-haiku-20241022-v1:0` - Fast Haiku (lower cost)
+- `anthropic.claude-3-5-haiku-20241022-v1:0` - Fast Haiku 3.5, cost-effective **(recommended)**
+- `global.anthropic.claude-sonnet-4-5-20250929-v1:0` - Sonnet 4.5 with global endpoint
+- `anthropic.claude-opus-4-6-20260205-v1:0` - Opus 4.6 (highest quality, released Feb 5, 2026)
 
 **Note:** Model availability varies by AWS region. Check the AWS Bedrock console for your region.
 
@@ -132,25 +132,25 @@ export OPENAI_API_KEY=sk-proj-...
 provider:
   name: openai
   openai:
-    model: gpt-4o  # Latest GPT-4
+    model: gpt-5.3-codex  # Latest coding model (recommended)
 ```
 
 **Recommended models:**
-- `gpt-4o` - Latest GPT-4 Omni, excellent quality (~$2.50/$10.00 per 1M tokens)
-- `gpt-4o-mini` - Fast, cost-effective (~$0.15/$0.60 per 1M tokens)
-- `o1-preview` - Reasoning model (slower, best for complex logic)
+- `gpt-5.3-codex` - Latest coding-specialized model, excellent for code analysis **(recommended)**
+- `gpt-5.2` - Newest flagship general model (~$2.50/$10.00 per 1M tokens)
+- `o3-mini` - Fast reasoning model for math/science/coding (~$0.15/$0.60 per 1M tokens)
 
 ## Speed Comparison
 
 For fastest analysis times (approximate, varies by code complexity):
 
 1. **Ollama** with `qwen2.5-coder:7b` - ~1-3 seconds per file (local)
-2. **OpenRouter** with `google/gemini-2.0-flash-001` - ~2-5 seconds per file
-3. **Anthropic** with `claude-3-5-haiku` - ~3-6 seconds per file
-4. **OpenAI** with `gpt-4o-mini` - ~2-5 seconds per file
-5. **Bedrock** with Haiku models - ~3-6 seconds per file
+2. **OpenRouter** with `google/gemini-2.0-flash-exp` - ~2-5 seconds per file
+3. **Anthropic** with `claude-3-5-haiku-20241022` - ~3-6 seconds per file
+4. **OpenAI** with `o3-mini` - ~2-5 seconds per file
+5. **Bedrock** with Haiku 3.5 - ~3-6 seconds per file
 
-Flagship models (Sonnet 4, Opus, GPT-4o) typically take 5-15 seconds per file but provide higher quality analysis.
+Flagship models (Sonnet 4.5, Opus 4.6, GPT-5.3-Codex) typically take 5-15 seconds per file but provide higher quality analysis.
 
 ## Cost Comparison
 
@@ -160,27 +160,28 @@ Approximate costs for analyzing 100 files (~50KB each, ~500K tokens total):
 |----------|-------|------------|-------------|------------|
 | Ollama | Any | $0 | $0 | **$0** (free) |
 | OpenRouter | deepseek/deepseek-chat | $0.07 | $0.14 | **$0.21** |
-| OpenAI | gpt-4o-mini | $0.08 | $0.30 | **$0.38** |
+| OpenRouter | google/gemini-flash-exp | $0.05 | $0.15 | **$0.20** |
+| OpenAI | o3-mini | $0.08 | $0.30 | **$0.38** |
 | Anthropic | claude-3-5-haiku | $0.40 | $2.00 | **$2.40** |
-| OpenRouter | google/gemini-flash | $0.05 | $0.15 | **$0.20** |
-| OpenAI | gpt-4o | $1.25 | $5.00 | **$6.25** |
-| Anthropic | claude-sonnet-4 | $1.50 | $7.50 | **$9.00** |
-| Anthropic | claude-opus-4-5 | $7.50 | $37.50 | **$45.00** |
+| OpenAI | gpt-5.2 | $1.25 | $5.00 | **$6.25** |
+| OpenAI | gpt-5.3-codex | $1.25 | $5.00 | **$6.25** |
+| Anthropic | claude-3-5-sonnet | $1.50 | $7.50 | **$9.00** |
+| Anthropic | claude-opus-4-6 | $7.50 | $37.50 | **$45.00** |
 
 ## Quality vs Speed vs Cost
 
 ```
 Quality Priority (best results):
-1. Anthropic Claude Opus 4.5/4.6
-2. Anthropic Claude Sonnet 4/4.5
-3. OpenAI GPT-4o
-4. Anthropic Claude 3.5 Haiku
-5. OpenRouter various models
+1. Anthropic Claude Opus 4.6 (released Feb 5, 2026)
+2. Anthropic Claude Sonnet 4.5
+3. OpenAI GPT-5.3-Codex (best for code analysis)
+4. OpenAI GPT-5.2
+5. Anthropic Claude 3.5 Haiku
 
 Speed Priority (fastest analysis):
 1. Ollama qwen2.5-coder:7b (local)
-2. OpenRouter Gemini Flash
-3. OpenAI GPT-4o-mini
+2. OpenRouter Gemini 2.0 Flash
+3. OpenAI o3-mini
 4. Anthropic Claude 3.5 Haiku
 5. Standard models
 
@@ -188,8 +189,8 @@ Cost Priority (lowest cost):
 1. Ollama (free, local)
 2. OpenRouter DeepSeek (~$0.20 per 100 files)
 3. OpenRouter Gemini Flash (~$0.20 per 100 files)
-4. OpenAI GPT-4o-mini (~$0.40 per 100 files)
-5. Anthropic Haiku (~$2.40 per 100 files)
+4. OpenAI o3-mini (~$0.40 per 100 files)
+5. Anthropic Haiku 3.5 (~$2.40 per 100 files)
 ```
 
 ## Recommended Configurations
@@ -222,7 +223,7 @@ provider:
 provider:
   name: anthropic
   anthropic:
-    model: claude-sonnet-4-20250514
+    model: claude-3-5-haiku-20241022
 ```
 - Excellent code understanding
 - Reliable, consistent results
@@ -233,7 +234,7 @@ provider:
 provider:
   name: bedrock
   bedrock:
-    model: anthropic.claude-sonnet-4-5-v2:0
+    model: anthropic.claude-3-5-haiku-20241022-v1:0
     region: us-east-1
 ```
 - AWS-native integration

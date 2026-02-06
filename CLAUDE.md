@@ -62,10 +62,10 @@ Gavel supports multiple LLM providers:
 
 **Fast Models for Quick Analysis:**
 - **Ollama**: `qwen2.5-coder:7b`, `deepseek-coder-v2:16b` (local, free, very fast)
-- **OpenRouter**: `google/gemini-2.0-flash-001`, `anthropic/claude-3.5-haiku`, `deepseek/deepseek-chat`
-- **Anthropic**: `claude-3-5-haiku-20241022` (fast, lower cost than Sonnet)
-- **Bedrock**: `anthropic.claude-3-5-haiku-*` (fast Haiku on AWS)
-- **OpenAI**: `gpt-4o-mini` (fast, cost-effective)
+- **OpenRouter**: `google/gemini-2.0-flash-exp`, `anthropic/claude-3-5-haiku-20241022`, `deepseek/deepseek-chat`
+- **Anthropic**: `claude-3-5-haiku-20241022` (fast Haiku 3.5, cost-effective)
+- **Bedrock**: `anthropic.claude-3-5-haiku-20241022-v1:0` (fast Haiku 3.5 on AWS)
+- **OpenAI**: `o3-mini` (fast reasoning model)
 
 **Provider Configuration:**
 
@@ -83,32 +83,32 @@ provider:
 provider:
   name: openrouter
   openrouter:
-    model: google/gemini-2.0-flash-001  # very fast
+    model: google/gemini-2.0-flash-exp  # very fast
 
 # Anthropic (direct API)
 provider:
   name: anthropic
   anthropic:
-    model: claude-sonnet-4-20250514  # or claude-3-5-haiku-20241022 for speed
+    model: claude-3-5-haiku-20241022  # fast, cost-effective (recommended)
 
 # AWS Bedrock
 provider:
   name: bedrock
   bedrock:
-    model: anthropic.claude-sonnet-4-5-v2:0
+    model: anthropic.claude-3-5-haiku-20241022-v1:0
     region: us-east-1
 
 # OpenAI
 provider:
   name: openai
   openai:
-    model: gpt-4o  # or gpt-4o-mini for speed
+    model: gpt-5.3-codex  # or gpt-5.2 for general use
 ```
 
 **Model Selection Guidance:**
-- **Quality priority**: Anthropic Claude Opus 4.5/4.6 > Sonnet 4/4.5 > OpenAI GPT-4o
-- **Speed priority**: Ollama local models > Gemini Flash > Claude Haiku > GPT-4o-mini
-- **Cost priority**: Ollama (free) > DeepSeek > GPT-4o-mini > Claude Haiku > GPT-4o > Claude Sonnet > Claude Opus
+- **Quality priority**: Anthropic Claude Opus 4.6 (Feb 2026) > Sonnet 4.5 > OpenAI GPT-5.3-Codex
+- **Speed priority**: Ollama local models > Gemini Flash > Claude Haiku 3.5 > o3-mini
+- **Cost priority**: Ollama (free) > DeepSeek > o3-mini > Claude Haiku 3.5 > GPT-5 > Claude Sonnet > Claude Opus
 
 See `example-configs.yaml` for detailed provider examples with performance/cost comparisons.
 
