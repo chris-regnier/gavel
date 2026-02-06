@@ -188,7 +188,7 @@ provider:
 
 **Recommended models:**
 - `google/gemini-2.0-flash-exp` - Very fast, excellent value
-- `anthropic/claude-3-5-haiku-20241022` - Fast Claude Haiku 3.5, good quality
+- `anthropic/claude-haiku-4-5` - Fast Claude Haiku 4.5, good quality
 - `deepseek/deepseek-chat` - Very cheap, surprisingly good
 - `anthropic/claude-3-5-sonnet-20241022` - High quality Sonnet
 
@@ -204,14 +204,14 @@ export ANTHROPIC_API_KEY=sk-ant-...
 provider:
   name: anthropic
   anthropic:
-    model: claude-3-5-haiku-20241022
+    model: claude-haiku-4-5
 
 # Run analysis
 ./gavel analyze --dir ./src
 ```
 
 **Available models:**
-- `claude-3-5-haiku-20241022` - Fast, cost-effective (recommended)
+- `claude-haiku-4-5` - Fast, cost-effective (recommended)
 - `claude-3-5-sonnet-20241022` - High quality, balanced
 - `claude-opus-4-6-20260205` - Highest quality, released Feb 5, 2026
 
@@ -227,7 +227,7 @@ aws configure
 provider:
   name: bedrock
   bedrock:
-    model: anthropic.claude-3-5-haiku-20241022-v1:0
+    model: anthropic.claude-haiku-4-5-v1:0
     region: us-east-1
 
 # Run analysis
@@ -235,7 +235,7 @@ provider:
 ```
 
 **Available models:**
-- `anthropic.claude-3-5-haiku-20241022-v1:0` - Fast Haiku 3.5 (recommended)
+- `anthropic.claude-haiku-4-5-v1:0` - Fast Haiku 4.5 (recommended)
 - `global.anthropic.claude-sonnet-4-5-20250929-v1:0` - Sonnet 4.5 (global endpoint)
 - `anthropic.claude-opus-4-6-20260205-v1:0` - Opus 4.6 (highest quality, released Feb 5, 2026)
 
@@ -267,7 +267,7 @@ provider:
 **For Speed:**
 1. Ollama `qwen2.5-coder:7b` (local, 1-3 sec/file)
 2. OpenRouter `google/gemini-2.0-flash-exp` (cloud, 2-5 sec/file)
-3. Anthropic `claude-3-5-haiku-20241022` (cloud, 3-6 sec/file)
+3. Anthropic `claude-haiku-4-5` (cloud, 3-6 sec/file)
 
 **For Quality:**
 1. Anthropic Claude Opus 4.6 (released Feb 5, 2026)
@@ -277,7 +277,7 @@ provider:
 **For Cost:**
 1. Ollama (free, local)
 2. OpenRouter DeepSeek (~$0.20 per 100 files)
-3. Anthropic Claude Haiku 3.5 (~$2.40 per 100 files)
+3. Anthropic Claude Haiku 4.5 (~$2.40 per 100 files)
 
 **Detailed provider documentation:** See [docs/PROVIDERS.md](docs/PROVIDERS.md) and [example-configs.yaml](example-configs.yaml)
 

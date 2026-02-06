@@ -66,7 +66,7 @@ provider:
 
 **Recommended models:**
 - `google/gemini-2.0-flash-exp` - Very fast, excellent value (~$0.10/$0.30 per 1M tokens)
-- `anthropic/claude-3-5-haiku-20241022` - Fast Claude Haiku 3.5, good quality (~$0.80/$4.00 per 1M tokens)
+- `anthropic/claude-haiku-4-5` - Fast Claude Haiku 4.5, good quality (~$0.80/$4.00 per 1M tokens)
 - `deepseek/deepseek-chat` - Very cheap, surprisingly good (~$0.14/$0.28 per 1M tokens)
 - `anthropic/claude-3-5-sonnet-20241022` - High quality Sonnet (~$3.00/$15.00 per 1M tokens)
 
@@ -83,11 +83,11 @@ export ANTHROPIC_API_KEY=sk-ant-...
 provider:
   name: anthropic
   anthropic:
-    model: claude-3-5-haiku-20241022  # Fast, cost-effective (recommended)
+    model: claude-haiku-4-5  # Fast, cost-effective (recommended)
 ```
 
 **Available models:**
-- `claude-3-5-haiku-20241022` - Fast Haiku 3.5, cost-effective (~$0.80/$4.00 per 1M tokens) **(recommended)**
+- `claude-haiku-4-5` - Fast Haiku 4.5, cost-effective (~$0.80/$4.00 per 1M tokens) **(recommended)**
 - `claude-3-5-sonnet-20241022` - High quality Sonnet 3.5 (~$3.00/$15.00 per 1M tokens)
 - `claude-opus-4-6-20260205` - Highest quality Opus 4.6, released Feb 5, 2026 (~$15.00/$75.00 per 1M tokens)
 
@@ -108,12 +108,12 @@ export AWS_REGION=us-east-1
 provider:
   name: bedrock
   bedrock:
-    model: anthropic.claude-3-5-haiku-20241022-v1:0
+    model: anthropic.claude-haiku-4-5-v1:0
     region: us-east-1
 ```
 
 **Available models (by region):**
-- `anthropic.claude-3-5-haiku-20241022-v1:0` - Fast Haiku 3.5, cost-effective **(recommended)**
+- `anthropic.claude-haiku-4-5-v1:0` - Fast Haiku 4.5, cost-effective **(recommended)**
 - `global.anthropic.claude-sonnet-4-5-20250929-v1:0` - Sonnet 4.5 with global endpoint
 - `anthropic.claude-opus-4-6-20260205-v1:0` - Opus 4.6 (highest quality, released Feb 5, 2026)
 
@@ -146,9 +146,9 @@ For fastest analysis times (approximate, varies by code complexity):
 
 1. **Ollama** with `qwen2.5-coder:7b` - ~1-3 seconds per file (local)
 2. **OpenRouter** with `google/gemini-2.0-flash-exp` - ~2-5 seconds per file
-3. **Anthropic** with `claude-3-5-haiku-20241022` - ~3-6 seconds per file
+3. **Anthropic** with `claude-haiku-4-5` - ~3-6 seconds per file
 4. **OpenAI** with `o3-mini` - ~2-5 seconds per file
-5. **Bedrock** with Haiku 3.5 - ~3-6 seconds per file
+5. **Bedrock** with Haiku 4.5 - ~3-6 seconds per file
 
 Flagship models (Sonnet 4.5, Opus 4.6, GPT-5.3-Codex) typically take 5-15 seconds per file but provide higher quality analysis.
 
@@ -190,7 +190,7 @@ Cost Priority (lowest cost):
 2. OpenRouter DeepSeek (~$0.20 per 100 files)
 3. OpenRouter Gemini Flash (~$0.20 per 100 files)
 4. OpenAI o3-mini (~$0.40 per 100 files)
-5. Anthropic Haiku 3.5 (~$2.40 per 100 files)
+5. Anthropic Haiku 4.5 (~$2.40 per 100 files)
 ```
 
 ## Recommended Configurations
@@ -223,7 +223,7 @@ provider:
 provider:
   name: anthropic
   anthropic:
-    model: claude-3-5-haiku-20241022
+    model: claude-haiku-4-5
 ```
 - Excellent code understanding
 - Reliable, consistent results
@@ -234,7 +234,7 @@ provider:
 provider:
   name: bedrock
   bedrock:
-    model: anthropic.claude-3-5-haiku-20241022-v1:0
+    model: anthropic.claude-haiku-4-5-v1:0
     region: us-east-1
 ```
 - AWS-native integration

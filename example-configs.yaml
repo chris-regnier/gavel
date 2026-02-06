@@ -17,11 +17,11 @@ provider:
 # OpenRouter (Unified API, Pay-per-use)
 # ============================================================================
 # Requires: OPENROUTER_API_KEY environment variable
-# Fast models: google/gemini-2.0-flash-exp, anthropic/claude-3-5-haiku-20241022, deepseek/deepseek-chat
+# Fast models: google/gemini-2.0-flash-exp, anthropic/claude-haiku-4-5, deepseek/deepseek-chat
 provider:
   name: openrouter
   openrouter:
-    model: anthropic/claude-3-5-haiku-20241022  # fast, cost-effective (recommended)
+    model: anthropic/claude-haiku-4-5  # fast, cost-effective (recommended)
     # model: anthropic/claude-3-5-sonnet-20241022  # high quality
     # model: google/gemini-2.0-flash-exp      # very fast
     # model: deepseek/deepseek-chat           # fast and cheap
@@ -30,11 +30,11 @@ provider:
 # Anthropic Direct API (Official Claude API)
 # ============================================================================
 # Requires: ANTHROPIC_API_KEY environment variable
-# Fast models: claude-3-5-haiku-20241022
+# Fast models: claude-haiku-4-5
 provider:
   name: anthropic
   anthropic:
-    model: claude-3-5-haiku-20241022        # fast, cost-effective (recommended)
+    model: claude-haiku-4-5        # fast, cost-effective (recommended)
     # model: claude-3-5-sonnet-20241022     # high quality
     # model: claude-opus-4-6-20260205       # highest quality (released Feb 5, 2026)
 
@@ -43,11 +43,11 @@ provider:
 # ============================================================================
 # Requires: AWS credentials configured (via ~/.aws/credentials or environment)
 # Bedrock model IDs use different format than API model names
-# Fast models: anthropic.claude-3-5-haiku-20241022-v1:0
+# Fast models: anthropic.claude-haiku-4-5-v1:0
 provider:
   name: bedrock
   bedrock:
-    model: anthropic.claude-3-5-haiku-20241022-v1:0  # fast, cost-effective (recommended)
+    model: anthropic.claude-haiku-4-5-v1:0  # fast, cost-effective (recommended)
     region: us-east-1
     # model: global.anthropic.claude-sonnet-4-5-20250929-v1:0  # Sonnet 4.5 (global endpoint)
     # model: anthropic.claude-opus-4-6-20260205-v1:0  # Opus 4.6 (released Feb 5, 2026)
@@ -71,7 +71,7 @@ provider:
 # For SPEED (fastest to slowest):
 # 1. Ollama qwen2.5-coder:7b (local, free, very fast)
 # 2. OpenRouter google/gemini-2.0-flash-exp (cloud, very fast)
-# 3. Anthropic claude-3-5-haiku-20241022 (cloud, fast)
+# 3. Anthropic claude-haiku-4-5 (cloud, fast)
 # 4. OpenAI o3-mini (cloud, fast)
 # 5. OpenRouter deepseek/deepseek-chat (cloud, fast and cheap)
 #
@@ -80,7 +80,7 @@ provider:
 # 2. Anthropic claude-sonnet-4-5 / Bedrock sonnet-4-5 (excellent quality)
 # 3. OpenAI gpt-5.3-codex (excellent for code analysis)
 # 4. OpenAI gpt-5.2 (very good general quality)
-# 5. Anthropic claude-3-5-haiku-20241022 (fast but still high quality)
+# 5. Anthropic claude-haiku-4-5 (fast but still high quality)
 #
 # For COST (cheapest to most expensive):
 # 1. Ollama (free, runs locally)

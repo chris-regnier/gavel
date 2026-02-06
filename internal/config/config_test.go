@@ -251,8 +251,8 @@ func TestSystemDefaults_IncludesProvider(t *testing.T) {
 	if cfg.Provider.Ollama.BaseURL != "http://localhost:11434/v1" {
 		t.Errorf("expected ollama base_url 'http://localhost:11434/v1', got %q", cfg.Provider.Ollama.BaseURL)
 	}
-	if cfg.Provider.OpenRouter.Model != "anthropic/claude-3-5-haiku-20241022" {
-		t.Errorf("expected openrouter model 'anthropic/claude-3-5-haiku-20241022', got %q", cfg.Provider.OpenRouter.Model)
+	if cfg.Provider.OpenRouter.Model != "anthropic/claude-haiku-4-5" {
+		t.Errorf("expected openrouter model 'anthropic/claude-haiku-4-5', got %q", cfg.Provider.OpenRouter.Model)
 	}
 }
 

@@ -10,13 +10,13 @@ func SystemDefaults() *Config {
 				BaseURL: "http://localhost:11434/v1",
 			},
 			OpenRouter: OpenRouterConfig{
-				Model: "anthropic/claude-3-5-haiku-20241022",
+				Model: "anthropic/claude-haiku-4-5",
 			},
 			Anthropic: AnthropicConfig{
-				Model: "claude-3-5-haiku-20241022",
+				Model: "claude-haiku-4-5",
 			},
 			Bedrock: BedrockConfig{
-				Model:  "anthropic.claude-3-5-haiku-20241022-v1:0",
+				Model:  "anthropic.claude-haiku-4-5-v1:0",
 				Region: "us-east-1",
 			},
 			OpenAI: OpenAIConfig{
