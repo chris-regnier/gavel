@@ -323,7 +323,7 @@ ls -la dist/
 
 LLM prompt templates live in `baml_src/`. After editing `.baml` files, run `task generate` to regenerate the Go client in `baml_client/`. The generated code should not be edited by hand.
 
-The default LLM provider is OpenRouter with `anthropic/claude-sonnet-4`.
+The default LLM provider is Ollama with `gpt-oss:20b` running locally.
 
 ## License
 
