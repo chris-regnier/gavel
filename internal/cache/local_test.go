@@ -53,3 +53,43 @@ func TestLocalCachePutGet(t *testing.T) {
 		t.Errorf("expected rule ID test-rule, got %s", got.Results[0].RuleID)
 	}
 }
+
+func TestLocalCacheDelete(t *testing.T) {
+	dir := t.TempDir()
+	cache := NewLocalCache(dir)
+
+	key := CacheKey{
+		FileHash: "delete-test",
+		Provider: "ollama",
+		Model:    "test",
+	}
+	entry := &CacheEntry{
+		Key: key,
+		Results: []sarif.Result{
+			{RuleID: "test-rule", Level: "error", Message: sarif.Message{Text: "test"}},
+		},
+	}
+
+	ctx := context.Background()
+
+	// Put entry
+	if err := cache.Put(ctx, entry); err != nil {
+		t.Fatalf("Put failed: %v", err)
+	}
+
+	// Verify it exists
+	if _, err := cache.Get(ctx, key); err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+
+	// Delete entry
+	if err := cache.Delete(ctx, key); err != nil {
+		t.Fatalf("Delete failed: %v", err)
+	}
+
+	// Verify it's gone
+	_, err := cache.Get(ctx, key)
+	if err != ErrCacheMiss {
+		t.Fatalf("expected ErrCacheMiss after delete, got %v", err)
+	}
+}

@@ -256,6 +256,7 @@ type CacheKey struct {
 func (k CacheKey) Hash() string {
 	b, err := json.Marshal(k)
 	if err != nil {
+		// CacheKey is a simple struct that should always marshal successfully
 		panic("failed to marshal CacheKey: " + err.Error())
 	}
 	h := sha256.Sum256(b)
