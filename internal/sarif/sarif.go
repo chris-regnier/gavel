@@ -81,3 +81,18 @@ func NewLog(toolName, toolVersion string) *Log {
 		}},
 	}
 }
+
+// CacheMetadata represents metadata for content-addressable caching
+type CacheMetadata struct {
+	FileHash    string
+	Provider    string
+	Model       string
+	BAMLVersion string
+	Policies    map[string]PolicyMetadata
+}
+
+// PolicyMetadata represents policy configuration for cache key
+type PolicyMetadata struct {
+	Instruction string
+	Version     string
+}

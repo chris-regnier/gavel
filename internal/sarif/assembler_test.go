@@ -2,6 +2,8 @@ package sarif
 
 import (
 	"testing"
+
+	"github.com/chris-regnier/gavel/internal/config"
 )
 
 func TestAssemble(t *testing.T) {
@@ -64,5 +66,79 @@ func TestAssemble_Dedup(t *testing.T) {
 	}
 	if log.Runs[0].Results[0].Properties["gavel/confidence"] != 0.9 {
 		t.Errorf("expected to keep higher confidence finding")
+	}
+}
+
+func TestAssembler_AddsCacheMetadata(t *testing.T) {
+	results := []Result{
+		{
+			RuleID:  "test-rule-1",
+			Level:   "warning",
+			Message: Message{Text: "Test finding"},
+			Locations: []Location{{PhysicalLocation: PhysicalLocation{
+				ArtifactLocation: ArtifactLocation{URI: "test.go"},
+				Region:           Region{StartLine: 10, EndLine: 12},
+			}}},
+			Properties: map[string]interface{}{
+				"gavel/confidence":     0.9,
+				"gavel/explanation":    "Test explanation",
+				"gavel/recommendation": "Test recommendation",
+			},
+		},
+	}
+
+	rules := []ReportingDescriptor{
+		{ID: "test-rule-1", ShortDescription: Message{Text: "Test Rule"}},
+	}
+
+	cfg := &config.Config{
+		Provider: config.ProviderConfig{
+			Name: "openrouter",
+			OpenRouter: config.OpenRouterConfig{
+				Model: "anthropic/claude-sonnet-4",
+			},
+		},
+		Policies: map[string]config.Policy{
+			"test-policy": {
+				Enabled:     true,
+				Instruction: "Test instruction",
+			},
+		},
+	}
+
+	fileHash := "abc123def456" // Mock file content hash
+	bamlVersion := "v1.0.0"    // Mock BAML version
+
+	log := NewAssembler().
+		WithCacheMetadata(fileHash, cfg, bamlVersion).
+		AddResults(results).
+		AddRules(rules).
+		Build()
+
+	result := log.Runs[0].Results[0]
+
+	// Check cache_key property
+	cacheKey, ok := result.Properties["gavel/cache_key"].(string)
+	if !ok || cacheKey == "" {
+		t.Fatal("Expected gavel/cache_key property")
+	}
+
+	// Check analyzer metadata
+	analyzer, ok := result.Properties["gavel/analyzer"].(map[string]interface{})
+	if !ok {
+		t.Fatal("Expected gavel/analyzer property")
+	}
+
+	if analyzer["provider"] != "openrouter" {
+		t.Errorf("Expected provider=openrouter, got %v", analyzer["provider"])
+	}
+
+	if analyzer["model"] != "anthropic/claude-sonnet-4" {
+		t.Errorf("Expected model=anthropic/claude-sonnet-4, got %v", analyzer["model"])
+	}
+
+	policies, ok := analyzer["policies"].(map[string]interface{})
+	if !ok || len(policies) == 0 {
+		t.Fatal("Expected policies in analyzer metadata")
 	}
 }
