@@ -122,7 +122,7 @@ func runAnalysisForReview(ctx context.Context) (*sarif.Log, error) {
 	// Analyze with BAML
 	client := analyzer.NewBAMLLiveClient(cfg.Provider)
 	a := analyzer.NewAnalyzer(client)
-	results, err := a.Analyze(ctx, artifacts, cfg.Policies)
+	results, err := a.Analyze(ctx, artifacts, cfg.Policies, cfg.Persona)
 	if err != nil {
 		return nil, fmt.Errorf("analyzing: %w", err)
 	}
@@ -140,7 +140,7 @@ func runAnalysisForReview(ctx context.Context) (*sarif.Log, error) {
 	}
 
 	// Assemble SARIF
-	log := sarif.Assemble(results, rules, inputScope)
+	log := sarif.Assemble(results, rules, inputScope, cfg.Persona)
 
 	return log, nil
 }

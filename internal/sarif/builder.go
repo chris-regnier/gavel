@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 
 	"github.com/chris-regnier/gavel/internal/config"
 )
@@ -38,10 +39,17 @@ func (a *Assembler) WithCacheMetadata(fileHash string, cfg *config.Config, bamlV
 
 	model := ""
 	provider := cfg.Provider.Name
-	if provider == "openrouter" {
+	switch provider {
+	case "openrouter":
 		model = cfg.Provider.OpenRouter.Model
-	} else if provider == "ollama" {
+	case "ollama":
 		model = cfg.Provider.Ollama.Model
+	case "anthropic":
+		model = cfg.Provider.Anthropic.Model
+	case "bedrock":
+		model = cfg.Provider.Bedrock.Model
+	case "openai":
+		model = cfg.Provider.OpenAI.Model
 	}
 
 	a.cacheMetadata = &CacheMetadata{
@@ -122,7 +130,11 @@ func convertPoliciesForJSON(policies map[string]PolicyMetadata) map[string]inter
 	return result
 }
 
-// computeCacheKey generates deterministic hash from cache metadata
+// computeCacheKey generates deterministic hash from cache metadata.
+// NOTE: Cache key ONLY includes LLM analysis inputs (file, model, policies, BAML).
+// It does NOT include Rego policies or severity configurations, as those only
+// affect verdict evaluation, not SARIF generation. This enables sharing cached
+// SARIF across environments with different evaluation rules.
 func computeCacheKey(m *CacheMetadata) string {
 	data := struct {
 		File     string
@@ -138,7 +150,12 @@ func computeCacheKey(m *CacheMetadata) string {
 		Policies: m.Policies,
 	}
 
-	b, _ := json.Marshal(data)
+	b, err := json.Marshal(data)
+	if err != nil {
+		// This should never happen as all fields are JSON-serializable types
+		// If it does, it indicates a programming error
+		panic(fmt.Sprintf("BUG: failed to marshal cache metadata: %v", err))
+	}
 	h := sha256.Sum256(b)
 	return hex.EncodeToString(h[:])
 }
