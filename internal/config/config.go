@@ -33,6 +33,7 @@ type Config struct {
 	Provider ProviderConfig    `yaml:"provider"`
 	Persona  string            `yaml:"persona"` // AI expert role
 	Policies map[string]Policy `yaml:"policies"`
+	LSP      LSPConfig         `yaml:"lsp"`
 }
 
 // ProviderConfig specifies which LLM provider to use
@@ -70,6 +71,32 @@ type BedrockConfig struct {
 // OpenAIConfig holds OpenAI API-specific settings
 type OpenAIConfig struct {
 	Model string `yaml:"model"`
+}
+
+// LSPConfig holds LSP-specific configuration
+type LSPConfig struct {
+	Watcher  WatcherConfig  `yaml:"watcher"`
+	Analysis AnalysisConfig `yaml:"analysis"`
+	Cache    CacheConfig    `yaml:"cache"`
+}
+
+// WatcherConfig holds file watcher settings
+type WatcherConfig struct {
+	DebounceDuration string   `yaml:"debounce_duration"`
+	WatchPatterns    []string `yaml:"watch_patterns"`
+	IgnorePatterns   []string `yaml:"ignore_patterns"`
+}
+
+// AnalysisConfig holds analysis execution settings
+type AnalysisConfig struct {
+	ParallelFiles int    `yaml:"parallel_files"`
+	Priority      string `yaml:"priority"`
+}
+
+// CacheConfig holds cache settings
+type CacheConfig struct {
+	TTL       string `yaml:"ttl"`
+	MaxSizeMB int    `yaml:"max_size_mb"`
 }
 
 // Validate checks that the configuration is valid and ready to use
@@ -175,6 +202,29 @@ func MergeConfigs(configs ...*Config) *Config {
 		// Merge persona - non-empty string overrides
 		if cfg.Persona != "" {
 			result.Persona = cfg.Persona
+		}
+
+		// Merge LSP config - non-empty fields override
+		if cfg.LSP.Watcher.DebounceDuration != "" {
+			result.LSP.Watcher.DebounceDuration = cfg.LSP.Watcher.DebounceDuration
+		}
+		if len(cfg.LSP.Watcher.WatchPatterns) > 0 {
+			result.LSP.Watcher.WatchPatterns = cfg.LSP.Watcher.WatchPatterns
+		}
+		if len(cfg.LSP.Watcher.IgnorePatterns) > 0 {
+			result.LSP.Watcher.IgnorePatterns = cfg.LSP.Watcher.IgnorePatterns
+		}
+		if cfg.LSP.Analysis.ParallelFiles > 0 {
+			result.LSP.Analysis.ParallelFiles = cfg.LSP.Analysis.ParallelFiles
+		}
+		if cfg.LSP.Analysis.Priority != "" {
+			result.LSP.Analysis.Priority = cfg.LSP.Analysis.Priority
+		}
+		if cfg.LSP.Cache.TTL != "" {
+			result.LSP.Cache.TTL = cfg.LSP.Cache.TTL
+		}
+		if cfg.LSP.Cache.MaxSizeMB > 0 {
+			result.LSP.Cache.MaxSizeMB = cfg.LSP.Cache.MaxSizeMB
 		}
 
 		// Merge policies (existing logic)

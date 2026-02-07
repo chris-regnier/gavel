@@ -22,18 +22,35 @@ func SystemDefaults() *Config {
 			OpenAI: OpenAIConfig{
 				Model: "gpt-5.2",
 			},
-			Anthropic: AnthropicConfig{
-				Model: "claude-sonnet-4-20250514",
-			},
-			Bedrock: BedrockConfig{
-				Model:  "anthropic.claude-sonnet-4-5-v2:0",
-				Region: "us-east-1",
-			},
-			OpenAI: OpenAIConfig{
-				Model: "gpt-4o",
-			},
 		},
 		Persona: "code-reviewer",
+		LSP: LSPConfig{
+			Watcher: WatcherConfig{
+				DebounceDuration: "5m",
+				WatchPatterns: []string{
+					"**/*.go",
+					"**/*.py",
+					"**/*.ts",
+					"**/*.tsx",
+					"**/*.js",
+					"**/*.jsx",
+				},
+				IgnorePatterns: []string{
+					"**/node_modules/**",
+					"**/.git/**",
+					"**/vendor/**",
+					"**/.gavel/**",
+				},
+			},
+			Analysis: AnalysisConfig{
+				ParallelFiles: 3,
+				Priority:      "recent",
+			},
+			Cache: CacheConfig{
+				TTL:       "168h",
+				MaxSizeMB: 500,
+			},
+		},
 		Policies: map[string]Policy{
 			"shall-be-merged": {
 				Description: "Shall this code be merged?",
