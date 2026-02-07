@@ -19,6 +19,9 @@ type DebouncedWatcher struct {
 }
 
 func NewDebouncedWatcher(debounce time.Duration, onTrigger func(files []string)) *DebouncedWatcher {
+	if onTrigger == nil {
+		panic("onTrigger callback cannot be nil")
+	}
 	return &DebouncedWatcher{
 		debounce:  debounce,
 		onTrigger: onTrigger,
