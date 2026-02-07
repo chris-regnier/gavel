@@ -25,7 +25,11 @@ type CacheKey struct {
 
 // Hash computes deterministic cache key
 func (k CacheKey) Hash() string {
-	b, _ := json.Marshal(k)
+	b, err := json.Marshal(k)
+	if err != nil {
+		// CacheKey is a simple struct that should always marshal successfully
+		panic("failed to marshal CacheKey: " + err.Error())
+	}
 	h := sha256.Sum256(b)
 	return hex.EncodeToString(h[:])
 }

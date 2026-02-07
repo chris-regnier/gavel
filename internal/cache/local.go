@@ -25,6 +25,11 @@ func (c *LocalCache) entryPath(key CacheKey) string {
 }
 
 func (c *LocalCache) Get(ctx context.Context, key CacheKey) (*CacheEntry, error) {
+	// Check context cancellation before I/O
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	path := c.entryPath(key)
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -42,6 +47,11 @@ func (c *LocalCache) Get(ctx context.Context, key CacheKey) (*CacheEntry, error)
 }
 
 func (c *LocalCache) Put(ctx context.Context, entry *CacheEntry) error {
+	// Check context cancellation before I/O
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	if err := os.MkdirAll(c.dir, 0755); err != nil {
 		return err
 	}
@@ -56,5 +66,10 @@ func (c *LocalCache) Put(ctx context.Context, entry *CacheEntry) error {
 }
 
 func (c *LocalCache) Delete(ctx context.Context, key CacheKey) error {
+	// Check context cancellation before I/O
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	return os.Remove(c.entryPath(key))
 }
