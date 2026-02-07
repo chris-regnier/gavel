@@ -49,7 +49,8 @@ func SaveReviewState(model *ReviewModel, sarifID string, filePath string) error 
 		return err
 	}
 
-	return os.WriteFile(filePath, data, 0644)
+	// Use restrictive permissions - review state may contain sensitive information
+	return os.WriteFile(filePath, data, 0600)
 }
 
 // LoadReviewState loads review state from a JSON file

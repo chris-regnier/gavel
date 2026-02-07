@@ -59,7 +59,9 @@ func NewReviewModel(log *sarif.Log) *ReviewModel {
 		for _, result := range log.Runs[0].Results {
 			m.findings = append(m.findings, result)
 
-			if len(result.Locations) > 0 {
+			// Only group by file if location information is complete
+			if len(result.Locations) > 0 &&
+				result.Locations[0].PhysicalLocation.ArtifactLocation.URI != "" {
 				filePath := result.Locations[0].PhysicalLocation.ArtifactLocation.URI
 				m.files[filePath] = append(m.files[filePath], result)
 			}
