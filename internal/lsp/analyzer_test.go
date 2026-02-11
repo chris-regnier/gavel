@@ -19,7 +19,7 @@ type mockBAMLClient struct {
 	err      error
 }
 
-func (m *mockBAMLClient) AnalyzeCode(ctx context.Context, code string, policies string) ([]analyzer.Finding, error) {
+func (m *mockBAMLClient) AnalyzeCode(ctx context.Context, code string, policies string, personaPrompt string, additionalContext string) ([]analyzer.Finding, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
@@ -32,9 +32,9 @@ type countingMockClient struct {
 	callCount int
 }
 
-func (c *countingMockClient) AnalyzeCode(ctx context.Context, code string, policies string) ([]analyzer.Finding, error) {
+func (c *countingMockClient) AnalyzeCode(ctx context.Context, code string, policies string, personaPrompt string, additionalContext string) ([]analyzer.Finding, error) {
 	c.callCount++
-	return c.mockBAMLClient.AnalyzeCode(ctx, code, policies)
+	return c.mockBAMLClient.AnalyzeCode(ctx, code, policies, personaPrompt, additionalContext)
 }
 
 // mockCache implements cache.CacheManager for testing
@@ -92,6 +92,7 @@ func TestAnalyzerWrapper(t *testing.T) {
 				Model: "test-model",
 			},
 		},
+		Persona: "code-reviewer",
 		Policies: map[string]config.Policy{
 			"security": {
 				Enabled:     true,
@@ -173,6 +174,7 @@ func TestAnalyzerWrapperWithCache(t *testing.T) {
 				Model: "test-model",
 			},
 		},
+		Persona: "code-reviewer",
 		Policies: map[string]config.Policy{
 			"style": {
 				Enabled:     true,

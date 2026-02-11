@@ -56,7 +56,13 @@ func (w *AnalyzerWrapper) Analyze(ctx context.Context, path, content string) ([]
 		return []sarif.Result{}, nil
 	}
 
-	findings, err := w.client.AnalyzeCode(ctx, content, policyText)
+	// Get persona prompt
+	personaPrompt, err := analyzer.GetPersonaPrompt(ctx, w.cfg.Persona)
+	if err != nil {
+		return nil, fmt.Errorf("getting persona prompt: %w", err)
+	}
+
+	findings, err := w.client.AnalyzeCode(ctx, content, policyText, personaPrompt, "")
 	if err != nil {
 		return nil, fmt.Errorf("analyzing %s: %w", path, err)
 	}
