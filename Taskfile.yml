@@ -69,8 +69,24 @@ tasks:
         sh: '[ "$(go env GOOS)" = "windows" ] && echo ".exe" || echo ""'
 
   test:
+    desc: Run all tests
     cmds:
       - go test ./... -v
+
+  test:perf:
+    desc: Run performance tests
+    cmds:
+      - go test ./internal/analyzer/ -run "Performance" -v
+
+  bench:
+    desc: Run all benchmarks
+    cmds:
+      - go test ./internal/analyzer/ -run "^$" -bench=. -benchmem
+
+  bench:short:
+    desc: Run quick benchmarks (shorter duration)
+    cmds:
+      - go test ./internal/analyzer/ -run "^$" -bench=. -benchmem -benchtime=100ms
 
   generate:
     cmds:
