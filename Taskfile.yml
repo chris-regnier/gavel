@@ -88,6 +88,21 @@ tasks:
     cmds:
       - go test ./internal/analyzer/ -run "^$" -bench=. -benchmem -benchtime=100ms
 
+  test:perf:ollama:
+    desc: Run Ollama provider performance tests (requires local Ollama)
+    cmds:
+      - GAVEL_PROVIDER_PERF=1 go test ./internal/analyzer/ -run "Ollama" -v -timeout 30m
+
+  test:metrics:
+    desc: Run metrics package tests
+    cmds:
+      - go test ./internal/metrics/ -v
+
+  bench:metrics:
+    desc: Run metrics package benchmarks
+    cmds:
+      - go test ./internal/metrics/ -run "^$" -bench=. -benchmem
+
   generate:
     cmds:
       - baml-cli generate
