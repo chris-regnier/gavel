@@ -2,7 +2,6 @@ package analyzer
 
 import (
 	"context"
-	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -76,16 +75,6 @@ type TieredAnalyzer struct {
 	mu sync.RWMutex
 }
 
-// PatternRule defines a regex-based instant check
-type PatternRule struct {
-	ID          string
-	Pattern     *regexp.Regexp
-	Level       string
-	Message     string
-	Explanation string
-	Confidence  float64
-}
-
 // TieredAnalyzerOption configures a TieredAnalyzer
 type TieredAnalyzerOption func(*TieredAnalyzer)
 
@@ -143,76 +132,9 @@ func NewTieredAnalyzer(comprehensiveClient BAMLClient, opts ...TieredAnalyzerOpt
 	return ta
 }
 
-// defaultPatterns returns built-in instant-check patterns
+// defaultPatterns returns built-in instant-check patterns based on industry standards (CWE, OWASP, SonarQube)
 func defaultPatterns() []PatternRule {
-	return []PatternRule{
-		// Go-specific patterns
-		{
-			ID:          "error-ignored",
-			Pattern:     regexp.MustCompile(`(?m)^\s*[a-zA-Z_][a-zA-Z0-9_]*\s*,\s*_\s*:?=`),
-			Level:       "warning",
-			Message:     "Error return value is being ignored",
-			Explanation: "Ignoring errors can lead to silent failures and unexpected behavior",
-			Confidence:  0.7,
-		},
-		{
-			ID:          "empty-error-check",
-			Pattern:     regexp.MustCompile(`if\s+err\s*!=\s*nil\s*\{\s*\}`),
-			Level:       "warning",
-			Message:     "Empty error handling block",
-			Explanation: "Error is checked but not handled, which may hide failures",
-			Confidence:  0.9,
-		},
-		{
-			ID:          "todo-fixme",
-			Pattern:     regexp.MustCompile(`(?i)(TODO|FIXME|HACK|XXX):`),
-			Level:       "note",
-			Message:     "Code contains TODO/FIXME comment",
-			Explanation: "There is unfinished work or a known issue marked in the code",
-			Confidence:  1.0,
-		},
-		{
-			ID:          "hardcoded-credentials",
-			Pattern:     regexp.MustCompile(`(?i)(password|secret|api_key|apikey|token)\s*[:=]\s*["'][^"']+["']`),
-			Level:       "error",
-			Message:     "Possible hardcoded credentials detected",
-			Explanation: "Hardcoded secrets are a security risk and should be moved to environment variables or a secrets manager",
-			Confidence:  0.8,
-		},
-		{
-			ID:          "sql-string-concat",
-			Pattern:     regexp.MustCompile(`(?i)(SELECT|INSERT|UPDATE|DELETE).*\+.*["']`),
-			Level:       "error",
-			Message:     "Possible SQL injection vulnerability",
-			Explanation: "String concatenation in SQL queries can lead to SQL injection attacks",
-			Confidence:  0.7,
-		},
-		{
-			ID:          "fmt-errorf-wrap",
-			Pattern:     regexp.MustCompile(`fmt\.Errorf\([^%]*%s[^%]*,\s*err\)`),
-			Level:       "note",
-			Message:     "Consider using %w to wrap errors",
-			Explanation: "Using %w instead of %s preserves the error chain for errors.Is/As",
-			Confidence:  0.6,
-		},
-		// Generic patterns
-		{
-			ID:          "debug-print",
-			Pattern:     regexp.MustCompile(`(?m)^\s*(fmt\.Print|console\.log|print\(|System\.out\.print)`),
-			Level:       "note",
-			Message:     "Debug print statement found",
-			Explanation: "Debug print statements should be removed before committing",
-			Confidence:  0.8,
-		},
-		{
-			ID:          "commented-code",
-			Pattern:     regexp.MustCompile(`(?m)^\s*//\s*(if|for|func|return|var|const)\s+`),
-			Level:       "note",
-			Message:     "Commented-out code detected",
-			Explanation: "Commented code should be removed; version control preserves history",
-			Confidence:  0.6,
-		},
-	}
+	return DefaultRules()
 }
 
 // AnalyzeProgressive returns a channel that emits results progressively from each tier
@@ -295,13 +217,18 @@ func (ta *TieredAnalyzer) runInstantTier(ctx context.Context, art input.Artifact
 	}
 }
 
-// runPatternMatching executes regex-based instant checks
+// runPatternMatching executes regex-based instant checks using industry-standard rules
 func (ta *TieredAnalyzer) runPatternMatching(art input.Artifact) []sarif.Result {
 	var results []sarif.Result
 	lines := strings.Split(art.Content, "\n")
 
-	for _, pattern := range ta.instantPatterns {
-		matches := pattern.Pattern.FindAllStringIndex(art.Content, -1)
+	for _, rule := range ta.instantPatterns {
+		// Skip rules that don't apply to this file's language
+		if len(rule.Languages) > 0 && !matchesLanguage(art.Path, rule.Languages) {
+			continue
+		}
+
+		matches := rule.Pattern.FindAllStringIndex(art.Content, -1)
 		for _, match := range matches {
 			// Calculate line number from byte offset
 			lineNum := 1
@@ -312,26 +239,68 @@ func (ta *TieredAnalyzer) runPatternMatching(art input.Artifact) []sarif.Result 
 				}
 			}
 
+			props := map[string]interface{}{
+				"gavel/explanation":  rule.Explanation,
+				"gavel/confidence":   rule.Confidence,
+				"gavel/tier":         "instant",
+				"gavel/rule-source":  string(rule.Source),
+			}
+
+			// Add standard references if available
+			if len(rule.CWE) > 0 {
+				props["gavel/cwe"] = rule.CWE
+			}
+			if len(rule.OWASP) > 0 {
+				props["gavel/owasp"] = rule.OWASP
+			}
+			if rule.Remediation != "" {
+				props["gavel/remediation"] = rule.Remediation
+			}
+			if len(rule.References) > 0 {
+				props["gavel/references"] = rule.References
+			}
+
 			results = append(results, sarif.Result{
-				RuleID:  pattern.ID,
-				Level:   pattern.Level,
-				Message: sarif.Message{Text: pattern.Message},
+				RuleID:  rule.ID,
+				Level:   rule.Level,
+				Message: sarif.Message{Text: rule.Message},
 				Locations: []sarif.Location{{
 					PhysicalLocation: sarif.PhysicalLocation{
 						ArtifactLocation: sarif.ArtifactLocation{URI: art.Path},
 						Region:           sarif.Region{StartLine: lineNum, EndLine: lineNum},
 					},
 				}},
-				Properties: map[string]interface{}{
-					"gavel/explanation": pattern.Explanation,
-					"gavel/confidence":  pattern.Confidence,
-					"gavel/tier":        "instant",
-				},
+				Properties: props,
 			})
 		}
 	}
 
 	return results
+}
+
+// matchesLanguage checks if a file path matches any of the specified languages
+func matchesLanguage(path string, languages []string) bool {
+	for _, lang := range languages {
+		switch lang {
+		case "go":
+			if strings.HasSuffix(path, ".go") {
+				return true
+			}
+		case "java":
+			if strings.HasSuffix(path, ".java") {
+				return true
+			}
+		case "python":
+			if strings.HasSuffix(path, ".py") {
+				return true
+			}
+		case "javascript", "js":
+			if strings.HasSuffix(path, ".js") || strings.HasSuffix(path, ".jsx") || strings.HasSuffix(path, ".ts") || strings.HasSuffix(path, ".tsx") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // runFastTier executes fast-tier analysis with local model

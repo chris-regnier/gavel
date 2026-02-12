@@ -75,8 +75,8 @@ func process() {
 		t.Logf("Found pattern: %s", r.RuleID)
 	}
 
-	// These patterns should definitely match
-	expectedPatterns := []string{"error-ignored", "todo-fixme"}
+	// These patterns should definitely match (using new standardized IDs)
+	expectedPatterns := []string{"S1086", "S1135"} // error-ignored, todo-fixme
 	for _, p := range expectedPatterns {
 		if !foundPatterns[p] {
 			t.Errorf("expected to find pattern %s", p)
@@ -244,9 +244,10 @@ func TestTieredAnalyzer_ProgressiveOrder(t *testing.T) {
 }
 
 func TestTieredAnalyzer_Analyze_Deduplicated(t *testing.T) {
+	// Mock returns finding with same rule ID as instant tier pattern (S1135)
 	mock := &tieredMockClient{
 		findings: []Finding{{
-			RuleID:    "todo-fixme",
+			RuleID:    "S1135", // Same as instant tier TODO pattern
 			Level:     "note",
 			Message:   "LLM found TODO",
 			StartLine: 1,
@@ -271,13 +272,13 @@ func TestTieredAnalyzer_Analyze_Deduplicated(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Both instant and comprehensive will find the TODO
-	// But deduplication should keep only comprehensive (higher tier)
+	// Both instant and comprehensive will find the TODO with same rule ID
+	// Deduplication should keep only comprehensive (higher tier)
 	todoCount := 0
 	for _, r := range results {
-		if r.RuleID == "todo-fixme" {
+		if r.RuleID == "S1135" {
 			todoCount++
-			// Should be from comprehensive tier
+			// Should be from comprehensive tier (higher priority)
 			if tier, ok := r.Properties["gavel/tier"].(string); ok {
 				if tier != "comprehensive" {
 					t.Errorf("expected comprehensive tier, got %s", tier)
