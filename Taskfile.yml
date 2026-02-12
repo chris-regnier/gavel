@@ -103,6 +103,16 @@ tasks:
     cmds:
       - go test ./internal/metrics/ -run "^$" -bench=. -benchmem
 
+  test:cache:
+    desc: Run cache package tests
+    cmds:
+      - go test ./internal/cache/ -v
+
+  bench:cache:
+    desc: Run cache and pipeline benchmarks
+    cmds:
+      - go test ./internal/cache/ -run "^$" -bench=. -benchmem
+
   generate:
     cmds:
       - baml-cli generate
