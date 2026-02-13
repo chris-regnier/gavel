@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/chris-regnier/gavel/internal/config"
 	"github.com/chris-regnier/gavel/internal/evaluator"
 	"github.com/chris-regnier/gavel/internal/input"
+	"github.com/chris-regnier/gavel/internal/rules"
 	"github.com/chris-regnier/gavel/internal/sarif"
 	"github.com/chris-regnier/gavel/internal/store"
 )
@@ -23,6 +25,7 @@ var (
 	flagOutput    string
 	flagPolicyDir string
 	flagRegoDir   string
+	flagRulesDir  string
 )
 
 func init() {
@@ -38,6 +41,7 @@ func init() {
 	analyzeCmd.Flags().StringVar(&flagOutput, "output", ".gavel/results", "Output directory for results")
 	analyzeCmd.Flags().StringVar(&flagPolicyDir, "policies", ".gavel", "Directory containing policies.yaml")
 	analyzeCmd.Flags().StringVar(&flagRegoDir, "rego", ".gavel/rego", "Directory containing Rego policies")
+	analyzeCmd.Flags().StringVar(&flagRulesDir, "rules-dir", "", "Directory containing custom rule YAML files")
 
 	rootCmd.AddCommand(analyzeCmd)
 }
@@ -61,6 +65,17 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 	// Validate configuration (including persona)
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("invalid configuration: %w", err)
+	}
+
+	// Load rules (default + user + project overrides)
+	userRulesDir := os.ExpandEnv("$HOME/.config/gavel/rules")
+	projectRulesDir := filepath.Join(flagPolicyDir, "rules")
+	if flagRulesDir != "" {
+		projectRulesDir = flagRulesDir
+	}
+	loadedRules, err := rules.LoadRules(userRulesDir, projectRulesDir)
+	if err != nil {
+		return fmt.Errorf("loading rules: %w", err)
 	}
 
 	// Get persona prompt from BAML
@@ -105,10 +120,10 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("reading input: %w", err)
 	}
 
-	// Analyze with BAML
+	// Analyze with tiered analyzer (instant pattern matching + LLM)
 	client := analyzer.NewBAMLLiveClient(cfg.Provider)
-	a := analyzer.NewAnalyzer(client)
-	results, err := a.Analyze(ctx, artifacts, cfg.Policies, personaPrompt)
+	ta := analyzer.NewTieredAnalyzer(client, analyzer.WithInstantPatterns(loadedRules))
+	results, err := ta.Analyze(ctx, artifacts, cfg.Policies, personaPrompt)
 	if err != nil {
 		return fmt.Errorf("analyzing: %w", err)
 	}

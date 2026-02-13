@@ -95,6 +95,7 @@ git diff main...HEAD | ./gavel analyze --diff -
 | `--diff` | Path to unified diff (`-` for stdin) | — |
 | `--output` | Output directory for results | `.gavel/results` |
 | `--policies` | Policy config directory | `.gavel` |
+| `--rules-dir` | Custom rules directory (overrides `.gavel/rules/`) | `.gavel/rules` |
 | `--rego` | Rego policies directory | `.gavel/rego` |
 
 ### Output
@@ -358,6 +359,47 @@ policies:
 - Setting `enabled: true` in a higher tier enables a policy
 - Setting _only_ `enabled: false` (with no other fields) disables a policy from a lower tier
 
+## Custom Rules
+
+Gavel ships with 15 built-in analysis rules based on CWE, OWASP, and SonarQube standards. You can extend or override these with custom rule files.
+
+### Rule Directories
+
+Rules are loaded and merged in order of precedence (highest wins, by rule ID):
+
+1. **Embedded defaults** — 15 rules built into the binary (`internal/rules/default_rules.yaml`)
+2. **User rules** — `~/.config/gavel/rules/*.yaml` (personal rules for all projects)
+3. **Project rules** — `.gavel/rules/*.yaml` (project-specific rules)
+
+To use a different project rules directory for a single run:
+
+```bash
+gavel analyze --rules-dir ./my-rules --dir ./src
+```
+
+### Rule Format
+
+```yaml
+rules:
+  - id: "CUSTOM-S001"
+    name: "api-key-in-source"
+    category: "security"        # security | reliability | maintainability
+    pattern: '(?i)AKIA[0-9A-Z]{16}'
+    languages: ["go", "python"] # optional — omit to match all languages
+    level: "error"              # error | warning | note
+    confidence: 0.95            # float in (0, 1]
+    message: "Possible AWS access key committed to source"
+    explanation: "..."
+    remediation: "..."
+    source: "Custom"            # CWE | OWASP | SonarQube | Custom
+    cwe: ["CWE-798"]
+    owasp: ["A07:2021"]
+    references:
+      - "https://cwe.mitre.org/data/definitions/798.html"
+```
+
+See [example-rules.yaml](example-rules.yaml) for a complete example with three custom rules.
+
 ## Custom Rego Policies
 
 The default gate policy maps findings to decisions based on severity and confidence. To customize the gating logic, place `.rego` files in `.gavel/rego/`:
@@ -404,6 +446,7 @@ cmd/gavel/           CLI entry point (Cobra)
 internal/
   input/             Reads files, diffs, directories into artifacts
   config/            Tiered YAML policy configuration
+  rules/             Vendable rule packs (YAML schema, loader, embedded defaults)
   analyzer/          Orchestrates LLM analysis via BAML client
   sarif/             SARIF 2.1.0 assembly and deduplication
   evaluator/         Rego policy evaluation (OPA)

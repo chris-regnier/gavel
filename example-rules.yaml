@@ -1,0 +1,57 @@
+# Example custom rules for Gavel
+#
+# Place this file (or files like it) in:
+#   ~/.config/gavel/rules/   — personal rules applied to all projects
+#   .gavel/rules/            — project-specific rules
+#
+# Rules merge by ID: project rules override user rules, which override defaults.
+# See internal/rules/default_rules.yaml for the 15 built-in rules.
+
+rules:
+  # ---- Security: detect API key patterns in source ----
+  - id: "CUSTOM-S001"
+    name: "api-key-in-source"
+    category: "security"           # security | reliability | maintainability
+    pattern: '(?i)(AKIA[0-9A-Z]{16}|sk-[a-zA-Z0-9]{32,}|ghp_[a-zA-Z0-9]{36}|glpat-[a-zA-Z0-9\-]{20,})'
+    # languages: ["go", "python"]  # optional — omit to match all languages
+    level: "error"                 # error | warning | note
+    confidence: 0.95               # float in (0, 1]
+    message: "Possible API key or token committed to source"
+    explanation: "This pattern matches known API key formats (AWS access keys, OpenAI keys, GitHub PATs, GitLab tokens). Committing real keys to version control is a critical security risk."
+    remediation: "Remove the key from source, rotate it immediately, and use environment variables or a secrets manager instead."
+    source: "Custom"               # CWE | OWASP | SonarQube | Custom
+    cwe: ["CWE-798"]
+    owasp: ["A07:2021"]
+    references:
+      - "https://cwe.mitre.org/data/definitions/798.html"
+
+  # ---- Reliability: mutex copy detection in Go ----
+  - id: "CUSTOM-R001"
+    name: "mutex-value-copy"
+    category: "reliability"
+    pattern: '(?m)func\s+\([a-zA-Z_]\w*\s+[A-Z]\w*\)\s+'
+    languages: ["go"]
+    level: "warning"
+    confidence: 0.6
+    message: "Struct with mutex may be passed by value"
+    explanation: "When a struct containing a sync.Mutex is used with a value receiver, the mutex is copied. This breaks mutual exclusion and can cause data races."
+    remediation: "Use pointer receivers for methods on structs that contain a sync.Mutex or sync.RWMutex."
+    source: "Custom"
+    cwe: ["CWE-362"]
+    references:
+      - "https://go.dev/ref/spec#Method_sets"
+      - "https://cwe.mitre.org/data/definitions/362.html"
+
+  # ---- Maintainability: flag overly long files ----
+  - id: "CUSTOM-M001"
+    name: "file-too-long"
+    category: "maintainability"
+    pattern: '(?s).{15000,}'
+    level: "note"
+    confidence: 0.7
+    message: "File exceeds recommended length"
+    explanation: "Very long files are harder to navigate, review, and test. Consider splitting into smaller, focused modules."
+    remediation: "Extract related functionality into separate files or packages to improve readability and testability."
+    source: "Custom"
+    references:
+      - "https://rules.sonarsource.com/go/RSPEC-104"

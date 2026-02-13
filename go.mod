@@ -1,10 +1,10 @@
 module github.com/chris-regnier/gavel
 
-go 1.25.6
+go 1.24.6
 
 require (
 	github.com/alecthomas/chroma/v2 v2.23.1
-	github.com/boundaryml/baml v0.218.1
+	github.com/boundaryml/baml v0.219.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/glamour v0.10.0
 	github.com/charmbracelet/lipgloss v1.1.1-0.20250404203927-76690c660834

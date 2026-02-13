@@ -9,6 +9,7 @@ import (
 
 	"github.com/chris-regnier/gavel/internal/config"
 	"github.com/chris-regnier/gavel/internal/input"
+	"github.com/chris-regnier/gavel/internal/rules"
 )
 
 type tieredMockClient struct {
@@ -297,9 +298,10 @@ func TestTieredAnalyzer_CustomPatterns(t *testing.T) {
 	ta := NewTieredAnalyzer(mock)
 
 	// Add custom pattern
-	ta.AddPattern(PatternRule{
+	ta.AddPattern(rules.Rule{
 		ID:         "custom-pattern",
 		Pattern:    regexp.MustCompile(`CUSTOM_MARKER`),
+		RawPattern: `CUSTOM_MARKER`,
 		Level:      "error",
 		Message:    "Custom marker found",
 		Confidence: 1.0,

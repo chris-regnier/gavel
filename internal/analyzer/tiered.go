@@ -11,6 +11,7 @@ import (
 	"github.com/chris-regnier/gavel/internal/config"
 	"github.com/chris-regnier/gavel/internal/input"
 	"github.com/chris-regnier/gavel/internal/metrics"
+	"github.com/chris-regnier/gavel/internal/rules"
 	"github.com/chris-regnier/gavel/internal/sarif"
 )
 
@@ -53,7 +54,7 @@ type TieredResult struct {
 type TieredAnalyzer struct {
 	// Tier analyzers
 	cache            *cache.Cache
-	instantPatterns  []PatternRule
+	instantPatterns  []rules.Rule
 	fastClient       BAMLClient // Optional fast/local model
 	comprehensiveClient BAMLClient // Full model
 
@@ -79,7 +80,7 @@ type TieredAnalyzer struct {
 type TieredAnalyzerOption func(*TieredAnalyzer)
 
 // WithInstantPatterns sets custom instant-check patterns
-func WithInstantPatterns(patterns []PatternRule) TieredAnalyzerOption {
+func WithInstantPatterns(patterns []rules.Rule) TieredAnalyzerOption {
 	return func(ta *TieredAnalyzer) {
 		ta.instantPatterns = patterns
 	}
@@ -133,11 +134,17 @@ func NewTieredAnalyzer(comprehensiveClient BAMLClient, opts ...TieredAnalyzerOpt
 }
 
 // defaultPatterns returns built-in instant-check patterns based on industry standards (CWE, OWASP, SonarQube)
-func defaultPatterns() []PatternRule {
-	return DefaultRules()
+func defaultPatterns() []rules.Rule {
+	r, err := rules.DefaultRules()
+	if err != nil {
+		panic("loading embedded default rules: " + err.Error())
+	}
+	return r
 }
 
-// AnalyzeProgressive returns a channel that emits results progressively from each tier
+// AnalyzeProgressive returns a channel that emits results progressively from each tier.
+// Instant-tier results for ALL artifacts are emitted first (providing immediate feedback),
+// followed by fast and comprehensive tiers per artifact.
 func (ta *TieredAnalyzer) AnalyzeProgressive(ctx context.Context, artifacts []input.Artifact, policies map[string]config.Policy, personaPrompt string) <-chan TieredResult {
 	resultChan := make(chan TieredResult, len(artifacts)*3) // Up to 3 tiers per artifact
 
@@ -146,11 +153,29 @@ func (ta *TieredAnalyzer) AnalyzeProgressive(ctx context.Context, artifacts []in
 
 		policyText := FormatPolicies(policies)
 
+		// Phase 1: Run instant tier for ALL artifacts first (~0-100ms total)
+		if ta.instantEnabled {
+			for _, art := range artifacts {
+				select {
+				case <-ctx.Done():
+					resultChan <- TieredResult{
+						Tier:     TierInstant,
+						FilePath: art.Path,
+						Error:    ctx.Err(),
+					}
+					return
+				default:
+				}
+				ta.runInstantTier(ctx, art, policyText, personaPrompt, resultChan)
+			}
+		}
+
+		// Phase 2: Run slow tiers (fast + comprehensive) per artifact
 		for _, art := range artifacts {
 			select {
 			case <-ctx.Done():
 				resultChan <- TieredResult{
-					Tier:     TierInstant,
+					Tier:     TierFast,
 					FilePath: art.Path,
 					Error:    ctx.Err(),
 				}
@@ -158,17 +183,10 @@ func (ta *TieredAnalyzer) AnalyzeProgressive(ctx context.Context, artifacts []in
 			default:
 			}
 
-			// Tier 1: Instant (cache + patterns)
-			if ta.instantEnabled {
-				ta.runInstantTier(ctx, art, policyText, personaPrompt, resultChan)
-			}
-
-			// Tier 2: Fast (if enabled)
 			if ta.fastEnabled && ta.fastClient != nil {
 				ta.runFastTier(ctx, art, policies, personaPrompt, resultChan)
 			}
 
-			// Tier 3: Comprehensive
 			ta.runComprehensiveTier(ctx, art, policies, personaPrompt, policyText, resultChan)
 		}
 	}()
@@ -491,15 +509,15 @@ func (ta *TieredAnalyzer) ClearCache() {
 }
 
 // AddPattern adds a custom pattern rule for instant checks
-func (ta *TieredAnalyzer) AddPattern(rule PatternRule) {
+func (ta *TieredAnalyzer) AddPattern(rule rules.Rule) {
 	ta.mu.Lock()
 	defer ta.mu.Unlock()
 	ta.instantPatterns = append(ta.instantPatterns, rule)
 }
 
 // SetPatterns replaces all pattern rules
-func (ta *TieredAnalyzer) SetPatterns(rules []PatternRule) {
+func (ta *TieredAnalyzer) SetPatterns(r []rules.Rule) {
 	ta.mu.Lock()
 	defer ta.mu.Unlock()
-	ta.instantPatterns = rules
+	ta.instantPatterns = r
 }

@@ -1,0 +1,242 @@
+rules:
+  # ===========================================================================
+  # SECURITY RULES
+  # ===========================================================================
+
+  - id: "S2068"
+    name: "hardcoded-credentials"
+    category: "security"
+    pattern: "(?i)(password|passwd|pwd|secret|api_key|apikey|api_secret|auth_token|access_token|private_key)\\s*[:=]\\s*[\"'][^\"']{4,}[\"']"
+    level: "error"
+    confidence: 0.85
+    message: "Hard-coded credentials detected"
+    explanation: "Credentials should not be hard-coded in source code. They can be extracted from compiled applications or source repositories, leading to unauthorized access."
+    remediation: "Store credentials in environment variables, a secrets manager (e.g., HashiCorp Vault, AWS Secrets Manager), or configuration files excluded from version control."
+    source: "CWE"
+    cwe: ["CWE-259", "CWE-798"]
+    owasp: ["A07:2021"]
+    references:
+      - "https://cwe.mitre.org/data/definitions/798.html"
+      - "https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/"
+
+  - id: "S3649"
+    name: "sql-injection"
+    category: "security"
+    pattern: "(?i)(SELECT|INSERT|UPDATE|DELETE|EXEC|EXECUTE)\\s+.*(\\+\\s*[\"']|\\+\\s*\\w+\\s*\\+|fmt\\.Sprintf.*%[sv])"
+    level: "error"
+    confidence: 0.75
+    message: "Possible SQL injection vulnerability"
+    explanation: "String concatenation or formatting in SQL queries can allow attackers to inject malicious SQL code, potentially exposing or modifying database contents."
+    remediation: "Use parameterized queries or prepared statements. In Go, use database/sql with placeholder parameters (?, $1, etc.)."
+    source: "CWE"
+    cwe: ["CWE-89"]
+    owasp: ["A03:2021"]
+    references:
+      - "https://cwe.mitre.org/data/definitions/89.html"
+      - "https://owasp.org/Top10/A03_2021-Injection/"
+      - "https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html"
+
+  - id: "S2076"
+    name: "command-injection"
+    category: "security"
+    pattern: "exec\\.(Command|CommandContext)\\s*\\([^)]*\\+|os/exec.*\\+.*[\"']"
+    languages: ["go"]
+    level: "error"
+    confidence: 0.7
+    message: "Possible command injection vulnerability"
+    explanation: "Constructing OS commands with user input can allow attackers to execute arbitrary commands on the system."
+    remediation: "Avoid constructing commands from user input. If necessary, use allowlists to validate input and avoid shell interpretation."
+    source: "CWE"
+    cwe: ["CWE-78"]
+    owasp: ["A03:2021"]
+    references:
+      - "https://cwe.mitre.org/data/definitions/78.html"
+      - "https://owasp.org/Top10/A03_2021-Injection/"
+
+  - id: "S2083"
+    name: "path-traversal"
+    category: "security"
+    pattern: '(os\.(Open|Create|ReadFile|WriteFile)|ioutil\.(ReadFile|WriteFile)|filepath\.Join)\s*\([^)]*\+'
+    languages: ["go"]
+    level: "warning"
+    confidence: 0.65
+    message: "Possible path traversal vulnerability"
+    explanation: "Constructing file paths with user input may allow attackers to access files outside the intended directory using '../' sequences."
+    remediation: "Use filepath.Clean() and verify the resulting path is within the expected directory. Consider using filepath.Rel() to check containment."
+    source: "CWE"
+    cwe: ["CWE-22"]
+    owasp: ["A01:2021"]
+    references:
+      - "https://cwe.mitre.org/data/definitions/22.html"
+      - "https://owasp.org/Top10/A01_2021-Broken_Access_Control/"
+
+  - id: "S4426"
+    name: "weak-crypto"
+    category: "security"
+    pattern: '(md5|sha1|des|rc4)\.(New|Sum)'
+    languages: ["go"]
+    level: "warning"
+    confidence: 0.9
+    message: "Use of weak cryptographic algorithm"
+    explanation: "MD5, SHA1, DES, and RC4 are considered cryptographically weak and should not be used for security-sensitive operations."
+    remediation: "Use SHA-256 or SHA-3 for hashing, and AES-GCM or ChaCha20-Poly1305 for encryption."
+    source: "CWE"
+    cwe: ["CWE-327", "CWE-328"]
+    references:
+      - "https://cwe.mitre.org/data/definitions/327.html"
+      - "https://cheatsheetseries.owasp.org/cheatsheets/Cryptographic_Storage_Cheat_Sheet.html"
+
+  - id: "S4830"
+    name: "insecure-tls"
+    category: "security"
+    pattern: 'InsecureSkipVerify\s*:\s*true'
+    languages: ["go"]
+    level: "error"
+    confidence: 0.95
+    message: "TLS certificate verification disabled"
+    explanation: "Disabling TLS certificate verification allows man-in-the-middle attacks. This should never be used in production."
+    remediation: "Remove InsecureSkipVerify or set it to false. Configure proper CA certificates if using custom PKI."
+    source: "CWE"
+    cwe: ["CWE-295"]
+    references:
+      - "https://cwe.mitre.org/data/definitions/295.html"
+
+  # ===========================================================================
+  # RELIABILITY RULES
+  # ===========================================================================
+
+  - id: "S1086"
+    name: "error-ignored"
+    category: "reliability"
+    pattern: '(?m)^\s*[a-zA-Z_][a-zA-Z0-9_]*\s*,\s*_\s*:?='
+    languages: ["go"]
+    level: "warning"
+    confidence: 0.75
+    message: "Error return value is ignored"
+    explanation: "Ignoring error return values can lead to silent failures, making bugs difficult to diagnose and potentially causing data corruption or security issues."
+    remediation: "Handle the error appropriately: log it, return it, or explicitly document why it can be safely ignored."
+    source: "SonarQube"
+    cwe: ["CWE-252"]
+    references:
+      - "https://cwe.mitre.org/data/definitions/252.html"
+      - "https://rules.sonarsource.com/go/RSPEC-1086"
+
+  - id: "S1068"
+    name: "empty-error-check"
+    category: "reliability"
+    pattern: 'if\s+err\s*!=\s*nil\s*\{\s*\}'
+    languages: ["go"]
+    level: "warning"
+    confidence: 0.9
+    message: "Empty error handling block"
+    explanation: "Checking for an error but not handling it defeats the purpose of error checking and hides potential issues."
+    remediation: "Add appropriate error handling: log the error, return it, or take corrective action."
+    source: "SonarQube"
+    cwe: ["CWE-252"]
+    references:
+      - "https://rules.sonarsource.com/go/RSPEC-1068"
+
+  - id: "S1144"
+    name: "unreachable-code"
+    category: "reliability"
+    pattern: '(?m)^\s*(return|panic|os\.Exit)\s*\([^)]*\)\s*\n\s*[a-zA-Z]'
+    languages: ["go"]
+    level: "warning"
+    confidence: 0.85
+    message: "Unreachable code detected"
+    explanation: "Code after return, panic, or os.Exit statements will never execute."
+    remediation: "Remove the unreachable code or restructure the logic."
+    source: "CWE"
+    cwe: ["CWE-561"]
+    references:
+      - "https://cwe.mitre.org/data/definitions/561.html"
+
+  - id: "S2259"
+    name: "defer-in-loop"
+    category: "reliability"
+    # Limitation: [^}]* means this pattern will miss defer statements inside loops
+    # that contain nested braces (e.g., if/for blocks). A robust fix would require
+    # AST-based analysis; this regex intentionally trades false negatives for fewer
+    # false positives.
+    pattern: 'for\s+.*\{[^}]*defer\s+'
+    languages: ["go"]
+    level: "warning"
+    confidence: 0.8
+    message: "Defer statement inside a loop"
+    explanation: "Deferred calls inside loops don't execute until the function returns, potentially causing resource leaks or unexpected behavior."
+    remediation: "Move the deferred operation to a separate function or handle cleanup explicitly within each iteration."
+    source: "SonarQube"
+    cwe: ["CWE-404"]
+    references:
+      - "https://cwe.mitre.org/data/definitions/404.html"
+
+  # ===========================================================================
+  # MAINTAINABILITY RULES
+  # ===========================================================================
+
+  - id: "S1135"
+    name: "todo-fixme"
+    category: "maintainability"
+    pattern: '(?i)(TODO|FIXME|HACK|XXX|BUG)[\s:]+'
+    level: "note"
+    confidence: 1.0
+    message: "Track this TODO/FIXME comment"
+    explanation: "TODO and FIXME comments indicate incomplete work or known issues that should be addressed."
+    remediation: "Create a ticket to track this work item and either complete it or remove the comment."
+    source: "SonarQube"
+    references:
+      - "https://rules.sonarsource.com/go/RSPEC-1135"
+
+  - id: "S125"
+    name: "commented-code"
+    category: "maintainability"
+    pattern: '(?m)^\s*//\s*(if|for|func|return|var|const|type|switch|select)\s+'
+    level: "note"
+    confidence: 0.7
+    message: "Remove this commented-out code"
+    explanation: "Commented-out code clutters the codebase and should be removed. Version control preserves history."
+    remediation: "Delete the commented code. Use version control to retrieve old code if needed."
+    source: "SonarQube"
+    references:
+      - "https://rules.sonarsource.com/go/RSPEC-125"
+
+  - id: "S106"
+    name: "debug-print"
+    category: "maintainability"
+    pattern: '(?m)^\s*(fmt\.Print|log\.Print|println)\s*\('
+    languages: ["go"]
+    level: "note"
+    confidence: 0.8
+    message: "Replace this debug statement with a logger"
+    explanation: "Debug print statements should be replaced with proper logging that can be configured per environment."
+    remediation: "Use a structured logging library (e.g., slog, zap, zerolog) with appropriate log levels."
+    source: "SonarQube"
+    references:
+      - "https://rules.sonarsource.com/go/RSPEC-106"
+
+  - id: "G601"
+    name: "error-wrap-verb"
+    category: "maintainability"
+    pattern: 'fmt\.Errorf\s*\([^)]*%s[^)]*,\s*err\s*\)'
+    languages: ["go"]
+    level: "note"
+    confidence: 0.8
+    message: "Use %w instead of %s to wrap errors"
+    explanation: "Using %w preserves the error chain, allowing callers to use errors.Is() and errors.As() for error inspection."
+    remediation: "Replace %s with %w when wrapping errors with fmt.Errorf()."
+    source: "Custom"
+    references:
+      - "https://go.dev/blog/go1.13-errors"
+
+  - id: "S109"
+    name: "magic-number"
+    category: "maintainability"
+    pattern: '(?m)^\s*(?:if|for|switch|case|return)\s+.*[^0-9][2-9]\d{2,}[^0-9]'
+    level: "note"
+    confidence: 0.5
+    message: "Extract this magic number into a constant"
+    explanation: "Magic numbers make code harder to understand and maintain. Named constants provide context."
+    remediation: "Define a constant with a descriptive name and use it instead of the literal value."
+    source: "SonarQube"
+    references:
+      - "https://rules.sonarsource.com/go/RSPEC-109"
