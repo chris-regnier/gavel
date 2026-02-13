@@ -21,7 +21,7 @@ Create a `.gavel/` directory in your project root with a `policies.yaml` file.
 brew install ollama
 
 # Linux
-curl -fsSL https://ollama.ai/install.sh | sh
+curl -fsSL https://ollama.com/install.sh | sh
 ```
 
 Start the Ollama server and pull a fast coding model:
@@ -173,11 +173,10 @@ Convert SARIF findings to the standard `file:line:col: level: message` format th
 The `jq` one-liner:
 
 ```sh
-LATEST=$(ls -td .gavel/results/*/ | head -1)
 jq -r '
   .runs[0].results[] |
   "\(.locations[0].physicalLocation.artifactLocation.uri):\(.locations[0].physicalLocation.region.startLine):1: \(.level): \(.message.text)"
-' "${LATEST}sarif.json"
+' .gavel/results/*/sarif.json
 ```
 
 This produces output like:
@@ -190,11 +189,10 @@ src/db.go:18:1: warning: Database error ignored on line 18
 Load that into Neovim's quickfix list:
 
 ```sh
-LATEST=$(ls -td .gavel/results/*/ | head -1)
 jq -r '
   .runs[0].results[] |
   "\(.locations[0].physicalLocation.artifactLocation.uri):\(.locations[0].physicalLocation.region.startLine):1: \(.level): \(.message.text)"
-' "${LATEST}sarif.json" > /tmp/gavel-qf.txt
+' .gavel/results/*/sarif.json > /tmp/gavel-qf.txt
 ```
 
 Then in Neovim:
@@ -265,7 +263,7 @@ Each run creates a new timestamped directory under `.gavel/results/`. Old result
 
 **Shared configuration in the repo.** Commit `.gavel/policies.yaml` so every developer analyzes against the same policies. Local overrides in `~/.config/gavel/policies.yaml` let individuals adjust provider settings without changing the shared config.
 
-**View CI results locally.** If you add an `actions/upload-artifact` step for `.gavel/results/` in your CI workflow, any team member can download the SARIF artifact and open it in VS Code with the SARIF Viewer -- same inline experience, no re-analysis needed. See the [CI/PR Gating Guide](./ci-pr-gating.md) for the base workflow to extend.
+**CI SARIF artifacts viewed locally.** If your CI workflow uploads SARIF as a build artifact (see the [CI/PR Gating Guide](./ci-pr-gating.md)), any team member can download the artifact and open it in VS Code with the SARIF Viewer -- same inline experience, no re-analysis needed.
 
 **Consistent rules across environments.** Place custom rules in `.gavel/rules/` in the repository. Gavel ships 19 built-in rules and merges your custom rules on top. Everyone gets the same analysis regardless of their local setup.
 
