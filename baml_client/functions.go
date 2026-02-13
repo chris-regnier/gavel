@@ -94,3 +94,299 @@ func AnalyzeCode(ctx context.Context, code string, policies string, personaPromp
 		return nil, fmt.Errorf("No data returned from stream")
 	}
 }
+
+func GenerateConfig(ctx context.Context, requirements string, preferred_provider string, opts ...CallOptionFunc) (types.GeneratedConfig, error) {
+
+	var callOpts callOption
+	for _, opt := range opts {
+		opt(&callOpts)
+	}
+
+	// Resolve client option to clientRegistry (client takes precedence)
+	if callOpts.client != nil {
+		if callOpts.clientRegistry == nil {
+			callOpts.clientRegistry = baml.NewClientRegistry()
+		}
+		callOpts.clientRegistry.SetPrimaryClient(*callOpts.client)
+	}
+
+	args := baml.BamlFunctionArguments{
+		Kwargs: map[string]any{"requirements": requirements, "preferred_provider": preferred_provider},
+		Env:    getEnvVars(callOpts.env),
+	}
+
+	if callOpts.clientRegistry != nil {
+		args.ClientRegistry = callOpts.clientRegistry
+	}
+
+	if callOpts.collectors != nil {
+		args.Collectors = callOpts.collectors
+	}
+
+	if callOpts.typeBuilder != nil {
+		args.TypeBuilder = callOpts.typeBuilder
+	}
+
+	if callOpts.tags != nil {
+		args.Tags = callOpts.tags
+	}
+
+	encoded, err := args.Encode()
+	if err != nil {
+		panic(err)
+	}
+
+	if callOpts.onTick == nil {
+		result, err := bamlRuntime.CallFunction(ctx, "GenerateConfig", encoded, callOpts.onTick)
+		if err != nil {
+			return types.GeneratedConfig{}, err
+		}
+
+		if result.Error != nil {
+			return types.GeneratedConfig{}, result.Error
+		}
+
+		casted := (result.Data).(types.GeneratedConfig)
+
+		return casted, nil
+	} else {
+		channel, err := bamlRuntime.CallFunctionStream(ctx, "GenerateConfig", encoded, callOpts.onTick)
+		if err != nil {
+			return types.GeneratedConfig{}, err
+		}
+
+		for result := range channel {
+			if result.Error != nil {
+				return types.GeneratedConfig{}, result.Error
+			}
+
+			if result.HasData {
+				return result.Data.(types.GeneratedConfig), nil
+			}
+		}
+
+		return types.GeneratedConfig{}, fmt.Errorf("No data returned from stream")
+	}
+}
+
+func GeneratePersona(ctx context.Context, description string, focus_areas []string, opts ...CallOptionFunc) (types.GeneratedPersona, error) {
+
+	var callOpts callOption
+	for _, opt := range opts {
+		opt(&callOpts)
+	}
+
+	// Resolve client option to clientRegistry (client takes precedence)
+	if callOpts.client != nil {
+		if callOpts.clientRegistry == nil {
+			callOpts.clientRegistry = baml.NewClientRegistry()
+		}
+		callOpts.clientRegistry.SetPrimaryClient(*callOpts.client)
+	}
+
+	args := baml.BamlFunctionArguments{
+		Kwargs: map[string]any{"description": description, "focus_areas": focus_areas},
+		Env:    getEnvVars(callOpts.env),
+	}
+
+	if callOpts.clientRegistry != nil {
+		args.ClientRegistry = callOpts.clientRegistry
+	}
+
+	if callOpts.collectors != nil {
+		args.Collectors = callOpts.collectors
+	}
+
+	if callOpts.typeBuilder != nil {
+		args.TypeBuilder = callOpts.typeBuilder
+	}
+
+	if callOpts.tags != nil {
+		args.Tags = callOpts.tags
+	}
+
+	encoded, err := args.Encode()
+	if err != nil {
+		panic(err)
+	}
+
+	if callOpts.onTick == nil {
+		result, err := bamlRuntime.CallFunction(ctx, "GeneratePersona", encoded, callOpts.onTick)
+		if err != nil {
+			return types.GeneratedPersona{}, err
+		}
+
+		if result.Error != nil {
+			return types.GeneratedPersona{}, result.Error
+		}
+
+		casted := (result.Data).(types.GeneratedPersona)
+
+		return casted, nil
+	} else {
+		channel, err := bamlRuntime.CallFunctionStream(ctx, "GeneratePersona", encoded, callOpts.onTick)
+		if err != nil {
+			return types.GeneratedPersona{}, err
+		}
+
+		for result := range channel {
+			if result.Error != nil {
+				return types.GeneratedPersona{}, result.Error
+			}
+
+			if result.HasData {
+				return result.Data.(types.GeneratedPersona), nil
+			}
+		}
+
+		return types.GeneratedPersona{}, fmt.Errorf("No data returned from stream")
+	}
+}
+
+func GeneratePolicy(ctx context.Context, description string, opts ...CallOptionFunc) (types.GeneratedPolicy, error) {
+
+	var callOpts callOption
+	for _, opt := range opts {
+		opt(&callOpts)
+	}
+
+	// Resolve client option to clientRegistry (client takes precedence)
+	if callOpts.client != nil {
+		if callOpts.clientRegistry == nil {
+			callOpts.clientRegistry = baml.NewClientRegistry()
+		}
+		callOpts.clientRegistry.SetPrimaryClient(*callOpts.client)
+	}
+
+	args := baml.BamlFunctionArguments{
+		Kwargs: map[string]any{"description": description},
+		Env:    getEnvVars(callOpts.env),
+	}
+
+	if callOpts.clientRegistry != nil {
+		args.ClientRegistry = callOpts.clientRegistry
+	}
+
+	if callOpts.collectors != nil {
+		args.Collectors = callOpts.collectors
+	}
+
+	if callOpts.typeBuilder != nil {
+		args.TypeBuilder = callOpts.typeBuilder
+	}
+
+	if callOpts.tags != nil {
+		args.Tags = callOpts.tags
+	}
+
+	encoded, err := args.Encode()
+	if err != nil {
+		panic(err)
+	}
+
+	if callOpts.onTick == nil {
+		result, err := bamlRuntime.CallFunction(ctx, "GeneratePolicy", encoded, callOpts.onTick)
+		if err != nil {
+			return types.GeneratedPolicy{}, err
+		}
+
+		if result.Error != nil {
+			return types.GeneratedPolicy{}, result.Error
+		}
+
+		casted := (result.Data).(types.GeneratedPolicy)
+
+		return casted, nil
+	} else {
+		channel, err := bamlRuntime.CallFunctionStream(ctx, "GeneratePolicy", encoded, callOpts.onTick)
+		if err != nil {
+			return types.GeneratedPolicy{}, err
+		}
+
+		for result := range channel {
+			if result.Error != nil {
+				return types.GeneratedPolicy{}, result.Error
+			}
+
+			if result.HasData {
+				return result.Data.(types.GeneratedPolicy), nil
+			}
+		}
+
+		return types.GeneratedPolicy{}, fmt.Errorf("No data returned from stream")
+	}
+}
+
+func GenerateRule(ctx context.Context, description string, category string, languages string, opts ...CallOptionFunc) (types.GeneratedRule, error) {
+
+	var callOpts callOption
+	for _, opt := range opts {
+		opt(&callOpts)
+	}
+
+	// Resolve client option to clientRegistry (client takes precedence)
+	if callOpts.client != nil {
+		if callOpts.clientRegistry == nil {
+			callOpts.clientRegistry = baml.NewClientRegistry()
+		}
+		callOpts.clientRegistry.SetPrimaryClient(*callOpts.client)
+	}
+
+	args := baml.BamlFunctionArguments{
+		Kwargs: map[string]any{"description": description, "category": category, "languages": languages},
+		Env:    getEnvVars(callOpts.env),
+	}
+
+	if callOpts.clientRegistry != nil {
+		args.ClientRegistry = callOpts.clientRegistry
+	}
+
+	if callOpts.collectors != nil {
+		args.Collectors = callOpts.collectors
+	}
+
+	if callOpts.typeBuilder != nil {
+		args.TypeBuilder = callOpts.typeBuilder
+	}
+
+	if callOpts.tags != nil {
+		args.Tags = callOpts.tags
+	}
+
+	encoded, err := args.Encode()
+	if err != nil {
+		panic(err)
+	}
+
+	if callOpts.onTick == nil {
+		result, err := bamlRuntime.CallFunction(ctx, "GenerateRule", encoded, callOpts.onTick)
+		if err != nil {
+			return types.GeneratedRule{}, err
+		}
+
+		if result.Error != nil {
+			return types.GeneratedRule{}, result.Error
+		}
+
+		casted := (result.Data).(types.GeneratedRule)
+
+		return casted, nil
+	} else {
+		channel, err := bamlRuntime.CallFunctionStream(ctx, "GenerateRule", encoded, callOpts.onTick)
+		if err != nil {
+			return types.GeneratedRule{}, err
+		}
+
+		for result := range channel {
+			if result.Error != nil {
+				return types.GeneratedRule{}, result.Error
+			}
+
+			if result.HasData {
+				return result.Data.(types.GeneratedRule), nil
+			}
+		}
+
+		return types.GeneratedRule{}, fmt.Errorf("No data returned from stream")
+	}
+}

@@ -78,3 +78,259 @@ func (t *TypeBuilder) Finding() (*FindingClassView, error) {
 func (t *FindingClassView) Type() (baml.Type, error) {
 	return t.inner.Type()
 }
+
+type GeneratedConfigClassView struct {
+	inner baml.ClassBuilder
+}
+
+func (t *GeneratedConfigClassView) ListProperties() ([]ClassPropertyView, error) {
+	result, err := t.inner.ListProperties()
+	if err != nil {
+		return nil, err
+	}
+	builders := make([]ClassPropertyView, len(result))
+	for i, p := range result {
+		builders[i] = p
+	}
+	return builders, nil
+}
+
+func (t *GeneratedConfigClassView) PropertyProvider() (ClassPropertyView, error) {
+	return t.inner.Property("provider")
+}
+
+func (t *GeneratedConfigClassView) PropertyPersona() (ClassPropertyView, error) {
+	return t.inner.Property("persona")
+}
+
+func (t *GeneratedConfigClassView) PropertyPolicies() (ClassPropertyView, error) {
+	return t.inner.Property("policies")
+}
+
+func (t *TypeBuilder) GeneratedConfig() (*GeneratedConfigClassView, error) {
+	bld, err := t.inner.Class("GeneratedConfig")
+	if err != nil {
+		return nil, err
+	}
+	return &GeneratedConfigClassView{inner: bld}, nil
+}
+
+func (t *GeneratedConfigClassView) Type() (baml.Type, error) {
+	return t.inner.Type()
+}
+
+type GeneratedPersonaClassView struct {
+	inner baml.ClassBuilder
+}
+
+func (t *GeneratedPersonaClassView) ListProperties() ([]ClassPropertyView, error) {
+	result, err := t.inner.ListProperties()
+	if err != nil {
+		return nil, err
+	}
+	builders := make([]ClassPropertyView, len(result))
+	for i, p := range result {
+		builders[i] = p
+	}
+	return builders, nil
+}
+
+func (t *GeneratedPersonaClassView) PropertyName() (ClassPropertyView, error) {
+	return t.inner.Property("name")
+}
+
+func (t *GeneratedPersonaClassView) PropertyDisplay_name() (ClassPropertyView, error) {
+	return t.inner.Property("display_name")
+}
+
+func (t *GeneratedPersonaClassView) PropertySystem_prompt() (ClassPropertyView, error) {
+	return t.inner.Property("system_prompt")
+}
+
+func (t *TypeBuilder) GeneratedPersona() (*GeneratedPersonaClassView, error) {
+	bld, err := t.inner.Class("GeneratedPersona")
+	if err != nil {
+		return nil, err
+	}
+	return &GeneratedPersonaClassView{inner: bld}, nil
+}
+
+func (t *GeneratedPersonaClassView) Type() (baml.Type, error) {
+	return t.inner.Type()
+}
+
+type GeneratedPolicyClassView struct {
+	inner baml.ClassBuilder
+}
+
+func (t *GeneratedPolicyClassView) ListProperties() ([]ClassPropertyView, error) {
+	result, err := t.inner.ListProperties()
+	if err != nil {
+		return nil, err
+	}
+	builders := make([]ClassPropertyView, len(result))
+	for i, p := range result {
+		builders[i] = p
+	}
+	return builders, nil
+}
+
+func (t *GeneratedPolicyClassView) PropertyId() (ClassPropertyView, error) {
+	return t.inner.Property("id")
+}
+
+func (t *GeneratedPolicyClassView) PropertyDescription() (ClassPropertyView, error) {
+	return t.inner.Property("description")
+}
+
+func (t *GeneratedPolicyClassView) PropertySeverity() (ClassPropertyView, error) {
+	return t.inner.Property("severity")
+}
+
+func (t *GeneratedPolicyClassView) PropertyInstruction() (ClassPropertyView, error) {
+	return t.inner.Property("instruction")
+}
+
+func (t *GeneratedPolicyClassView) PropertyEnabled() (ClassPropertyView, error) {
+	return t.inner.Property("enabled")
+}
+
+func (t *TypeBuilder) GeneratedPolicy() (*GeneratedPolicyClassView, error) {
+	bld, err := t.inner.Class("GeneratedPolicy")
+	if err != nil {
+		return nil, err
+	}
+	return &GeneratedPolicyClassView{inner: bld}, nil
+}
+
+func (t *GeneratedPolicyClassView) Type() (baml.Type, error) {
+	return t.inner.Type()
+}
+
+type GeneratedProviderConfigClassView struct {
+	inner baml.ClassBuilder
+}
+
+func (t *GeneratedProviderConfigClassView) ListProperties() ([]ClassPropertyView, error) {
+	result, err := t.inner.ListProperties()
+	if err != nil {
+		return nil, err
+	}
+	builders := make([]ClassPropertyView, len(result))
+	for i, p := range result {
+		builders[i] = p
+	}
+	return builders, nil
+}
+
+func (t *GeneratedProviderConfigClassView) PropertyProvider_name() (ClassPropertyView, error) {
+	return t.inner.Property("provider_name")
+}
+
+func (t *GeneratedProviderConfigClassView) PropertyModel() (ClassPropertyView, error) {
+	return t.inner.Property("model")
+}
+
+func (t *GeneratedProviderConfigClassView) PropertyBase_url() (ClassPropertyView, error) {
+	return t.inner.Property("base_url")
+}
+
+func (t *GeneratedProviderConfigClassView) PropertyRegion() (ClassPropertyView, error) {
+	return t.inner.Property("region")
+}
+
+func (t *TypeBuilder) GeneratedProviderConfig() (*GeneratedProviderConfigClassView, error) {
+	bld, err := t.inner.Class("GeneratedProviderConfig")
+	if err != nil {
+		return nil, err
+	}
+	return &GeneratedProviderConfigClassView{inner: bld}, nil
+}
+
+func (t *GeneratedProviderConfigClassView) Type() (baml.Type, error) {
+	return t.inner.Type()
+}
+
+type GeneratedRuleClassView struct {
+	inner baml.ClassBuilder
+}
+
+func (t *GeneratedRuleClassView) ListProperties() ([]ClassPropertyView, error) {
+	result, err := t.inner.ListProperties()
+	if err != nil {
+		return nil, err
+	}
+	builders := make([]ClassPropertyView, len(result))
+	for i, p := range result {
+		builders[i] = p
+	}
+	return builders, nil
+}
+
+func (t *GeneratedRuleClassView) PropertyId() (ClassPropertyView, error) {
+	return t.inner.Property("id")
+}
+
+func (t *GeneratedRuleClassView) PropertyName() (ClassPropertyView, error) {
+	return t.inner.Property("name")
+}
+
+func (t *GeneratedRuleClassView) PropertyCategory() (ClassPropertyView, error) {
+	return t.inner.Property("category")
+}
+
+func (t *GeneratedRuleClassView) PropertyPattern() (ClassPropertyView, error) {
+	return t.inner.Property("pattern")
+}
+
+func (t *GeneratedRuleClassView) PropertyLanguages() (ClassPropertyView, error) {
+	return t.inner.Property("languages")
+}
+
+func (t *GeneratedRuleClassView) PropertyLevel() (ClassPropertyView, error) {
+	return t.inner.Property("level")
+}
+
+func (t *GeneratedRuleClassView) PropertyConfidence() (ClassPropertyView, error) {
+	return t.inner.Property("confidence")
+}
+
+func (t *GeneratedRuleClassView) PropertyMessage() (ClassPropertyView, error) {
+	return t.inner.Property("message")
+}
+
+func (t *GeneratedRuleClassView) PropertyExplanation() (ClassPropertyView, error) {
+	return t.inner.Property("explanation")
+}
+
+func (t *GeneratedRuleClassView) PropertyRemediation() (ClassPropertyView, error) {
+	return t.inner.Property("remediation")
+}
+
+func (t *GeneratedRuleClassView) PropertySource() (ClassPropertyView, error) {
+	return t.inner.Property("source")
+}
+
+func (t *GeneratedRuleClassView) PropertyCwe() (ClassPropertyView, error) {
+	return t.inner.Property("cwe")
+}
+
+func (t *GeneratedRuleClassView) PropertyOwasp() (ClassPropertyView, error) {
+	return t.inner.Property("owasp")
+}
+
+func (t *GeneratedRuleClassView) PropertyReferences() (ClassPropertyView, error) {
+	return t.inner.Property("references")
+}
+
+func (t *TypeBuilder) GeneratedRule() (*GeneratedRuleClassView, error) {
+	bld, err := t.inner.Class("GeneratedRule")
+	if err != nil {
+		return nil, err
+	}
+	return &GeneratedRuleClassView{inner: bld}, nil
+}
+
+func (t *GeneratedRuleClassView) Type() (baml.Type, error) {
+	return t.inner.Type()
+}
