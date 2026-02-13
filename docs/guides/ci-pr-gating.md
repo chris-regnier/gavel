@@ -132,7 +132,10 @@ jobs:
 // main.go
 package main
 
-import "os/exec"
+import (
+    "os"
+    "os/exec"
+)
 
 func main() {
     cmd := exec.Command("sh", "-c", os.Args[1]) // unsanitized input

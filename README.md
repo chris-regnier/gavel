@@ -366,13 +366,13 @@ policies:
 
 ## Custom Rules
 
-Gavel ships with 15 built-in analysis rules based on CWE, OWASP, and SonarQube standards. You can extend or override these with custom rule files.
+Gavel ships with 19 built-in analysis rules (15 regex + 4 AST) based on CWE, OWASP, and SonarQube standards. You can extend or override these with custom rule files.
 
 ### Rule Directories
 
 Rules are loaded and merged in order of precedence (highest wins, by rule ID):
 
-1. **Embedded defaults** — 15 rules built into the binary (`internal/rules/default_rules.yaml`)
+1. **Embedded defaults** — 19 rules built into the binary (`internal/rules/default_rules.yaml`)
 2. **User rules** — `~/.config/gavel/rules/*.yaml` (personal rules for all projects)
 3. **Project rules** — `.gavel/rules/*.yaml` (project-specific rules)
 
