@@ -54,9 +54,32 @@ func TestDefaultRules_PatternsCompile(t *testing.T) {
 	}
 
 	for _, r := range rules {
-		if r.Pattern == nil {
-			t.Errorf("rule %s has nil compiled pattern", r.ID)
+		if r.Type == RuleTypeRegex && r.Pattern == nil {
+			t.Errorf("regex rule %s has nil compiled pattern", r.ID)
 		}
+		if r.Type == RuleTypeAST && r.Pattern != nil {
+			t.Errorf("ast rule %s should not have compiled pattern", r.ID)
+		}
+	}
+}
+
+func TestDefaultRules_ContainsASTRules(t *testing.T) {
+	rules, err := DefaultRules()
+	if err != nil {
+		t.Fatalf("DefaultRules() returned error: %v", err)
+	}
+
+	astCount := 0
+	for _, r := range rules {
+		if r.Type == RuleTypeAST {
+			astCount++
+			if r.ASTCheck == "" {
+				t.Errorf("AST rule %s missing ast_check", r.ID)
+			}
+		}
+	}
+	if astCount < 4 {
+		t.Errorf("expected at least 4 AST rules, got %d", astCount)
 	}
 }
 

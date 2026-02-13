@@ -240,3 +240,70 @@ rules:
     source: "SonarQube"
     references:
       - "https://rules.sonarsource.com/go/RSPEC-109"
+
+  # ===========================================================================
+  # AST-BASED RULES (tree-sitter)
+  # ===========================================================================
+
+  - id: "AST001"
+    name: "function-length"
+    type: ast
+    category: "maintainability"
+    ast_check: "function-length"
+    ast_config:
+      max_lines: 50
+    level: "note"
+    confidence: 1.0
+    message: "Function exceeds maximum length"
+    explanation: "Long functions are harder to understand, test, and maintain. Consider decomposing into smaller, focused functions."
+    remediation: "Extract helper functions to reduce complexity. Each function should do one thing well."
+    source: "SonarQube"
+    references:
+      - "https://rules.sonarsource.com/go/RSPEC-138"
+
+  - id: "AST002"
+    name: "nesting-depth"
+    type: ast
+    category: "maintainability"
+    ast_check: "nesting-depth"
+    ast_config:
+      max_depth: 4
+    level: "warning"
+    confidence: 0.9
+    message: "Deeply nested code block"
+    explanation: "Deeply nested code is difficult to follow and error-prone. It often indicates that the function is doing too much."
+    remediation: "Use early returns, guard clauses, or extract to separate functions to reduce nesting."
+    source: "SonarQube"
+    references:
+      - "https://rules.sonarsource.com/go/RSPEC-134"
+
+  - id: "AST003"
+    name: "empty-error-handler"
+    type: ast
+    category: "reliability"
+    ast_check: "empty-handler"
+    level: "warning"
+    confidence: 0.95
+    message: "Empty error handling block"
+    explanation: "Checking for an error but not handling it defeats the purpose of error checking and hides potential issues."
+    remediation: "Add error handling: log the error, return it, or take corrective action."
+    source: "CWE"
+    cwe: ["CWE-252"]
+    references:
+      - "https://cwe.mitre.org/data/definitions/252.html"
+
+  - id: "AST004"
+    name: "param-count"
+    type: ast
+    category: "maintainability"
+    ast_check: "param-count"
+    ast_config:
+      max_params: 5
+    level: "note"
+    confidence: 1.0
+    message: "Function has too many parameters"
+    explanation: "Functions with many parameters are hard to call correctly, test, and maintain."
+    remediation: "Group related parameters into a struct, use the options pattern, or decompose the function."
+    source: "SonarQube"
+    references:
+      - "https://rules.sonarsource.com/go/RSPEC-107"
