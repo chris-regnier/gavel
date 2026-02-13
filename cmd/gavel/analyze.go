@@ -77,7 +77,6 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("loading rules: %w", err)
 	}
-	_ = loadedRules
 
 	// Get persona prompt from BAML
 	personaPrompt, err := analyzer.GetPersonaPrompt(ctx, cfg.Persona)
@@ -121,10 +120,10 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("reading input: %w", err)
 	}
 
-	// Analyze with BAML
+	// Analyze with tiered analyzer (instant pattern matching + LLM)
 	client := analyzer.NewBAMLLiveClient(cfg.Provider)
-	a := analyzer.NewAnalyzer(client)
-	results, err := a.Analyze(ctx, artifacts, cfg.Policies, personaPrompt)
+	ta := analyzer.NewTieredAnalyzer(client, analyzer.WithInstantPatterns(loadedRules))
+	results, err := ta.Analyze(ctx, artifacts, cfg.Policies, personaPrompt)
 	if err != nil {
 		return fmt.Errorf("analyzing: %w", err)
 	}

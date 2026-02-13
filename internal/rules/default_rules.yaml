@@ -154,6 +154,10 @@ rules:
   - id: "S2259"
     name: "defer-in-loop"
     category: "reliability"
+    # Limitation: [^}]* means this pattern will miss defer statements inside loops
+    # that contain nested braces (e.g., if/for blocks). A robust fix would require
+    # AST-based analysis; this regex intentionally trades false negatives for fewer
+    # false positives.
     pattern: 'for\s+.*\{[^}]*defer\s+'
     languages: ["go"]
     level: "warning"
