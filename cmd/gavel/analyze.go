@@ -25,6 +25,7 @@ var (
 	flagOutput    string
 	flagPolicyDir string
 	flagRegoDir   string
+	flagRulesDir  string
 )
 
 func init() {
@@ -40,6 +41,7 @@ func init() {
 	analyzeCmd.Flags().StringVar(&flagOutput, "output", ".gavel/results", "Output directory for results")
 	analyzeCmd.Flags().StringVar(&flagPolicyDir, "policies", ".gavel", "Directory containing policies.yaml")
 	analyzeCmd.Flags().StringVar(&flagRegoDir, "rego", ".gavel/rego", "Directory containing Rego policies")
+	analyzeCmd.Flags().StringVar(&flagRulesDir, "rules-dir", "", "Directory containing custom rule YAML files")
 
 	rootCmd.AddCommand(analyzeCmd)
 }
@@ -68,6 +70,9 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 	// Load rules (default + user + project overrides)
 	userRulesDir := os.ExpandEnv("$HOME/.config/gavel/rules")
 	projectRulesDir := filepath.Join(flagPolicyDir, "rules")
+	if flagRulesDir != "" {
+		projectRulesDir = flagRulesDir
+	}
 	loadedRules, err := rules.LoadRules(userRulesDir, projectRulesDir)
 	if err != nil {
 		return fmt.Errorf("loading rules: %w", err)
