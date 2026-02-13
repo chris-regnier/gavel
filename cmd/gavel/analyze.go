@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/chris-regnier/gavel/internal/config"
 	"github.com/chris-regnier/gavel/internal/evaluator"
 	"github.com/chris-regnier/gavel/internal/input"
+	"github.com/chris-regnier/gavel/internal/rules"
 	"github.com/chris-regnier/gavel/internal/sarif"
 	"github.com/chris-regnier/gavel/internal/store"
 )
@@ -62,6 +64,15 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("invalid configuration: %w", err)
 	}
+
+	// Load rules (default + user + project overrides)
+	userRulesDir := os.ExpandEnv("$HOME/.config/gavel/rules")
+	projectRulesDir := filepath.Join(flagPolicyDir, "rules")
+	loadedRules, err := rules.LoadRules(userRulesDir, projectRulesDir)
+	if err != nil {
+		return fmt.Errorf("loading rules: %w", err)
+	}
+	_ = loadedRules
 
 	// Get persona prompt from BAML
 	personaPrompt, err := analyzer.GetPersonaPrompt(ctx, cfg.Persona)

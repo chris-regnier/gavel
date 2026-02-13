@@ -11,6 +11,7 @@ import (
 	"github.com/chris-regnier/gavel/internal/config"
 	"github.com/chris-regnier/gavel/internal/input"
 	"github.com/chris-regnier/gavel/internal/metrics"
+	"github.com/chris-regnier/gavel/internal/rules"
 	"github.com/chris-regnier/gavel/internal/sarif"
 )
 
@@ -53,7 +54,7 @@ type TieredResult struct {
 type TieredAnalyzer struct {
 	// Tier analyzers
 	cache            *cache.Cache
-	instantPatterns  []PatternRule
+	instantPatterns  []rules.Rule
 	fastClient       BAMLClient // Optional fast/local model
 	comprehensiveClient BAMLClient // Full model
 
@@ -79,7 +80,7 @@ type TieredAnalyzer struct {
 type TieredAnalyzerOption func(*TieredAnalyzer)
 
 // WithInstantPatterns sets custom instant-check patterns
-func WithInstantPatterns(patterns []PatternRule) TieredAnalyzerOption {
+func WithInstantPatterns(patterns []rules.Rule) TieredAnalyzerOption {
 	return func(ta *TieredAnalyzer) {
 		ta.instantPatterns = patterns
 	}
@@ -133,8 +134,12 @@ func NewTieredAnalyzer(comprehensiveClient BAMLClient, opts ...TieredAnalyzerOpt
 }
 
 // defaultPatterns returns built-in instant-check patterns based on industry standards (CWE, OWASP, SonarQube)
-func defaultPatterns() []PatternRule {
-	return DefaultRules()
+func defaultPatterns() []rules.Rule {
+	r, err := rules.DefaultRules()
+	if err != nil {
+		panic("loading embedded default rules: " + err.Error())
+	}
+	return r
 }
 
 // AnalyzeProgressive returns a channel that emits results progressively from each tier
@@ -491,15 +496,15 @@ func (ta *TieredAnalyzer) ClearCache() {
 }
 
 // AddPattern adds a custom pattern rule for instant checks
-func (ta *TieredAnalyzer) AddPattern(rule PatternRule) {
+func (ta *TieredAnalyzer) AddPattern(rule rules.Rule) {
 	ta.mu.Lock()
 	defer ta.mu.Unlock()
 	ta.instantPatterns = append(ta.instantPatterns, rule)
 }
 
 // SetPatterns replaces all pattern rules
-func (ta *TieredAnalyzer) SetPatterns(rules []PatternRule) {
+func (ta *TieredAnalyzer) SetPatterns(r []rules.Rule) {
 	ta.mu.Lock()
 	defer ta.mu.Unlock()
-	ta.instantPatterns = rules
+	ta.instantPatterns = r
 }
