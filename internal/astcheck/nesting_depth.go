@@ -63,6 +63,21 @@ func nestingNodeTypes(lang string) map[string]bool {
 			"while_statement":        true,
 			"switch_expression":      true,
 		}
+	case "c":
+		return map[string]bool{
+			"if_statement":    true,
+			"for_statement":   true,
+			"while_statement": true,
+			"switch_statement": true,
+		}
+	case "rust":
+		return map[string]bool{
+			"if_expression":    true,
+			"for_expression":   true,
+			"while_expression": true,
+			"match_expression": true,
+			"loop_expression":  true,
+		}
 	default:
 		return nil
 	}

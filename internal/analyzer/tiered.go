@@ -2,6 +2,7 @@ package analyzer
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -244,8 +245,12 @@ func (ta *TieredAnalyzer) runInstantTier(ctx context.Context, art input.Artifact
 
 // runPatternMatching executes instant checks by partitioning rules into regex and AST types
 func (ta *TieredAnalyzer) runPatternMatching(art input.Artifact) []sarif.Result {
+	ta.mu.RLock()
+	patterns := ta.instantPatterns
+	ta.mu.RUnlock()
+
 	var regexRules, astRules []rules.Rule
-	for _, rule := range ta.instantPatterns {
+	for _, rule := range patterns {
 		switch rule.Type {
 		case rules.RuleTypeAST:
 			astRules = append(astRules, rule)
@@ -417,7 +422,19 @@ func matchesLanguage(path string, languages []string) bool {
 				return true
 			}
 		case "javascript", "js":
-			if strings.HasSuffix(path, ".js") || strings.HasSuffix(path, ".jsx") || strings.HasSuffix(path, ".ts") || strings.HasSuffix(path, ".tsx") {
+			if strings.HasSuffix(path, ".js") || strings.HasSuffix(path, ".jsx") {
+				return true
+			}
+		case "typescript", "ts":
+			if strings.HasSuffix(path, ".ts") || strings.HasSuffix(path, ".tsx") {
+				return true
+			}
+		case "c":
+			if strings.HasSuffix(path, ".c") || strings.HasSuffix(path, ".h") {
+				return true
+			}
+		case "rust":
+			if strings.HasSuffix(path, ".rs") {
 				return true
 			}
 		}
@@ -558,7 +575,7 @@ func (ta *TieredAnalyzer) deduplicateResults(results []sarif.Result) []sarif.Res
 		}
 
 		loc := r.Locations[0].PhysicalLocation
-		key := r.RuleID + "|" + loc.ArtifactLocation.URI + "|" + string(rune(loc.Region.StartLine))
+		key := r.RuleID + "|" + loc.ArtifactLocation.URI + "|" + strconv.Itoa(loc.Region.StartLine)
 
 		tier := "instant"
 		if t, ok := r.Properties["gavel/tier"].(string); ok {
