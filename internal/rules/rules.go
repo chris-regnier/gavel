@@ -24,12 +24,22 @@ const (
 	SourceCustom    RuleSource = "Custom"
 )
 
+type RuleType string
+
+const (
+	RuleTypeRegex RuleType = "regex"
+	RuleTypeAST   RuleType = "ast"
+)
+
 type Rule struct {
 	ID          string       `yaml:"id"`
 	Name        string       `yaml:"name"`
+	Type        RuleType     `yaml:"type,omitempty"`
 	Category    RuleCategory `yaml:"category"`
 	Pattern     *regexp.Regexp `yaml:"-"`
 	RawPattern  string       `yaml:"pattern"`
+	ASTCheck    string       `yaml:"ast_check,omitempty"`
+	ASTConfig   map[string]interface{} `yaml:"ast_config,omitempty"`
 	Languages   []string     `yaml:"languages,omitempty"`
 	Level       string       `yaml:"level"`
 	Confidence  float64      `yaml:"confidence"`
@@ -55,6 +65,12 @@ func ParseRuleFile(data []byte) (*RuleFile, error) {
 	seen := make(map[string]bool)
 	for i := range rf.Rules {
 		r := &rf.Rules[i]
+
+		// Default Type to regex for backward compatibility
+		if r.Type == "" {
+			r.Type = RuleTypeRegex
+		}
+
 		if err := validateRule(r); err != nil {
 			return nil, fmt.Errorf("rule %q (index %d): %w", r.ID, i, err)
 		}
@@ -63,11 +79,14 @@ func ParseRuleFile(data []byte) (*RuleFile, error) {
 		}
 		seen[r.ID] = true
 
-		compiled, err := regexp.Compile(r.RawPattern)
-		if err != nil {
-			return nil, fmt.Errorf("rule %q: invalid regex pattern: %w", r.ID, err)
+		// Only compile regex for regex-type rules
+		if r.Type == RuleTypeRegex {
+			compiled, err := regexp.Compile(r.RawPattern)
+			if err != nil {
+				return nil, fmt.Errorf("rule %q: invalid regex pattern: %w", r.ID, err)
+			}
+			r.Pattern = compiled
 		}
-		r.Pattern = compiled
 	}
 
 	return &rf, nil
@@ -77,9 +96,21 @@ func validateRule(r *Rule) error {
 	if r.ID == "" {
 		return fmt.Errorf("missing required field: id")
 	}
-	if r.RawPattern == "" {
-		return fmt.Errorf("missing required field: pattern")
+
+	// Type-specific validation
+	switch r.Type {
+	case RuleTypeRegex:
+		if r.RawPattern == "" {
+			return fmt.Errorf("missing required field: pattern")
+		}
+	case RuleTypeAST:
+		if r.ASTCheck == "" {
+			return fmt.Errorf("missing required field: ast_check")
+		}
+	default:
+		return fmt.Errorf("unknown rule type: %s", r.Type)
 	}
+
 	if r.Level == "" {
 		return fmt.Errorf("missing required field: level")
 	}
