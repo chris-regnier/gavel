@@ -70,6 +70,11 @@ EOF
 ./gavel analyze --dir ./src
 ```
 
+## Guides
+
+- **[Gate PRs with AI Code Review](docs/guides/ci-pr-gating.md)** — Set up GitHub Actions to automatically analyze every PR
+- **[See Findings in Your Editor](docs/guides/editor-integration.md)** — View Gavel findings inline in VS Code or Neovim
+
 ## Usage
 
 ```bash
