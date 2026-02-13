@@ -2,11 +2,15 @@ package analyzer
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	sitter "github.com/smacker/go-tree-sitter"
+
+	"github.com/chris-regnier/gavel/internal/astcheck"
 	"github.com/chris-regnier/gavel/internal/cache"
 	"github.com/chris-regnier/gavel/internal/config"
 	"github.com/chris-regnier/gavel/internal/input"
@@ -57,6 +61,9 @@ type TieredAnalyzer struct {
 	instantPatterns  []rules.Rule
 	fastClient       BAMLClient // Optional fast/local model
 	comprehensiveClient BAMLClient // Full model
+
+	// AST analysis
+	astRegistry *astcheck.Registry
 
 	// Configuration
 	fastModel       string
@@ -122,6 +129,7 @@ func NewTieredAnalyzer(comprehensiveClient BAMLClient, opts ...TieredAnalyzerOpt
 		cache:               cache.New(cache.WithMaxSize(1000), cache.WithTTL(1*time.Hour)),
 		instantPatterns:     defaultPatterns(),
 		comprehensiveClient: comprehensiveClient,
+		astRegistry:         astcheck.DefaultRegistry(),
 		instantEnabled:      true,
 		fastEnabled:         false,
 	}
@@ -235,12 +243,33 @@ func (ta *TieredAnalyzer) runInstantTier(ctx context.Context, art input.Artifact
 	}
 }
 
-// runPatternMatching executes regex-based instant checks using industry-standard rules
+// runPatternMatching executes instant checks by partitioning rules into regex and AST types
 func (ta *TieredAnalyzer) runPatternMatching(art input.Artifact) []sarif.Result {
+	ta.mu.RLock()
+	patterns := ta.instantPatterns
+	ta.mu.RUnlock()
+
+	var regexRules, astRules []rules.Rule
+	for _, rule := range patterns {
+		switch rule.Type {
+		case rules.RuleTypeAST:
+			astRules = append(astRules, rule)
+		default:
+			regexRules = append(regexRules, rule)
+		}
+	}
+
+	results := ta.runRegexRules(art, regexRules)
+	results = append(results, ta.runASTRules(art, astRules)...)
+	return results
+}
+
+// runRegexRules executes regex-based instant checks using industry-standard rules
+func (ta *TieredAnalyzer) runRegexRules(art input.Artifact, regexRules []rules.Rule) []sarif.Result {
 	var results []sarif.Result
 	lines := strings.Split(art.Content, "\n")
 
-	for _, rule := range ta.instantPatterns {
+	for _, rule := range regexRules {
 		// Skip rules that don't apply to this file's language
 		if len(rule.Languages) > 0 && !matchesLanguage(art.Path, rule.Languages) {
 			continue
@@ -296,6 +325,86 @@ func (ta *TieredAnalyzer) runPatternMatching(art input.Artifact) []sarif.Result 
 	return results
 }
 
+// runASTRules executes tree-sitter AST-based instant checks
+func (ta *TieredAnalyzer) runASTRules(art input.Artifact, astRules []rules.Rule) []sarif.Result {
+	if len(astRules) == 0 {
+		return nil
+	}
+
+	lang, langName, ok := astcheck.Detect(art.Path)
+	if !ok {
+		return nil
+	}
+
+	parser := sitter.NewParser()
+	parser.SetLanguage(lang)
+	tree, err := parser.ParseCtx(context.Background(), nil, []byte(art.Content))
+	if err != nil {
+		return nil
+	}
+
+	var results []sarif.Result
+	sourceBytes := []byte(art.Content)
+
+	for _, rule := range astRules {
+		if len(rule.Languages) > 0 && !matchesLanguage(art.Path, rule.Languages) {
+			continue
+		}
+
+		check, ok := ta.astRegistry.Get(rule.ASTCheck)
+		if !ok {
+			continue
+		}
+
+		matches := check.Run(tree, sourceBytes, langName, rule.ASTConfig)
+		for _, m := range matches {
+			msg := rule.Message
+			if m.Message != "" {
+				msg = m.Message
+			}
+
+			props := map[string]interface{}{
+				"gavel/explanation": rule.Explanation,
+				"gavel/confidence":  rule.Confidence,
+				"gavel/tier":        "instant",
+				"gavel/rule-type":   "ast",
+				"gavel/rule-source": string(rule.Source),
+			}
+			if len(rule.CWE) > 0 {
+				props["gavel/cwe"] = rule.CWE
+			}
+			if len(rule.OWASP) > 0 {
+				props["gavel/owasp"] = rule.OWASP
+			}
+			if rule.Remediation != "" {
+				props["gavel/remediation"] = rule.Remediation
+			}
+			if len(rule.References) > 0 {
+				props["gavel/references"] = rule.References
+			}
+			if m.Extra != nil {
+				for k, v := range m.Extra {
+					props["gavel/"+k] = v
+				}
+			}
+
+			results = append(results, sarif.Result{
+				RuleID:  rule.ID,
+				Level:   rule.Level,
+				Message: sarif.Message{Text: msg},
+				Locations: []sarif.Location{{
+					PhysicalLocation: sarif.PhysicalLocation{
+						ArtifactLocation: sarif.ArtifactLocation{URI: art.Path},
+						Region:           sarif.Region{StartLine: m.StartLine, EndLine: m.EndLine},
+					},
+				}},
+				Properties: props,
+			})
+		}
+	}
+	return results
+}
+
 // matchesLanguage checks if a file path matches any of the specified languages
 func matchesLanguage(path string, languages []string) bool {
 	for _, lang := range languages {
@@ -313,7 +422,19 @@ func matchesLanguage(path string, languages []string) bool {
 				return true
 			}
 		case "javascript", "js":
-			if strings.HasSuffix(path, ".js") || strings.HasSuffix(path, ".jsx") || strings.HasSuffix(path, ".ts") || strings.HasSuffix(path, ".tsx") {
+			if strings.HasSuffix(path, ".js") || strings.HasSuffix(path, ".jsx") {
+				return true
+			}
+		case "typescript", "ts":
+			if strings.HasSuffix(path, ".ts") || strings.HasSuffix(path, ".tsx") {
+				return true
+			}
+		case "c":
+			if strings.HasSuffix(path, ".c") || strings.HasSuffix(path, ".h") {
+				return true
+			}
+		case "rust":
+			if strings.HasSuffix(path, ".rs") {
 				return true
 			}
 		}
@@ -454,7 +575,7 @@ func (ta *TieredAnalyzer) deduplicateResults(results []sarif.Result) []sarif.Res
 		}
 
 		loc := r.Locations[0].PhysicalLocation
-		key := r.RuleID + "|" + loc.ArtifactLocation.URI + "|" + string(rune(loc.Region.StartLine))
+		key := r.RuleID + "|" + loc.ArtifactLocation.URI + "|" + strconv.Itoa(loc.Region.StartLine)
 
 		tier := "instant"
 		if t, ok := r.Properties["gavel/tier"].(string); ok {

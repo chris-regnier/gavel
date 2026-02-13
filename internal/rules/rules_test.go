@@ -321,3 +321,79 @@ func TestParseRuleFile_UniqueIDs(t *testing.T) {
 		seen[r.ID] = true
 	}
 }
+
+func TestParseRuleFile_ASTRule(t *testing.T) {
+	yaml := `rules:
+  - id: "AST001"
+    name: "function-length"
+    type: ast
+    category: "maintainability"
+    ast_check: "function-length"
+    ast_config:
+      max_lines: 50
+    level: "note"
+    confidence: 1.0
+    message: "Function exceeds maximum length"
+`
+	rf, err := ParseRuleFile([]byte(yaml))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(rf.Rules) != 1 {
+		t.Fatalf("expected 1 rule, got %d", len(rf.Rules))
+	}
+	r := rf.Rules[0]
+	if r.Type != RuleTypeAST {
+		t.Errorf("expected type ast, got %s", r.Type)
+	}
+	if r.ASTCheck != "function-length" {
+		t.Errorf("expected ast_check function-length, got %s", r.ASTCheck)
+	}
+	if r.ASTConfig == nil {
+		t.Fatal("expected ast_config to be populated")
+	}
+	maxLines, ok := r.ASTConfig["max_lines"]
+	if !ok {
+		t.Fatal("expected max_lines in ast_config")
+	}
+	if v, ok := maxLines.(int); !ok || v != 50 {
+		t.Errorf("expected max_lines=50, got %v", maxLines)
+	}
+	if r.Pattern != nil {
+		t.Error("expected nil pattern for AST rule")
+	}
+}
+
+func TestParseRuleFile_ASTRuleMissingCheck(t *testing.T) {
+	yaml := `rules:
+  - id: "BAD"
+    type: ast
+    level: "error"
+    confidence: 0.5
+    message: "missing ast_check"
+`
+	_, err := ParseRuleFile([]byte(yaml))
+	if err == nil {
+		t.Fatal("expected error for AST rule without ast_check")
+	}
+	if !strings.Contains(err.Error(), "ast_check") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestParseRuleFile_RegexRuleDefault(t *testing.T) {
+	yaml := `rules:
+  - id: "R001"
+    pattern: 'foo'
+    level: "warning"
+    confidence: 0.5
+    message: "found foo"
+`
+	rf, err := ParseRuleFile([]byte(yaml))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rf.Rules[0].Type != RuleTypeRegex {
+		t.Errorf("expected default type regex, got %s", rf.Rules[0].Type)
+	}
+}

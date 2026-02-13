@@ -47,7 +47,8 @@ Input Handler → BAML Analyzer → SARIF Assembler → Rego Evaluator → Verdi
 - **SARIF extensions**: All gavel-specific data lives in `Properties map[string]interface{}` with `gavel/` prefix keys.
 - **Rego evaluator** (`internal/evaluator/evaluator.go`): Default policy is embedded via `//go:embed default.rego`. Custom `.rego` files from a directory override it. Rego receives the full SARIF log as JSON input; it never sees source code.
 - **Storage** (`internal/store/`): `Store` interface with filesystem implementation. IDs are `<timestamp>-<hex>` directories under `.gavel/results/`.
-- **Vendable rules** (`internal/rules/`): 15 default rules embedded via `//go:embed default_rules.yaml`. `LoadRules(userDir, projectDir)` merges three tiers by rule ID (later wins): embedded defaults → `~/.config/gavel/rules/*.yaml` → `.gavel/rules/*.yaml`. The `--rules-dir` flag overrides the project rules directory. Rule fields include regex patterns, CWE/OWASP references, confidence, and remediation guidance.
+- **Vendable rules** (`internal/rules/`): 19 default rules (15 regex + 4 AST) embedded via `//go:embed default_rules.yaml`. `LoadRules(userDir, projectDir)` merges three tiers by rule ID (later wins): embedded defaults → `~/.config/gavel/rules/*.yaml` → `.gavel/rules/*.yaml`. The `--rules-dir` flag overrides the project rules directory. Rules have a `type` field (`regex` or `ast`); regex rules have compiled patterns, AST rules reference a named check via `ast_check` with optional `ast_config`. Rule fields include CWE/OWASP references, confidence, and remediation guidance.
+- **AST checks** (`internal/astcheck/`): Tree-sitter-based structural analysis via `smacker/go-tree-sitter`. The `Check` interface (`Name() string`, `Run(tree, source, lang, config) []Match`) is registered in a `Registry`. `DefaultRegistry()` includes 4 checks: `function-length`, `nesting-depth`, `empty-handler`, `param-count`. Language detection (`Detect(path)`) maps file extensions to tree-sitter grammars for Go, Python, JS/TS, Java, C, and Rust. AST rules run in the instant tier alongside regex rules in `TieredAnalyzer.runPatternMatching()`.
 - **Cache metadata & cross-environment sharing**: SARIF results include `gavel/cache_key` (deterministic hash of file content + policies + model + BAML templates) and `gavel/analyzer` metadata (provider, model, policies used). Cache keys enable sharing results across CI and local environments when analysis inputs match. Cache invalidation only occurs when LLM inputs change (file content, policy instructions, model, BAML templates), NOT when Rego policies or severity levels change (those only affect verdict evaluation, not SARIF generation).
 
 ## BAML
@@ -139,6 +140,31 @@ specialized expert perspectives: code quality, architecture, or security.
 - `code-reviewer` (default): Code quality, error handling, testability
 - `architect`: Scalability, API design, service boundaries
 - `security`: OWASP Top 10, auth/authz, injection vulnerabilities
+
+## AST Rules
+
+Gavel uses tree-sitter (`smacker/go-tree-sitter`) for fast, structural code analysis in the instant tier alongside regex rules.
+
+**Implementation:**
+- `internal/astcheck/registry.go` - `Check` interface, `Match` struct, `Registry`
+- `internal/astcheck/language.go` - File extension → tree-sitter grammar mapping (`Detect()`)
+- `internal/astcheck/helpers.go` - Shared DFS traversal and function-node utilities
+- `internal/astcheck/defaults.go` - `DefaultRegistry()` wiring all checks
+- `internal/astcheck/{function_length,nesting_depth,empty_handler,param_count}.go` - Individual checks
+
+**Current AST checks (IDs AST001-AST004):**
+- `function-length` - Functions exceeding `max_lines` (default 50)
+- `nesting-depth` - Code blocks exceeding `max_depth` (default 4)
+- `empty-handler` - Empty error handlers (`if err != nil {}`, `except: pass`, empty `catch`)
+- `param-count` - Functions exceeding `max_params` (default 5); handles Go grouped params (`a, b int` = 2 params)
+
+**Supported languages:** Go, Python, JavaScript/JSX, TypeScript/TSX, Java, C/H, Rust
+
+**To add a new AST check:**
+1. Create `internal/astcheck/your_check.go` implementing `Check` interface
+2. Register in `internal/astcheck/defaults.go` `DefaultRegistry()`
+3. Add rule entry in `internal/rules/default_rules.yaml` with `type: ast` and `ast_check: your-check-name`
+4. Add tests in `internal/astcheck/astcheck_test.go`
 
 ## Rego
 
