@@ -21,7 +21,7 @@ Create a `.gavel/` directory in your project root with a `policies.yaml` file.
 brew install ollama
 
 # Linux
-curl -fsSL https://ollama.com/install.sh | sh
+curl -fsSL https://ollama.ai/install.sh | sh
 ```
 
 Start the Ollama server and pull a fast coding model:
@@ -117,7 +117,7 @@ Findings appear in three places:
 
 - **Problems panel** -- each finding listed with file, line, and severity
 - **Inline squiggles** -- underlines on the affected lines in the editor
-- **Hover tooltips** -- hover over a squiggle to see the full message, including the AI explanation and recommendation from the `gavel/explanation` and `gavel/recommendation` SARIF properties
+- **Hover tooltips** -- hover over a squiggle to see the full message, including the confidence score, AI explanation, and recommendation from the `gavel/confidence`, `gavel/explanation`, and `gavel/recommendation` SARIF properties
 
 ### Optional: Run Gavel with a keyboard shortcut
 
@@ -173,10 +173,11 @@ Convert SARIF findings to the standard `file:line:col: level: message` format th
 The `jq` one-liner:
 
 ```sh
+LATEST=$(ls -td .gavel/results/*/ | head -1)
 jq -r '
   .runs[0].results[] |
   "\(.locations[0].physicalLocation.artifactLocation.uri):\(.locations[0].physicalLocation.region.startLine):1: \(.level): \(.message.text)"
-' .gavel/results/*/sarif.json
+' "${LATEST}sarif.json"
 ```
 
 This produces output like:
@@ -189,10 +190,11 @@ src/db.go:18:1: warning: Database error ignored on line 18
 Load that into Neovim's quickfix list:
 
 ```sh
+LATEST=$(ls -td .gavel/results/*/ | head -1)
 jq -r '
   .runs[0].results[] |
   "\(.locations[0].physicalLocation.artifactLocation.uri):\(.locations[0].physicalLocation.region.startLine):1: \(.level): \(.message.text)"
-' .gavel/results/*/sarif.json > /tmp/gavel-qf.txt
+' "${LATEST}sarif.json" > /tmp/gavel-qf.txt
 ```
 
 Then in Neovim:
