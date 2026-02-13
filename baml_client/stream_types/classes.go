@@ -109,3 +109,357 @@ func (c Finding) Encode() (*cffi.HostValue, error) {
 func (c Finding) BamlTypeName() string {
 	return "Finding"
 }
+
+type GeneratedConfig struct {
+	Provider *GeneratedProviderConfig `json:"provider"`
+	Persona  *string                  `json:"persona"`
+	Policies []GeneratedPolicy        `json:"policies"`
+}
+
+func (c *GeneratedConfig) Decode(holder *cffi.CFFIValueClass, typeMap baml.TypeMap) {
+	typeName := holder.Name
+	if typeName.Namespace != cffi.CFFITypeNamespace_STREAM_TYPES {
+		panic(fmt.Sprintf("expected cffi.CFFITypeNamespace_STREAM_TYPES, got %s", string(typeName.Namespace.String())))
+	}
+	if typeName.Name != "GeneratedConfig" {
+		panic(fmt.Sprintf("expected GeneratedConfig, got %s", typeName.Name))
+	}
+
+	for _, field := range holder.Fields {
+		key := field.Key
+		valueHolder := field.Value
+		switch key {
+
+		case "provider":
+			c.Provider = baml.Decode(valueHolder).Interface().(*GeneratedProviderConfig)
+
+		case "persona":
+			c.Persona = baml.Decode(valueHolder).Interface().(*string)
+
+		case "policies":
+			c.Policies = baml.Decode(valueHolder).Interface().([]GeneratedPolicy)
+
+		default:
+
+			panic(fmt.Sprintf("unexpected field: %s in class GeneratedConfig", key))
+
+		}
+	}
+
+}
+
+func (c GeneratedConfig) Encode() (*cffi.HostValue, error) {
+	fields := map[string]any{}
+
+	fields["provider"] = c.Provider
+
+	fields["persona"] = c.Persona
+
+	fields["policies"] = c.Policies
+
+	return baml.EncodeClass("GeneratedConfig", fields, nil)
+}
+
+func (c GeneratedConfig) BamlTypeName() string {
+	return "GeneratedConfig"
+}
+
+type GeneratedPersona struct {
+	Name          *string `json:"name"`
+	Display_name  *string `json:"display_name"`
+	System_prompt *string `json:"system_prompt"`
+}
+
+func (c *GeneratedPersona) Decode(holder *cffi.CFFIValueClass, typeMap baml.TypeMap) {
+	typeName := holder.Name
+	if typeName.Namespace != cffi.CFFITypeNamespace_STREAM_TYPES {
+		panic(fmt.Sprintf("expected cffi.CFFITypeNamespace_STREAM_TYPES, got %s", string(typeName.Namespace.String())))
+	}
+	if typeName.Name != "GeneratedPersona" {
+		panic(fmt.Sprintf("expected GeneratedPersona, got %s", typeName.Name))
+	}
+
+	for _, field := range holder.Fields {
+		key := field.Key
+		valueHolder := field.Value
+		switch key {
+
+		case "name":
+			c.Name = baml.Decode(valueHolder).Interface().(*string)
+
+		case "display_name":
+			c.Display_name = baml.Decode(valueHolder).Interface().(*string)
+
+		case "system_prompt":
+			c.System_prompt = baml.Decode(valueHolder).Interface().(*string)
+
+		default:
+
+			panic(fmt.Sprintf("unexpected field: %s in class GeneratedPersona", key))
+
+		}
+	}
+
+}
+
+func (c GeneratedPersona) Encode() (*cffi.HostValue, error) {
+	fields := map[string]any{}
+
+	fields["name"] = c.Name
+
+	fields["display_name"] = c.Display_name
+
+	fields["system_prompt"] = c.System_prompt
+
+	return baml.EncodeClass("GeneratedPersona", fields, nil)
+}
+
+func (c GeneratedPersona) BamlTypeName() string {
+	return "GeneratedPersona"
+}
+
+type GeneratedPolicy struct {
+	Id          *string `json:"id"`
+	Description *string `json:"description"`
+	Severity    *string `json:"severity"`
+	Instruction *string `json:"instruction"`
+	Enabled     *bool   `json:"enabled"`
+}
+
+func (c *GeneratedPolicy) Decode(holder *cffi.CFFIValueClass, typeMap baml.TypeMap) {
+	typeName := holder.Name
+	if typeName.Namespace != cffi.CFFITypeNamespace_STREAM_TYPES {
+		panic(fmt.Sprintf("expected cffi.CFFITypeNamespace_STREAM_TYPES, got %s", string(typeName.Namespace.String())))
+	}
+	if typeName.Name != "GeneratedPolicy" {
+		panic(fmt.Sprintf("expected GeneratedPolicy, got %s", typeName.Name))
+	}
+
+	for _, field := range holder.Fields {
+		key := field.Key
+		valueHolder := field.Value
+		switch key {
+
+		case "id":
+			c.Id = baml.Decode(valueHolder).Interface().(*string)
+
+		case "description":
+			c.Description = baml.Decode(valueHolder).Interface().(*string)
+
+		case "severity":
+			c.Severity = baml.Decode(valueHolder).Interface().(*string)
+
+		case "instruction":
+			c.Instruction = baml.Decode(valueHolder).Interface().(*string)
+
+		case "enabled":
+			c.Enabled = baml.Decode(valueHolder).Interface().(*bool)
+
+		default:
+
+			panic(fmt.Sprintf("unexpected field: %s in class GeneratedPolicy", key))
+
+		}
+	}
+
+}
+
+func (c GeneratedPolicy) Encode() (*cffi.HostValue, error) {
+	fields := map[string]any{}
+
+	fields["id"] = c.Id
+
+	fields["description"] = c.Description
+
+	fields["severity"] = c.Severity
+
+	fields["instruction"] = c.Instruction
+
+	fields["enabled"] = c.Enabled
+
+	return baml.EncodeClass("GeneratedPolicy", fields, nil)
+}
+
+func (c GeneratedPolicy) BamlTypeName() string {
+	return "GeneratedPolicy"
+}
+
+type GeneratedProviderConfig struct {
+	Provider_name *string `json:"provider_name"`
+	Model         *string `json:"model"`
+	Base_url      *string `json:"base_url"`
+	Region        *string `json:"region"`
+}
+
+func (c *GeneratedProviderConfig) Decode(holder *cffi.CFFIValueClass, typeMap baml.TypeMap) {
+	typeName := holder.Name
+	if typeName.Namespace != cffi.CFFITypeNamespace_STREAM_TYPES {
+		panic(fmt.Sprintf("expected cffi.CFFITypeNamespace_STREAM_TYPES, got %s", string(typeName.Namespace.String())))
+	}
+	if typeName.Name != "GeneratedProviderConfig" {
+		panic(fmt.Sprintf("expected GeneratedProviderConfig, got %s", typeName.Name))
+	}
+
+	for _, field := range holder.Fields {
+		key := field.Key
+		valueHolder := field.Value
+		switch key {
+
+		case "provider_name":
+			c.Provider_name = baml.Decode(valueHolder).Interface().(*string)
+
+		case "model":
+			c.Model = baml.Decode(valueHolder).Interface().(*string)
+
+		case "base_url":
+			c.Base_url = baml.Decode(valueHolder).Interface().(*string)
+
+		case "region":
+			c.Region = baml.Decode(valueHolder).Interface().(*string)
+
+		default:
+
+			panic(fmt.Sprintf("unexpected field: %s in class GeneratedProviderConfig", key))
+
+		}
+	}
+
+}
+
+func (c GeneratedProviderConfig) Encode() (*cffi.HostValue, error) {
+	fields := map[string]any{}
+
+	fields["provider_name"] = c.Provider_name
+
+	fields["model"] = c.Model
+
+	fields["base_url"] = c.Base_url
+
+	fields["region"] = c.Region
+
+	return baml.EncodeClass("GeneratedProviderConfig", fields, nil)
+}
+
+func (c GeneratedProviderConfig) BamlTypeName() string {
+	return "GeneratedProviderConfig"
+}
+
+type GeneratedRule struct {
+	Id          *string  `json:"id"`
+	Name        *string  `json:"name"`
+	Category    *string  `json:"category"`
+	Pattern     *string  `json:"pattern"`
+	Languages   []string `json:"languages"`
+	Level       *string  `json:"level"`
+	Confidence  *float64 `json:"confidence"`
+	Message     *string  `json:"message"`
+	Explanation *string  `json:"explanation"`
+	Remediation *string  `json:"remediation"`
+	Source      *string  `json:"source"`
+	Cwe         []string `json:"cwe"`
+	Owasp       []string `json:"owasp"`
+	References  []string `json:"references"`
+}
+
+func (c *GeneratedRule) Decode(holder *cffi.CFFIValueClass, typeMap baml.TypeMap) {
+	typeName := holder.Name
+	if typeName.Namespace != cffi.CFFITypeNamespace_STREAM_TYPES {
+		panic(fmt.Sprintf("expected cffi.CFFITypeNamespace_STREAM_TYPES, got %s", string(typeName.Namespace.String())))
+	}
+	if typeName.Name != "GeneratedRule" {
+		panic(fmt.Sprintf("expected GeneratedRule, got %s", typeName.Name))
+	}
+
+	for _, field := range holder.Fields {
+		key := field.Key
+		valueHolder := field.Value
+		switch key {
+
+		case "id":
+			c.Id = baml.Decode(valueHolder).Interface().(*string)
+
+		case "name":
+			c.Name = baml.Decode(valueHolder).Interface().(*string)
+
+		case "category":
+			c.Category = baml.Decode(valueHolder).Interface().(*string)
+
+		case "pattern":
+			c.Pattern = baml.Decode(valueHolder).Interface().(*string)
+
+		case "languages":
+			c.Languages = baml.Decode(valueHolder).Interface().([]string)
+
+		case "level":
+			c.Level = baml.Decode(valueHolder).Interface().(*string)
+
+		case "confidence":
+			c.Confidence = baml.Decode(valueHolder).Interface().(*float64)
+
+		case "message":
+			c.Message = baml.Decode(valueHolder).Interface().(*string)
+
+		case "explanation":
+			c.Explanation = baml.Decode(valueHolder).Interface().(*string)
+
+		case "remediation":
+			c.Remediation = baml.Decode(valueHolder).Interface().(*string)
+
+		case "source":
+			c.Source = baml.Decode(valueHolder).Interface().(*string)
+
+		case "cwe":
+			c.Cwe = baml.Decode(valueHolder).Interface().([]string)
+
+		case "owasp":
+			c.Owasp = baml.Decode(valueHolder).Interface().([]string)
+
+		case "references":
+			c.References = baml.Decode(valueHolder).Interface().([]string)
+
+		default:
+
+			panic(fmt.Sprintf("unexpected field: %s in class GeneratedRule", key))
+
+		}
+	}
+
+}
+
+func (c GeneratedRule) Encode() (*cffi.HostValue, error) {
+	fields := map[string]any{}
+
+	fields["id"] = c.Id
+
+	fields["name"] = c.Name
+
+	fields["category"] = c.Category
+
+	fields["pattern"] = c.Pattern
+
+	fields["languages"] = c.Languages
+
+	fields["level"] = c.Level
+
+	fields["confidence"] = c.Confidence
+
+	fields["message"] = c.Message
+
+	fields["explanation"] = c.Explanation
+
+	fields["remediation"] = c.Remediation
+
+	fields["source"] = c.Source
+
+	fields["cwe"] = c.Cwe
+
+	fields["owasp"] = c.Owasp
+
+	fields["references"] = c.References
+
+	return baml.EncodeClass("GeneratedRule", fields, nil)
+}
+
+func (c GeneratedRule) BamlTypeName() string {
+	return "GeneratedRule"
+}

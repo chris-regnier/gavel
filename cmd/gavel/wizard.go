@@ -375,17 +375,17 @@ func (m wizardModel) doGenerate(ctx context.Context, description string) tea.Msg
 
 	cfg := &config.Config{
 		Provider: config.ProviderConfig{
-			Name: genConfig.Provider.ProviderName,
+			Name: genConfig.Provider.Provider_name,
 		},
 		Persona:  genConfig.Persona,
 		Policies: make(map[string]config.Policy),
 	}
 
-	switch genConfig.Provider.ProviderName {
+	switch genConfig.Provider.Provider_name {
 	case "ollama":
 		cfg.Provider.Ollama = config.OllamaConfig{
 			Model:   genConfig.Provider.Model,
-			BaseURL: genConfig.Provider.BaseUrl,
+			BaseURL: genConfig.Provider.Base_url,
 		}
 	case "openrouter":
 		cfg.Provider.OpenRouter = config.OpenRouterConfig{

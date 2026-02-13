@@ -21,6 +21,16 @@ import (
 )
 
 var typeMap = map[string]reflect.Type{
-	"TYPES.Finding":        reflect.TypeOf(types.Finding{}),
-	"STREAM_TYPES.Finding": reflect.TypeOf(stream_types.Finding{}),
+	"TYPES.Finding":                        reflect.TypeOf(types.Finding{}),
+	"STREAM_TYPES.Finding":                 reflect.TypeOf(stream_types.Finding{}),
+	"TYPES.GeneratedConfig":                reflect.TypeOf(types.GeneratedConfig{}),
+	"STREAM_TYPES.GeneratedConfig":         reflect.TypeOf(stream_types.GeneratedConfig{}),
+	"TYPES.GeneratedPersona":               reflect.TypeOf(types.GeneratedPersona{}),
+	"STREAM_TYPES.GeneratedPersona":        reflect.TypeOf(stream_types.GeneratedPersona{}),
+	"TYPES.GeneratedPolicy":                reflect.TypeOf(types.GeneratedPolicy{}),
+	"STREAM_TYPES.GeneratedPolicy":         reflect.TypeOf(stream_types.GeneratedPolicy{}),
+	"TYPES.GeneratedProviderConfig":        reflect.TypeOf(types.GeneratedProviderConfig{}),
+	"STREAM_TYPES.GeneratedProviderConfig": reflect.TypeOf(stream_types.GeneratedProviderConfig{}),
+	"TYPES.GeneratedRule":                  reflect.TypeOf(types.GeneratedRule{}),
+	"STREAM_TYPES.GeneratedRule":           reflect.TypeOf(stream_types.GeneratedRule{}),
 }

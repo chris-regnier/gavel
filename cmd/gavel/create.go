@@ -198,8 +198,8 @@ func runCreatePersona(cmd *cobra.Command, args []string) error {
 	// Output as structured data
 	output := map[string]interface{}{
 		"name":           persona.Name,
-		"display_name":   persona.DisplayName,
-		"system_prompt":  persona.SystemPrompt,
+		"display_name":   persona.Display_name,
+		"system_prompt":  persona.System_prompt,
 	}
 
 	yamlData, err := yaml.Marshal(output)
@@ -229,18 +229,18 @@ func runCreateConfig(cmd *cobra.Command, args []string) error {
 	// Convert to config.Config format
 	cfg := &config.Config{
 		Provider: config.ProviderConfig{
-			Name: genConfig.Provider.ProviderName,
+			Name: genConfig.Provider.Provider_name,
 		},
 		Persona:  genConfig.Persona,
 		Policies: make(map[string]config.Policy),
 	}
 
 	// Set provider-specific config
-	switch genConfig.Provider.ProviderName {
+	switch genConfig.Provider.Provider_name {
 	case "ollama":
 		cfg.Provider.Ollama = config.OllamaConfig{
 			Model:   genConfig.Provider.Model,
-			BaseURL: genConfig.Provider.BaseUrl,
+			BaseURL: genConfig.Provider.Base_url,
 		}
 		if cfg.Provider.Ollama.BaseURL == "" {
 			cfg.Provider.Ollama.BaseURL = "http://localhost:11434/v1"
