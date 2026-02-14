@@ -24,6 +24,33 @@ func SystemDefaults() *Config {
 			},
 		},
 		Persona: "code-reviewer",
+		LSP: LSPConfig{
+			Watcher: WatcherConfig{
+				DebounceDuration: "5m",
+				WatchPatterns: []string{
+					"**/*.go",
+					"**/*.py",
+					"**/*.ts",
+					"**/*.tsx",
+					"**/*.js",
+					"**/*.jsx",
+				},
+				IgnorePatterns: []string{
+					"**/node_modules/**",
+					"**/.git/**",
+					"**/vendor/**",
+					"**/.gavel/**",
+				},
+			},
+			Analysis: AnalysisConfig{
+				ParallelFiles: 3,
+				Priority:      "recent",
+			},
+			Cache: CacheConfig{
+				TTL:       "168h",
+				MaxSizeMB: 500,
+			},
+		},
 		Policies: map[string]Policy{
 			"shall-be-merged": {
 				Description: "Shall this code be merged?",
