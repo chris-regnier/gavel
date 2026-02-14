@@ -105,13 +105,13 @@ jobs:
         run: gavel analyze --diff pr.diff
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          GH_TOKEN: ${{ github.token }}
 
       - name: Upload SARIF to GitHub Code Scanning
         uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
           sarif_file: .gavel/results/
+          category: gavel
 ```
 
 ### What each step does
@@ -120,7 +120,7 @@ jobs:
 2. **Download Gavel** -- fetches the latest release binary for Linux x86_64 from GitHub Releases.
 3. **Get PR diff** -- uses `gh pr diff` to produce a unified diff of the pull request. The `GH_TOKEN` env var gives `gh` access to the repository.
 4. **Run Gavel analysis** -- analyzes the diff against your configured policies. The provider API key is injected from the secret you created in Step 1. Results are written to `.gavel/results/<id>/sarif.json`.
-5. **Upload SARIF** -- sends the SARIF file to GitHub Code Scanning. The `if: always()` ensures results are uploaded even if Gavel exits with a non-zero status (which happens on a `reject` verdict). The `security-events: write` permission declared at the top of the workflow is required for this step.
+5. **Upload SARIF** -- sends the SARIF file to GitHub Code Scanning. The `if: always()` ensures results are uploaded even if an earlier step fails (e.g., a network error during analysis). The `category: gavel` prevents collisions if you also use CodeQL or other SARIF-producing tools. The `security-events: write` permission declared at the top of the workflow is required for this step.
 
 > **Using Anthropic instead of OpenRouter?** Change the env var in the "Run Gavel analysis" step to `ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}` and update your `.gavel/policies.yaml` accordingly.
 
@@ -132,7 +132,10 @@ jobs:
 // main.go
 package main
 
-import "os/exec"
+import (
+    "os"
+    "os/exec"
+)
 
 func main() {
     cmd := exec.Command("sh", "-c", os.Args[1]) // unsanitized input
@@ -187,7 +190,7 @@ Available personas: `code-reviewer` (default), `architect`, `security`.
 
 ### Add custom rules
 
-Place custom rule YAML files in `.gavel/rules/` in your repository. Gavel ships with 15 built-in rules (CWE, OWASP, SonarQube) and merges your custom rules on top. See the [custom rules section of the README](../../README.md#custom-rules) for the rule format.
+Place custom rule YAML files in `.gavel/rules/` in your repository. Gavel ships with 19 built-in rules (CWE, OWASP, SonarQube) and merges your custom rules on top. See the [custom rules section of the README](../../README.md#custom-rules) for the rule format.
 
 ### Adjust the gate threshold
 
