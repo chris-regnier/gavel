@@ -72,6 +72,7 @@ EOF
 
 ## Guides
 
+- **[Try Gavel on Open Source Code](docs/guides/try-on-open-source.md)** — Run Gavel on real repositories in Go, Python, and TypeScript
 - **[Gate PRs with AI Code Review](docs/guides/ci-pr-gating.md)** — Set up GitHub Actions to automatically analyze every PR
 - **[See Findings in Your Editor](docs/guides/editor-integration.md)** — View Gavel findings inline in VS Code or Neovim
 
