@@ -24,6 +24,15 @@ func SystemDefaults() *Config {
 			},
 		},
 		Persona: "code-reviewer",
+		RemoteCache: RemoteCacheConfig{
+			Enabled: false,
+			Strategy: CacheStrategy{
+				WriteToRemote:        true,
+				ReadFromRemote:       true,
+				PreferLocal:          true,
+				WarmLocalOnRemoteHit: true,
+			},
+		},
 		LSP: LSPConfig{
 			Watcher: WatcherConfig{
 				DebounceDuration: "5m",

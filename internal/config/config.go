@@ -30,10 +30,34 @@ type Policy struct {
 
 // Config holds the full gavel configuration.
 type Config struct {
-	Provider ProviderConfig    `yaml:"provider"`
-	Persona  string            `yaml:"persona"` // AI expert role
-	Policies map[string]Policy `yaml:"policies"`
-	LSP      LSPConfig         `yaml:"lsp"`
+	Provider    ProviderConfig      `yaml:"provider"`
+	Persona     string              `yaml:"persona"` // AI expert role
+	Policies    map[string]Policy   `yaml:"policies"`
+	LSP         LSPConfig           `yaml:"lsp"`
+	RemoteCache RemoteCacheConfig   `yaml:"remote_cache"`
+}
+
+// RemoteCacheConfig holds remote cache server settings
+type RemoteCacheConfig struct {
+	Enabled  bool               `yaml:"enabled"`
+	URL      string             `yaml:"url"`
+	Auth     RemoteCacheAuth    `yaml:"auth"`
+	Strategy CacheStrategy      `yaml:"strategy"`
+}
+
+// RemoteCacheAuth holds authentication settings for the remote cache
+type RemoteCacheAuth struct {
+	Type      string `yaml:"type"`       // "bearer", "api_key", or empty for none
+	Token     string `yaml:"token"`      // Direct token value
+	TokenFile string `yaml:"token_file"` // Path to file containing token
+}
+
+// CacheStrategy controls how local and remote caches interact
+type CacheStrategy struct {
+	WriteToRemote        bool `yaml:"write_to_remote"`
+	ReadFromRemote       bool `yaml:"read_from_remote"`
+	PreferLocal          bool `yaml:"prefer_local"`
+	WarmLocalOnRemoteHit bool `yaml:"warm_local_on_remote_hit"`
 }
 
 // ProviderConfig specifies which LLM provider to use
@@ -227,6 +251,27 @@ func MergeConfigs(configs ...*Config) *Config {
 			result.LSP.Cache.MaxSizeMB = cfg.LSP.Cache.MaxSizeMB
 		}
 
+		// Merge remote cache config
+		if cfg.RemoteCache.Enabled {
+			result.RemoteCache.Enabled = true
+		}
+		if cfg.RemoteCache.URL != "" {
+			result.RemoteCache.URL = cfg.RemoteCache.URL
+		}
+		if cfg.RemoteCache.Auth.Type != "" {
+			result.RemoteCache.Auth.Type = cfg.RemoteCache.Auth.Type
+		}
+		if cfg.RemoteCache.Auth.Token != "" {
+			result.RemoteCache.Auth.Token = cfg.RemoteCache.Auth.Token
+		}
+		if cfg.RemoteCache.Auth.TokenFile != "" {
+			result.RemoteCache.Auth.TokenFile = cfg.RemoteCache.Auth.TokenFile
+		}
+		// Strategy booleans - only override if the whole RemoteCache section is present
+		if cfg.RemoteCache.URL != "" || cfg.RemoteCache.Enabled {
+			result.RemoteCache.Strategy = cfg.RemoteCache.Strategy
+		}
+
 		// Merge policies (existing logic)
 		for name, policy := range cfg.Policies {
 			existing, ok := result.Policies[name]
@@ -298,4 +343,40 @@ func LoadTiered(machinePath, projectPath string) (*Config, error) {
 	}
 
 	return MergeConfigs(system, machine, project), nil
+}
+
+// GetRemoteCacheToken returns the authentication token for the remote cache.
+// It checks the Token field first, then reads from TokenFile if specified.
+func (c *RemoteCacheConfig) GetRemoteCacheToken() (string, error) {
+	if c.Auth.Token != "" {
+		return c.Auth.Token, nil
+	}
+	if c.Auth.TokenFile != "" {
+		// Expand ~ to home directory
+		tokenFile := c.Auth.TokenFile
+		if len(tokenFile) > 0 && tokenFile[0] == '~' {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return "", fmt.Errorf("expanding home directory: %w", err)
+			}
+			tokenFile = home + tokenFile[1:]
+		}
+
+		data, err := os.ReadFile(tokenFile)
+		if err != nil {
+			return "", fmt.Errorf("reading token file %s: %w", tokenFile, err)
+		}
+		// Trim whitespace from token
+		return string(data[:len(data)-countTrailingNewlines(data)]), nil
+	}
+	return "", nil
+}
+
+// countTrailingNewlines counts trailing newline characters
+func countTrailingNewlines(data []byte) int {
+	count := 0
+	for i := len(data) - 1; i >= 0 && (data[i] == '\n' || data[i] == '\r'); i-- {
+		count++
+	}
+	return count
 }
