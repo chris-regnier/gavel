@@ -35,16 +35,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           ASSET_NAME="gavel_Linux_x86_64"
-          DOWNLOAD_URL=$(gh release view --repo "${{ github.repository }}" --json assets \
-            --jq ".assets[] | select(.name | startswith(\"${ASSET_NAME}\")) | .url")
 
-          if [ -z "$DOWNLOAD_URL" ]; then
+          gh release download --repo "${{ github.repository }}" --pattern "${ASSET_NAME}.tar.gz" --dir /tmp || true
+          if [ ! -f "/tmp/${ASSET_NAME}.tar.gz" ]; then
             echo "::warning::No released Gavel binary found. Skipping gate."
             echo "SKIP_ANALYSIS=true" >> "$GITHUB_ENV"
             exit 0
           fi
 
-          gh release download --repo "${{ github.repository }}" --pattern "${ASSET_NAME}.tar.gz" --dir /tmp
           tar -xzf "/tmp/${ASSET_NAME}.tar.gz" -C /tmp
           chmod +x "/tmp/${ASSET_NAME}"
           mv "/tmp/${ASSET_NAME}" /tmp/gavel-released
