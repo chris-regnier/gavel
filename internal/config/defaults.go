@@ -24,6 +24,14 @@ func SystemDefaults() *Config {
 			},
 		},
 		Persona: "code-reviewer",
+		Telemetry: TelemetryConfig{
+			Enabled:     false,
+			Endpoint:    "localhost:4317",
+			Protocol:    "grpc",
+			Insecure:    true,
+			ServiceName: "gavel",
+			SampleRate:  1.0,
+		},
 		RemoteCache: RemoteCacheConfig{
 			Enabled: false,
 			Strategy: CacheStrategy{

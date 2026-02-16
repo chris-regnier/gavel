@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"time"
 
@@ -21,7 +22,15 @@ import (
 	"github.com/chris-regnier/gavel/internal/rules"
 	"github.com/chris-regnier/gavel/internal/sarif"
 	"github.com/chris-regnier/gavel/internal/store"
+	"github.com/chris-regnier/gavel/internal/telemetry"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
+
+var analyzeTracer = otel.Tracer("github.com/chris-regnier/gavel/cmd/gavel")
 
 var (
 	flagFiles       []string
@@ -54,7 +63,8 @@ func init() {
 }
 
 func runAnalyze(cmd *cobra.Command, args []string) error {
-	ctx := context.Background()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
 
 	// Load configuration
 	machineConfig := os.ExpandEnv("$HOME/.config/gavel/policies.yaml")
@@ -63,6 +73,19 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
+
+	// Initialize telemetry (noop if disabled)
+	shutdownTelemetry, err := telemetry.Init(ctx, cfg.Telemetry)
+	if err != nil {
+		return fmt.Errorf("initializing telemetry: %w", err)
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := shutdownTelemetry(shutdownCtx); err != nil {
+			log.Printf("Warning: telemetry shutdown error: %v", err)
+		}
+	}()
 
 	// Override persona from CLI flag if provided
 	if personaFlag, _ := cmd.Flags().GetString("persona"); personaFlag != "" {
@@ -127,11 +150,24 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("reading input: %w", err)
 	}
 
+	// Root span for the analysis pipeline
+	ctx, span := analyzeTracer.Start(ctx, "analyze code",
+		trace.WithAttributes(
+			attribute.String("gavel.input_scope", inputScope),
+			attribute.Int("gavel.artifact_count", len(artifacts)),
+			attribute.String("gavel.persona", cfg.Persona),
+			attribute.String("gavel.provider", cfg.Provider.Name),
+		),
+	)
+	defer span.End()
+
 	// Analyze with tiered analyzer (instant pattern matching + LLM)
 	client := analyzer.NewBAMLLiveClient(cfg.Provider)
 	ta := analyzer.NewTieredAnalyzer(client, analyzer.WithInstantPatterns(loadedRules))
 	results, err := ta.Analyze(ctx, artifacts, cfg.Policies, personaPrompt)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("analyzing: %w", err)
 	}
 
@@ -153,21 +189,29 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 	fs := store.NewFileStore(flagOutput)
 	id, err := fs.WriteSARIF(ctx, sarifLog)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("storing SARIF: %w", err)
 	}
 
 	// Evaluate with Rego
-	eval, err := evaluator.NewEvaluator(flagRegoDir)
+	eval, err := evaluator.NewEvaluator(ctx, flagRegoDir)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("creating evaluator: %w", err)
 	}
 
 	verdict, err := eval.Evaluate(ctx, sarifLog)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("evaluating: %w", err)
 	}
 
 	if err := fs.WriteVerdict(ctx, id, verdict); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("storing verdict: %w", err)
 	}
 
