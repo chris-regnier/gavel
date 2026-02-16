@@ -82,17 +82,26 @@ func runLSP(cmd *cobra.Command, args []string) error {
 	// Create analyzer wrapper with cache
 	wrapper := lsp.NewAnalyzerWrapper(client, cfg)
 
-	// Initialize cache if cache directory is set
+	// Initialize cache manager
+	var cacheManager cache.CacheManager
 	if lspCacheDir != "" {
-		cacheManager := cache.NewLocalCache(lspCacheDir)
+		cacheManager = cache.NewLocalCache(lspCacheDir)
 		wrapper = wrapper.WithCache(cacheManager)
 	}
 
-	// Create LSP server
+	// Build server configuration from LSP config
+	serverConfig := lsp.ServerConfigFromLSPConfig(cfg.LSP)
+
+	// Create LSP server with configuration
 	reader := bufio.NewReader(os.Stdin)
 	writer := bufio.NewWriter(os.Stdout)
 
-	server := lsp.NewServer(reader, writer, wrapper.Analyze)
+	server := lsp.NewServerWithConfig(reader, writer, wrapper.Analyze, serverConfig)
+
+	// Set cache manager on server for commands
+	if cacheManager != nil {
+		server.SetCacheManager(cacheManager)
+	}
 
 	// Run server
 	if err := server.Run(ctx); err != nil {
