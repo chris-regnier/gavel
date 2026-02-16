@@ -10,38 +10,129 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/chris-regnier/gavel/internal/cache"
+	"github.com/chris-regnier/gavel/internal/config"
 	"github.com/chris-regnier/gavel/internal/sarif"
 )
 
 // AnalyzeFunc is the function signature for analyzing a file
 type AnalyzeFunc func(ctx context.Context, path, content string) ([]sarif.Result, error)
 
-// Server implements an LSP server
-type Server struct {
-	reader    *bufio.Reader
-	writer    *bufio.Writer
-	analyze   AnalyzeFunc
-	cache     cache.CacheManager
-	documents map[string]string // URI -> content
-	watcher   *DebouncedWatcher
+// resultsCacheEntry holds cached SARIF results for a document
+type resultsCacheEntry struct {
+	results     []sarif.Result
+	diagnostics []Diagnostic
 }
 
-// NewServer creates a new LSP server
-func NewServer(reader *bufio.Reader, writer *bufio.Writer, analyze AnalyzeFunc) *Server {
-	s := &Server{
-		reader:    reader,
-		writer:    writer,
-		analyze:   analyze,
-		documents: make(map[string]string),
+// ServerConfig holds configuration for the LSP server
+type ServerConfig struct {
+	DebounceDuration time.Duration
+	ParallelFiles    int
+	WatchPatterns    []string
+	IgnorePatterns   []string
+}
+
+// DefaultServerConfig returns sensible defaults
+func DefaultServerConfig() ServerConfig {
+	return ServerConfig{
+		DebounceDuration: 300 * time.Millisecond,
+		ParallelFiles:    3,
+		WatchPatterns: []string{
+			"**/*.go", "**/*.py", "**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx",
+		},
+		IgnorePatterns: []string{
+			"**/node_modules/**", "**/.git/**", "**/vendor/**", "**/.gavel/**",
+		},
+	}
+}
+
+// ServerConfigFromLSPConfig converts config.LSPConfig to ServerConfig
+func ServerConfigFromLSPConfig(lspCfg config.LSPConfig) ServerConfig {
+	cfg := DefaultServerConfig()
+
+	if lspCfg.Watcher.DebounceDuration != "" {
+		if d, err := ParseDuration(lspCfg.Watcher.DebounceDuration); err == nil {
+			cfg.DebounceDuration = d
+		}
+	}
+	if lspCfg.Analysis.ParallelFiles > 0 {
+		cfg.ParallelFiles = lspCfg.Analysis.ParallelFiles
+	}
+	if len(lspCfg.Watcher.WatchPatterns) > 0 {
+		cfg.WatchPatterns = lspCfg.Watcher.WatchPatterns
+	}
+	if len(lspCfg.Watcher.IgnorePatterns) > 0 {
+		cfg.IgnorePatterns = lspCfg.Watcher.IgnorePatterns
 	}
 
-	// Initialize debounced watcher for batch analysis
-	s.watcher = NewDebouncedWatcher(300*time.Millisecond, func(files []string) {
+	return cfg
+}
+
+// Server implements an LSP server
+type Server struct {
+	reader  *bufio.Reader
+	writer  *bufio.Writer
+	analyze AnalyzeFunc
+
+	// Document tracking
+	documents map[string]string // URI -> content
+	docMu     sync.RWMutex
+
+	// Results cache for code actions
+	resultsCache map[string]resultsCacheEntry
+	resultsMu    sync.RWMutex
+
+	// Components
+	watcher      *DebouncedWatcher
+	cacheManager cache.CacheManager
+	progress     *ProgressReporter
+	commands     *CommandHandler
+	config       ServerConfig
+
+	// State
+	rootURI     string
+	initialized bool
+}
+
+// NewServer creates a new LSP server with default configuration
+func NewServer(reader *bufio.Reader, writer *bufio.Writer, analyze AnalyzeFunc) *Server {
+	return NewServerWithConfig(reader, writer, analyze, DefaultServerConfig())
+}
+
+// NewServerWithConfig creates a new LSP server with custom configuration
+func NewServerWithConfig(reader *bufio.Reader, writer *bufio.Writer, analyze AnalyzeFunc, cfg ServerConfig) *Server {
+	s := &Server{
+		reader:       reader,
+		writer:       writer,
+		analyze:      analyze,
+		documents:    make(map[string]string),
+		resultsCache: make(map[string]resultsCacheEntry),
+		config:       cfg,
+	}
+
+	// Initialize progress reporter
+	s.progress = NewProgressReporter(s.sendMessage)
+
+	// Initialize command handler
+	s.commands = NewCommandHandler(s)
+
+	// Initialize debounced watcher with configuration
+	watcherConfig := WatcherConfig{
+		DebounceDuration: cfg.DebounceDuration,
+		ParallelFiles:    cfg.ParallelFiles,
+		WatchPatterns:    cfg.WatchPatterns,
+		IgnorePatterns:   cfg.IgnorePatterns,
+	}
+	s.watcher = NewDebouncedWatcherWithConfig(watcherConfig, func(files []string) {
 		for _, uri := range files {
-			if content, ok := s.documents[uri]; ok {
+			s.docMu.RLock()
+			content, ok := s.documents[uri]
+			s.docMu.RUnlock()
+
+			if ok {
 				path := uriToPath(uri)
 				s.analyzeAndPublish(context.Background(), uri, path, content)
 			}
@@ -49,6 +140,11 @@ func NewServer(reader *bufio.Reader, writer *bufio.Writer, analyze AnalyzeFunc) 
 	})
 
 	return s
+}
+
+// SetCacheManager sets the cache manager for the server
+func (s *Server) SetCacheManager(c cache.CacheManager) {
+	s.cacheManager = c
 }
 
 // jsonRPCMessage represents a JSON-RPC 2.0 message
@@ -119,7 +215,7 @@ func (s *Server) handleMessage(ctx context.Context) error {
 	case MethodInitialize:
 		return s.handleInitialize(msg.ID, msg.Params)
 	case MethodInitialized:
-		// No response needed for notification
+		s.initialized = true
 		return nil
 	case MethodTextDocumentDidOpen:
 		return s.handleDidOpen(ctx, msg.Params)
@@ -127,6 +223,12 @@ func (s *Server) handleMessage(ctx context.Context) error {
 		return s.handleDidSave(ctx, msg.Params)
 	case MethodTextDocumentDidClose:
 		return s.handleDidClose(msg.Params)
+	case MethodTextDocumentCodeAction:
+		return s.handleCodeAction(ctx, msg.ID, msg.Params)
+	case MethodWorkspaceExecuteCommand:
+		return s.handleExecuteCommand(ctx, msg.ID, msg.Params)
+	case MethodWorkspaceDidChangeConfig:
+		return s.handleDidChangeConfiguration(msg.Params)
 	case MethodShutdown:
 		return s.handleShutdown(msg.ID)
 	case MethodExit:
@@ -144,6 +246,8 @@ func (s *Server) handleInitialize(id interface{}, params json.RawMessage) error 
 		return err
 	}
 
+	s.rootURI = initParams.RootURI
+
 	result := InitializeResult{
 		Capabilities: ServerCapabilities{
 			TextDocumentSync: &TextDocumentSyncOptions{
@@ -151,10 +255,18 @@ func (s *Server) handleInitialize(id interface{}, params json.RawMessage) error 
 				Change:    1, // Full sync
 				Save:      true,
 			},
+			CodeActionProvider: true,
+			ExecuteCommandProvider: &ExecuteCommandOptions{
+				Commands: []string{
+					CommandAnalyzeFile,
+					CommandAnalyzeWorkspace,
+					CommandClearCache,
+				},
+			},
 		},
 		ServerInfo: &ServerInfo{
 			Name:    "gavel-lsp",
-			Version: "0.1.0",
+			Version: "0.2.0",
 		},
 	}
 
@@ -171,8 +283,15 @@ func (s *Server) handleDidOpen(ctx context.Context, params json.RawMessage) erro
 	uri := didOpenParams.TextDocument.URI
 	content := didOpenParams.TextDocument.Text
 
+	// Check if we should watch this file
+	if !s.shouldAnalyze(uri) {
+		return nil
+	}
+
 	// Store document content
+	s.docMu.Lock()
 	s.documents[uri] = content
+	s.docMu.Unlock()
 
 	// Trigger analysis via watcher (debounced)
 	s.watcher.FileChanged(uri)
@@ -189,9 +308,16 @@ func (s *Server) handleDidSave(ctx context.Context, params json.RawMessage) erro
 
 	uri := didSaveParams.TextDocument.URI
 
+	// Check if we should watch this file
+	if !s.shouldAnalyze(uri) {
+		return nil
+	}
+
 	// If text is provided in the save notification, update it
 	if didSaveParams.Text != nil {
+		s.docMu.Lock()
 		s.documents[uri] = *didSaveParams.Text
+		s.docMu.Unlock()
 	}
 
 	// Trigger analysis via watcher (debounced)
@@ -207,8 +333,17 @@ func (s *Server) handleDidClose(params json.RawMessage) error {
 		return err
 	}
 
+	uri := didCloseParams.TextDocument.URI
+
 	// Remove document from tracking
-	delete(s.documents, didCloseParams.TextDocument.URI)
+	s.docMu.Lock()
+	delete(s.documents, uri)
+	s.docMu.Unlock()
+
+	// Remove from results cache
+	s.resultsMu.Lock()
+	delete(s.resultsCache, uri)
+	s.resultsMu.Unlock()
 
 	return nil
 }
@@ -220,6 +355,109 @@ func (s *Server) handleShutdown(id interface{}) error {
 		s.watcher.Stop()
 	}
 	return s.sendResponse(id, nil, nil)
+}
+
+// handleCodeAction processes textDocument/codeAction requests
+func (s *Server) handleCodeAction(ctx context.Context, id interface{}, params json.RawMessage) error {
+	var caParams CodeActionParams
+	if err := json.Unmarshal(params, &caParams); err != nil {
+		return s.sendResponse(id, nil, map[string]interface{}{
+			"code":    -32602,
+			"message": fmt.Sprintf("invalid params: %v", err),
+		})
+	}
+
+	uri := caParams.TextDocument.URI
+
+	// Get cached results for this document
+	s.resultsMu.RLock()
+	entry, ok := s.resultsCache[uri]
+	s.resultsMu.RUnlock()
+
+	if !ok {
+		// No results cached - return empty actions
+		return s.sendResponse(id, []CodeAction{}, nil)
+	}
+
+	// Filter diagnostics that overlap with the requested range
+	relevantDiags := FilterDiagnosticsForRange(entry.diagnostics, caParams.Range)
+	if len(relevantDiags) == 0 {
+		return s.sendResponse(id, []CodeAction{}, nil)
+	}
+
+	// Generate code actions for relevant diagnostics
+	actions := GetCodeActions(uri, relevantDiags, entry.results)
+
+	return s.sendResponse(id, actions, nil)
+}
+
+// handleExecuteCommand processes workspace/executeCommand requests
+func (s *Server) handleExecuteCommand(ctx context.Context, id interface{}, params json.RawMessage) error {
+	var execParams ExecuteCommandParams
+	if err := json.Unmarshal(params, &execParams); err != nil {
+		return s.sendResponse(id, nil, map[string]interface{}{
+			"code":    -32602,
+			"message": fmt.Sprintf("invalid params: %v", err),
+		})
+	}
+
+	result, err := s.commands.Execute(ctx, execParams)
+	if err != nil {
+		return s.sendResponse(id, nil, map[string]interface{}{
+			"code":    -32603,
+			"message": err.Error(),
+		})
+	}
+
+	return s.sendResponse(id, result, nil)
+}
+
+// handleDidChangeConfiguration processes workspace/didChangeConfiguration notifications
+func (s *Server) handleDidChangeConfiguration(params json.RawMessage) error {
+	var configParams DidChangeConfigurationParams
+	if err := json.Unmarshal(params, &configParams); err != nil {
+		return err
+	}
+
+	// Try to extract gavel settings from the configuration
+	settingsJSON, err := json.Marshal(configParams.Settings)
+	if err != nil {
+		return nil // Ignore invalid settings
+	}
+
+	// Try to unmarshal as a map with "gavel" key
+	var settingsMap map[string]json.RawMessage
+	if err := json.Unmarshal(settingsJSON, &settingsMap); err == nil {
+		if gavelSettings, ok := settingsMap["gavel"]; ok {
+			settingsJSON = gavelSettings
+		}
+	}
+
+	var settings GavelSettings
+	if err := json.Unmarshal(settingsJSON, &settings); err != nil {
+		return nil // Ignore invalid settings
+	}
+
+	// Apply settings to watcher
+	newConfig := WatcherConfig{}
+	if settings.DebounceDuration != "" {
+		if d, err := ParseDuration(settings.DebounceDuration); err == nil {
+			newConfig.DebounceDuration = d
+		}
+	}
+	if settings.ParallelFiles > 0 {
+		newConfig.ParallelFiles = settings.ParallelFiles
+	}
+	if len(settings.WatchPatterns) > 0 {
+		newConfig.WatchPatterns = settings.WatchPatterns
+	}
+	if len(settings.IgnorePatterns) > 0 {
+		newConfig.IgnorePatterns = settings.IgnorePatterns
+	}
+
+	s.watcher.UpdateConfig(newConfig)
+
+	return nil
 }
 
 // analyzeAndPublish runs analysis on a file and publishes diagnostics
@@ -234,10 +472,23 @@ func (s *Server) analyzeAndPublish(ctx context.Context, uri, path, content strin
 	// Convert to diagnostics
 	diagnostics := SarifResultsToDiagnostics(results)
 
+	// Cache results for code actions
+	s.resultsMu.Lock()
+	s.resultsCache[uri] = resultsCacheEntry{
+		results:     results,
+		diagnostics: diagnostics,
+	}
+	s.resultsMu.Unlock()
+
 	// Publish diagnostics
 	if err := s.publishDiagnostics(uri, diagnostics); err != nil {
 		log.Printf("Failed to publish diagnostics for %s: %v", uri, err)
 	}
+}
+
+// shouldAnalyze checks if a file should be analyzed based on watch/ignore patterns
+func (s *Server) shouldAnalyze(uri string) bool {
+	return ShouldWatchPath(uri, s.config.WatchPatterns, s.config.IgnorePatterns)
 }
 
 // publishDiagnostics sends a textDocument/publishDiagnostics notification
