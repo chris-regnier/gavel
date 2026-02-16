@@ -7,6 +7,7 @@ on:
 permissions:
   contents: read
   pull-requests: read
+  security-events: write
 
 jobs:
   # Always runs: analyze PR diff with the latest released Gavel binary
@@ -80,6 +81,13 @@ jobs:
           fi
 
           echo "✅ Gavel decision: ${DECISION}"
+
+      - name: Upload SARIF to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@v4
+        if: always() && env.SKIP_ANALYSIS != 'true'
+        with:
+          sarif_file: /tmp/gavel-results/
+          category: gavel
 
   # Only runs when PR title contains /benchmark
   benchmark:
