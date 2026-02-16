@@ -1,0 +1,190 @@
+name: Gavel Analysis
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  # Always runs: analyze PR diff with the latest released Gavel binary
+  gate:
+    name: Merge Gate (released Gavel)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get PR diff
+        run: |
+          git diff origin/${{ github.base_ref }}...HEAD > /tmp/pr.diff
+          echo "--- Diff stats ---"
+          wc -l /tmp/pr.diff
+          if [ ! -s /tmp/pr.diff ]; then
+            echo "Empty diff, skipping analysis"
+            echo "SKIP_ANALYSIS=true" >> "$GITHUB_ENV"
+          fi
+
+      - name: Download latest Gavel release
+        if: env.SKIP_ANALYSIS != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ASSET_NAME="gavel_Linux_x86_64"
+          DOWNLOAD_URL=$(gh release view --repo "${{ github.repository }}" --json assets \
+            --jq ".assets[] | select(.name | startswith(\"${ASSET_NAME}\")) | .url")
+
+          if [ -z "$DOWNLOAD_URL" ]; then
+            echo "::warning::No released Gavel binary found. Skipping gate."
+            echo "SKIP_ANALYSIS=true" >> "$GITHUB_ENV"
+            exit 0
+          fi
+
+          gh release download --repo "${{ github.repository }}" --pattern "${ASSET_NAME}.tar.gz" --dir /tmp
+          tar -xzf "/tmp/${ASSET_NAME}.tar.gz" -C /tmp
+          chmod +x "/tmp/${ASSET_NAME}"
+          mv "/tmp/${ASSET_NAME}" /tmp/gavel-released
+          /tmp/gavel-released version
+
+      - name: Run Gavel analysis
+        if: env.SKIP_ANALYSIS != 'true'
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          /tmp/gavel-released analyze \
+            --diff /tmp/pr.diff \
+            --policies .github \
+            --output /tmp/gavel-results \
+            | tee /tmp/verdict.json
+
+      - name: Evaluate verdict
+        if: env.SKIP_ANALYSIS != 'true'
+        run: |
+          DECISION=$(jq -r '.decision' /tmp/verdict.json)
+          REASON=$(jq -r '.reason // "No reason provided"' /tmp/verdict.json)
+
+          echo "## Gavel Verdict" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Decision:** \`${DECISION}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Reason:** ${REASON}" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$DECISION" = "reject" ]; then
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "### Relevant Findings" >> "$GITHUB_STEP_SUMMARY"
+            jq -r '.relevant_findings[]? | "- **\(.ruleId // "unknown")** (\(.level // "note")): \(.message.text // "No message")"' \
+              /tmp/verdict.json >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+            echo "::error::Gavel rejected this PR: ${REASON}"
+            exit 1
+          fi
+
+          echo "✅ Gavel decision: ${DECISION}"
+
+  # Only runs when PR title contains /benchmark
+  benchmark:
+    name: Benchmark (built-from-source Gavel)
+    runs-on: ubuntu-latest
+    if: contains(github.event.pull_request.title, '/benchmark')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache: true
+
+      - name: Install BAML CLI
+        run: go install github.com/boundaryml/baml/baml-cli@latest
+
+      - name: Install goimports
+        run: go install golang.org/x/tools/cmd/goimports@latest
+
+      - name: Install Task
+        uses: go-task/setup-task@v1
+
+      - name: Build Gavel from source
+        run: |
+          task build
+          cp dist/gavel /tmp/gavel-dev
+          /tmp/gavel-dev version
+
+      - name: Get PR diff
+        run: |
+          git diff origin/${{ github.base_ref }}...HEAD > /tmp/pr.diff
+          echo "--- Diff stats ---"
+          wc -l /tmp/pr.diff
+
+      - name: Download latest Gavel release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ASSET_NAME="gavel_Linux_x86_64"
+          gh release download --repo "${{ github.repository }}" --pattern "${ASSET_NAME}.tar.gz" --dir /tmp || true
+          if [ -f "/tmp/${ASSET_NAME}.tar.gz" ]; then
+            tar -xzf "/tmp/${ASSET_NAME}.tar.gz" -C /tmp
+            chmod +x "/tmp/${ASSET_NAME}"
+            mv "/tmp/${ASSET_NAME}" /tmp/gavel-released
+            echo "HAS_RELEASED=true" >> "$GITHUB_ENV"
+          else
+            echo "::warning::No released binary found, running dev build only."
+            echo "HAS_RELEASED=false" >> "$GITHUB_ENV"
+          fi
+
+      - name: Run released Gavel
+        if: env.HAS_RELEASED == 'true'
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          echo "### Released Gavel" >> "$GITHUB_STEP_SUMMARY"
+          /tmp/gavel-released version >> "$GITHUB_STEP_SUMMARY"
+          echo '```json' >> "$GITHUB_STEP_SUMMARY"
+          /tmp/gavel-released analyze \
+            --diff /tmp/pr.diff \
+            --policies .github \
+            --output /tmp/gavel-results-released \
+            | tee /tmp/verdict-released.json
+          cat /tmp/verdict-released.json >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Run dev Gavel
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          echo "### Dev Gavel (this PR)" >> "$GITHUB_STEP_SUMMARY"
+          /tmp/gavel-dev version >> "$GITHUB_STEP_SUMMARY"
+          echo '```json' >> "$GITHUB_STEP_SUMMARY"
+          /tmp/gavel-dev analyze \
+            --diff /tmp/pr.diff \
+            --policies .github \
+            --output /tmp/gavel-results-dev \
+            | tee /tmp/verdict-dev.json
+          cat /tmp/verdict-dev.json >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Compare results
+        run: |
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Comparison" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          DEV_DECISION=$(jq -r '.decision' /tmp/verdict-dev.json)
+          echo "| Version | Decision | Findings |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---------|----------|----------|" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ -f /tmp/verdict-released.json ]; then
+            REL_DECISION=$(jq -r '.decision' /tmp/verdict-released.json)
+            REL_FINDINGS=$(jq '.relevant_findings | length' /tmp/verdict-released.json 2>/dev/null || echo 0)
+            echo "| Released | ${REL_DECISION} | ${REL_FINDINGS} |" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "| Released | _(no release)_ | — |" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          DEV_FINDINGS=$(jq '.relevant_findings | length' /tmp/verdict-dev.json 2>/dev/null || echo 0)
+          echo "| Dev (this PR) | ${DEV_DECISION} | ${DEV_FINDINGS} |" >> "$GITHUB_STEP_SUMMARY"
