@@ -2,14 +2,19 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/chris-regnier/gavel/internal/analyzer"
+	"github.com/chris-regnier/gavel/internal/cache"
 	"github.com/chris-regnier/gavel/internal/config"
 	"github.com/chris-regnier/gavel/internal/evaluator"
 	"github.com/chris-regnier/gavel/internal/input"
@@ -19,13 +24,14 @@ import (
 )
 
 var (
-	flagFiles     []string
-	flagDiff      string
-	flagDir       string
-	flagOutput    string
-	flagPolicyDir string
-	flagRegoDir   string
-	flagRulesDir  string
+	flagFiles       []string
+	flagDiff        string
+	flagDir         string
+	flagOutput      string
+	flagPolicyDir   string
+	flagRegoDir     string
+	flagRulesDir    string
+	flagCacheServer string
 )
 
 func init() {
@@ -42,6 +48,7 @@ func init() {
 	analyzeCmd.Flags().StringVar(&flagPolicyDir, "policies", ".gavel", "Directory containing policies.yaml")
 	analyzeCmd.Flags().StringVar(&flagRegoDir, "rego", ".gavel/rego", "Directory containing Rego policies")
 	analyzeCmd.Flags().StringVar(&flagRulesDir, "rules-dir", "", "Directory containing custom rule YAML files")
+	analyzeCmd.Flags().StringVar(&flagCacheServer, "cache-server", "", "Remote cache server URL to upload results (e.g., https://gavel.company.com)")
 
 	rootCmd.AddCommand(analyzeCmd)
 }
@@ -164,9 +171,104 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("storing verdict: %w", err)
 	}
 
+	// Upload results to remote cache if configured
+	remoteCacheURL := flagCacheServer
+	if remoteCacheURL == "" && cfg.RemoteCache.Enabled && cfg.RemoteCache.Strategy.WriteToRemote {
+		remoteCacheURL = cfg.RemoteCache.URL
+	}
+
+	if remoteCacheURL != "" {
+		if err := uploadResultsToCache(ctx, cfg, remoteCacheURL, artifacts, results); err != nil {
+			// Log but don't fail - local storage succeeded
+			log.Printf("Warning: failed to upload results to remote cache: %v", err)
+		}
+	}
+
 	// Output verdict
 	out, _ := json.MarshalIndent(verdict, "", "  ")
 	fmt.Println(string(out))
 
 	return nil
+}
+
+// uploadResultsToCache uploads analysis results to the remote cache server
+func uploadResultsToCache(ctx context.Context, cfg *config.Config, cacheURL string, artifacts []input.Artifact, results []sarif.Result) error {
+	// Get auth token
+	var opts []cache.RemoteCacheOption
+	token, err := cfg.RemoteCache.GetRemoteCacheToken()
+	if err != nil {
+		return fmt.Errorf("getting cache token: %w", err)
+	}
+	if token != "" {
+		opts = append(opts, cache.WithToken(token))
+	}
+
+	remoteCache := cache.NewRemoteCache(cacheURL, opts...)
+
+	// Group results by file path
+	resultsByFile := make(map[string][]sarif.Result)
+	for _, r := range results {
+		if len(r.Locations) > 0 {
+			path := r.Locations[0].PhysicalLocation.ArtifactLocation.URI
+			resultsByFile[path] = append(resultsByFile[path], r)
+		}
+	}
+
+	// Build cache entries for each artifact
+	for _, artifact := range artifacts {
+		fileResults := resultsByFile[artifact.Path]
+
+		// Compute file hash
+		h := sha256.Sum256([]byte(artifact.Content))
+		fileHash := hex.EncodeToString(h[:])
+
+		// Build policy hashes
+		policies := make(map[string]string)
+		for name, p := range cfg.Policies {
+			if p.Enabled {
+				instrHash := sha256.Sum256([]byte(p.Instruction))
+				policies[name] = hex.EncodeToString(instrHash[:])
+			}
+		}
+
+		// Build cache key
+		cacheKey := cache.CacheKey{
+			FileHash:    fileHash,
+			FilePath:    artifact.Path,
+			Provider:    cfg.Provider.Name,
+			Model:       getModelFromConfig(cfg),
+			BAMLVersion: "1.0", // TODO: Get from BAML metadata
+			Policies:    policies,
+		}
+
+		entry := &cache.CacheEntry{
+			Key:       cacheKey,
+			Results:   fileResults,
+			Timestamp: time.Now().Unix(),
+		}
+
+		if err := remoteCache.Put(ctx, entry); err != nil {
+			return fmt.Errorf("uploading results for %s: %w", artifact.Path, err)
+		}
+	}
+
+	return nil
+}
+
+// getModelFromConfig extracts the model name from the provider config
+func getModelFromConfig(cfg *config.Config) string {
+	switch cfg.Provider.Name {
+	case "ollama":
+		return cfg.Provider.Ollama.Model
+	case "openrouter":
+		return cfg.Provider.OpenRouter.Model
+	case "anthropic":
+		return cfg.Provider.Anthropic.Model
+	case "bedrock":
+		return cfg.Provider.Bedrock.Model
+	case "openai":
+		return cfg.Provider.OpenAI.Model
+	default:
+		return "unknown"
+	}
 }
