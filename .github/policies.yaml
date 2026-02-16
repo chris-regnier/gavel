@@ -1,0 +1,9 @@
+provider:
+  name: openrouter
+  openrouter:
+    model: anthropic/claude-haiku-4-5
+
+policies:
+  shall-be-merged:
+    enabled: true
+    severity: error
