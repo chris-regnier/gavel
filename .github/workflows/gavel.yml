@@ -58,8 +58,21 @@ jobs:
           /tmp/gavel-released analyze \
             --diff /tmp/pr.diff \
             --policies .github \
-            --output /tmp/gavel-results \
-            | tee /tmp/verdict.json
+            --output /tmp/gavel-results
+
+      - name: Collect results
+        if: env.SKIP_ANALYSIS != 'true'
+        run: |
+          # Find the verdict and SARIF files from the timestamped result directory
+          RESULT_DIR=$(ls -td /tmp/gavel-results/*/ 2>/dev/null | head -1)
+          if [ -z "$RESULT_DIR" ]; then
+            echo "::error::No Gavel result directory found"
+            exit 1
+          fi
+          cp "$RESULT_DIR/verdict.json" /tmp/verdict.json
+          # Copy SARIF with .sarif extension for CodeQL upload action
+          mkdir -p /tmp/gavel-sarif
+          cp "$RESULT_DIR/sarif.json" /tmp/gavel-sarif/gavel.sarif
 
       - name: Evaluate verdict
         if: env.SKIP_ANALYSIS != 'true'
@@ -87,7 +100,7 @@ jobs:
         uses: github/codeql-action/upload-sarif@v4
         if: always() && env.SKIP_ANALYSIS != 'true'
         with:
-          sarif_file: /tmp/gavel-results/
+          sarif_file: /tmp/gavel-sarif/
           category: gavel
 
   # Only runs when PR title contains /benchmark
