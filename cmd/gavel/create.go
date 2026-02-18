@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -94,7 +95,7 @@ func runCreatePolicy(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("OPENROUTER_API_KEY environment variable required for AI generation")
 	}
 
-	fmt.Fprintln(os.Stderr, "Generating policy...")
+	slog.Info("generating policy")
 
 	policy, err := baml_client.GeneratePolicy(ctx, description)
 	if err != nil {
@@ -132,7 +133,7 @@ func runCreateRule(cmd *cobra.Command, args []string) error {
 		languages = ""
 	}
 
-	fmt.Fprintln(os.Stderr, "Generating rule...")
+	slog.Info("generating rule")
 
 	rule, err := baml_client.GenerateRule(ctx, description, flagCreateCategory, languages)
 	if err != nil {
@@ -188,7 +189,7 @@ func runCreatePersona(cmd *cobra.Command, args []string) error {
 	// Extract focus areas from description (simple heuristic)
 	focusAreas := extractFocusAreas(description)
 
-	fmt.Fprintln(os.Stderr, "Generating persona...")
+	slog.Info("generating persona")
 
 	persona, err := baml_client.GeneratePersona(ctx, description, focusAreas)
 	if err != nil {
@@ -219,7 +220,7 @@ func runCreateConfig(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("OPENROUTER_API_KEY environment variable required for AI generation")
 	}
 
-	fmt.Fprintln(os.Stderr, "Generating configuration...")
+	slog.Info("generating configuration")
 
 	genConfig, err := baml_client.GenerateConfig(ctx, requirements, flagCreateProvider)
 	if err != nil {
@@ -315,7 +316,7 @@ func writeOutput(content, outputPath string) error {
 		return fmt.Errorf("writing output: %w", err)
 	}
 
-	fmt.Fprintf(os.Stderr, "Created: %s\n", outputPath)
+	slog.Info("created output file", "path", outputPath)
 	return nil
 }
 
