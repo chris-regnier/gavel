@@ -18,6 +18,8 @@ go test -run TestIntegration -v
 
 # Run the tool
 OPENROUTER_API_KEY=... ./gavel analyze --dir ./internal/input
+./gavel judge                    # evaluate most recent analysis
+./gavel judge --result <id>      # evaluate specific analysis
 ```
 
 ## Architecture
@@ -26,9 +28,8 @@ Gavel is an AI-powered code analysis CLI that gates CI workflows (auto-merge, re
 
 **Pipeline:**
 ```
-Input Handler → BAML Analyzer → SARIF Assembler → Rego Evaluator → Verdict
-                                       ↓                ↓
-                                 FileStore ←─────────────┘
+analyze: Input Handler → BAML Analyzer → SARIF Assembler → FileStore (SARIF)
+judge:   FileStore (SARIF) → Rego Evaluator → FileStore (Verdict)
 ```
 
 **Data flow in `cmd/gavel/analyze.go`:**
@@ -38,7 +39,13 @@ Input Handler → BAML Analyzer → SARIF Assembler → Rego Evaluator → Verdi
 3. Format enabled policies into text, call BAML `AnalyzeCode` per artifact
 4. Convert findings to SARIF results with `gavel/` property extensions (recommendation, explanation, confidence)
 5. Deduplicate overlapping findings, assemble SARIF 2.1.0 log
-6. Store SARIF, evaluate with Rego, store verdict, output JSON
+6. Store SARIF, output analysis summary JSON (id, findings count, scope, persona)
+
+**Data flow in `cmd/gavel/judge.go`:**
+1. Load tiered config (for telemetry)
+2. Resolve result ID (provided via `--result` or most recent from store)
+3. Read SARIF from store
+4. Evaluate with Rego, store verdict, output JSON
 
 ## Key Design Decisions
 
