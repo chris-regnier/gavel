@@ -1,21 +1,26 @@
 # Gavel
 
-AI-powered code analysis CLI that gates CI workflows by analyzing code against configurable policies via an LLM, producing [SARIF](https://sarifweb.azurewebsites.net/) output, and evaluating it with [Rego](https://www.openpolicyagent.org/docs/latest/policy-language/) to reach a verdict: **merge**, **reject**, or **review**.
+AI-powered code analysis CLI that gates CI workflows by analyzing code against configurable policies via an LLM, producing [SARIF](https://sarifweb.azurewebsites.net/) output. A separate `judge` command evaluates SARIF with [Rego](https://www.openpolicyagent.org/docs/latest/policy-language/) to reach a verdict: **merge**, **reject**, or **review**.
 
 ## How It Works
 
 ```
-Source Code → BAML Analyzer → SARIF Assembler → Rego Evaluator → Verdict
-  (files,       (LLM finds      (standard         (policy-based      (merge,
-   diffs,        violations)      format +           gating)           reject,
-   dirs)                          extensions)                          review)
+analyze: Source Code → BAML Analyzer → SARIF Assembler → FileStore
+           (files,       (LLM finds      (standard          (SARIF
+            diffs,        violations)      format +           saved)
+            dirs)                          extensions)
+
+judge:   FileStore → Rego Evaluator → Verdict
+          (reads        (policy-based      (merge,
+           SARIF)        gating)            reject,
+                                            review)
 ```
 
 1. **Read** source artifacts — individual files, a unified diff, or a directory tree
 2. **Analyze** each artifact against enabled policies using an LLM (via [BAML](https://docs.boundaryml.com/))
 3. **Assemble** findings into a SARIF 2.1.0 log with gavel-specific extensions (confidence, explanation, recommendation)
-4. **Evaluate** the SARIF log against Rego policies to produce a gating decision
-5. **Store** both the SARIF log and verdict to `.gavel/results/`
+4. **Store** the SARIF log to `.gavel/results/`
+5. **Judge** (separate command) evaluates the SARIF log against Rego policies to produce a gating decision and verdict
 
 ## Installation
 
@@ -68,6 +73,9 @@ EOF
 
 # 3. Analyze your code
 ./gavel analyze --dir ./src
+
+# 4. Judge the results
+./gavel judge
 ```
 
 ## Guides
@@ -90,6 +98,12 @@ git diff main...HEAD | ./gavel analyze --diff -
 
 # Analyze a diff file
 ./gavel analyze --diff changes.patch
+
+# Judge the most recent analysis
+./gavel judge
+
+# Judge a specific analysis by ID
+./gavel judge --result 2026-02-18T15-30-31Z-e3980f
 ```
 
 ### Flags
@@ -102,14 +116,36 @@ git diff main...HEAD | ./gavel analyze --diff -
 | `--output` | Output directory for results | `.gavel/results` |
 | `--policies` | Policy config directory | `.gavel` |
 | `--rules-dir` | Custom rules directory (overrides `.gavel/rules/`) | `.gavel/rules` |
+
+### `judge` Flags
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--result` | Analysis result ID to evaluate | most recent |
+| `--output` | Directory containing analysis results | `.gavel/results` |
 | `--rego` | Rego policies directory | `.gavel/rego` |
+| `--policies` | Policy config directory | `.gavel` |
 
 ### Output
 
-Gavel writes two files per run to `.gavel/results/<id>/`:
+#### `analyze` output
 
-- **`sarif.json`** — Full SARIF 2.1.0 analysis results
-- **`verdict.json`** — Gating decision with reasoning
+`analyze` writes a SARIF file and prints a JSON summary to stdout:
+
+```json
+{
+  "id": "2026-02-18T15-30-31Z-e3980f",
+  "findings": 3,
+  "scope": "directory",
+  "persona": "code-reviewer"
+}
+```
+
+The SARIF file is stored at `.gavel/results/<id>/sarif.json`.
+
+#### `judge` output
+
+`judge` evaluates the SARIF with Rego, writes a verdict file alongside the SARIF, and prints the verdict to stdout:
 
 ```json
 {

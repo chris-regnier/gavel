@@ -106,6 +106,9 @@ jobs:
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
 
+      - name: Run Gavel judge
+        run: gavel judge
+
       - name: Upload SARIF to GitHub Code Scanning
         uses: github/codeql-action/upload-sarif@v3
         if: always()
@@ -120,7 +123,8 @@ jobs:
 2. **Download Gavel** -- fetches the latest release binary for Linux x86_64 from GitHub Releases.
 3. **Get PR diff** -- uses `gh pr diff` to produce a unified diff of the pull request. The `GH_TOKEN` env var gives `gh` access to the repository.
 4. **Run Gavel analysis** -- analyzes the diff against your configured policies. The provider API key is injected from the secret you created in Step 1. Results are written to `.gavel/results/<id>/sarif.json`.
-5. **Upload SARIF** -- sends the SARIF file to GitHub Code Scanning. The `if: always()` ensures results are uploaded even if an earlier step fails (e.g., a network error during analysis). The `category: gavel` prevents collisions if you also use CodeQL or other SARIF-producing tools. The `security-events: write` permission declared at the top of the workflow is required for this step.
+5. **Run Gavel judge** -- evaluates the SARIF results with Rego policies to produce a verdict (merge, reject, or review). The verdict is written to `.gavel/results/<id>/verdict.json`.
+6. **Upload SARIF** -- sends the SARIF file to GitHub Code Scanning. The `if: always()` ensures results are uploaded even if an earlier step fails (e.g., a network error during analysis). The `category: gavel` prevents collisions if you also use CodeQL or other SARIF-producing tools. The `security-events: write` permission declared at the top of the workflow is required for this step.
 
 > **Using Anthropic instead of OpenRouter?** Change the env var in the "Run Gavel analysis" step to `ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}` and update your `.gavel/policies.yaml` accordingly.
 
@@ -183,7 +187,9 @@ Run analysis with a security-focused reviewer by adding the `--persona` flag to 
         run: gavel analyze --diff pr.diff --persona security
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          GH_TOKEN: ${{ github.token }}
+
+      - name: Run Gavel judge
+        run: gavel judge
 ```
 
 Available personas: `code-reviewer` (default), `architect`, `security`.

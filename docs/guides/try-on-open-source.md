@@ -113,11 +113,28 @@ Create `.gavel/policies.yaml` with the config block for your chosen provider fro
 gavel analyze --dir .
 ```
 
-Gavel reads every Go file in the repository, sends each one to your LLM provider along with the enabled policies, and prints a JSON verdict to stdout.
+Gavel reads every Go file in the repository, sends each one to your LLM provider along with the enabled policies, and prints an analysis summary to stdout.
 
 ### Read the output
 
-The verdict tells you Gavel's gate decision -- whether this code should be merged, reviewed, or rejected. Here is a plausible output for this repository:
+The summary tells you the analysis ID and how many findings were detected. Here is a plausible output for this repository:
+
+```json
+{
+  "id": "2026-02-18T14-30-00Z-a1b2c3",
+  "findings": 5,
+  "scope": "directory",
+  "persona": "code-reviewer"
+}
+```
+
+To get the gate verdict, run `gavel judge`:
+
+```bash
+gavel judge
+```
+
+This evaluates the SARIF with Rego policies and prints a verdict -- whether this code should be merged, reviewed, or rejected:
 
 ```json
 {
@@ -154,7 +171,7 @@ The verdict tells you Gavel's gate decision -- whether this code should be merge
 
 Here is what each part means:
 
-- **`decision`** -- the gate verdict. `"reject"` means at least one finding crossed the confidence and severity threshold. Other possible values are `"merge"` (no findings) and `"review"` (findings exist but none are severe enough to auto-reject).
+- **`decision`** -- the gate verdict from `gavel judge`. `"reject"` means at least one finding crossed the confidence and severity threshold. Other possible values are `"merge"` (no findings) and `"review"` (findings exist but none are severe enough to auto-reject).
 - **`reason`** -- a human-readable summary of why the decision was made.
 - **`relevant_findings`** -- the SARIF results that drove the decision. Each finding includes:
   - **`ruleId`** -- the rule that matched (here `S3649`, a SonarQube SQL injection rule).
@@ -227,7 +244,7 @@ The `--files` flag takes a comma-separated list of paths relative to the current
 
 ### Read the output
 
-A plausible verdict for these two files:
+After running `gavel judge`, a plausible verdict for these two files:
 
 ```json
 {
@@ -347,11 +364,12 @@ The `-` argument tells Gavel to read the diff from stdin. This is the exact patt
 
 ```bash
 gh pr diff 42 | gavel analyze --diff -
+gavel judge
 ```
 
 ### Read the output
 
-Because diff mode only analyzes changed lines, you will typically see fewer findings than a full directory scan. The verdict format is identical:
+Because diff mode only analyzes changed lines, you will typically see fewer findings than a full directory scan. Run `gavel judge` to get the verdict:
 
 ```json
 {
@@ -392,7 +410,7 @@ Diff mode is how Gavel delivers fast, focused PR reviews:
 
 - **Speed** -- only changed lines are analyzed, so even a large repository finishes quickly.
 - **Relevance** -- findings are scoped to the code that actually changed, reducing noise.
-- **CI integration** -- the `gh pr diff | gavel analyze --diff -` pattern is a single line in a GitHub Actions workflow. See the [CI/PR Gating Guide](ci-pr-gating.md) for the full setup.
+- **CI integration** -- the `gh pr diff | gavel analyze --diff -` followed by `gavel judge` pattern works in any CI workflow. See the [CI/PR Gating Guide](ci-pr-gating.md) for the full setup.
 
 ---
 
