@@ -17,7 +17,6 @@ import (
 	"github.com/chris-regnier/gavel/internal/analyzer"
 	"github.com/chris-regnier/gavel/internal/cache"
 	"github.com/chris-regnier/gavel/internal/config"
-	"github.com/chris-regnier/gavel/internal/evaluator"
 	"github.com/chris-regnier/gavel/internal/input"
 	"github.com/chris-regnier/gavel/internal/rules"
 	"github.com/chris-regnier/gavel/internal/sarif"
@@ -38,7 +37,6 @@ var (
 	flagDir         string
 	flagOutput      string
 	flagPolicyDir   string
-	flagRegoDir     string
 	flagRulesDir    string
 	flagCacheServer string
 )
@@ -55,7 +53,6 @@ func init() {
 	analyzeCmd.Flags().StringVar(&flagDir, "dir", "", "Directory to analyze")
 	analyzeCmd.Flags().StringVar(&flagOutput, "output", ".gavel/results", "Output directory for results")
 	analyzeCmd.Flags().StringVar(&flagPolicyDir, "policies", ".gavel", "Directory containing policies.yaml")
-	analyzeCmd.Flags().StringVar(&flagRegoDir, "rego", ".gavel/rego", "Directory containing Rego policies")
 	analyzeCmd.Flags().StringVar(&flagRulesDir, "rules-dir", "", "Directory containing custom rule YAML files")
 	analyzeCmd.Flags().StringVar(&flagCacheServer, "cache-server", "", "Remote cache server URL to upload results (e.g., https://gavel.company.com)")
 
@@ -194,27 +191,6 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("storing SARIF: %w", err)
 	}
 
-	// Evaluate with Rego
-	eval, err := evaluator.NewEvaluator(ctx, flagRegoDir)
-	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-		return fmt.Errorf("creating evaluator: %w", err)
-	}
-
-	verdict, err := eval.Evaluate(ctx, sarifLog)
-	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-		return fmt.Errorf("evaluating: %w", err)
-	}
-
-	if err := fs.WriteVerdict(ctx, id, verdict); err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-		return fmt.Errorf("storing verdict: %w", err)
-	}
-
 	// Upload results to remote cache if configured
 	remoteCacheURL := flagCacheServer
 	if remoteCacheURL == "" && cfg.RemoteCache.Enabled && cfg.RemoteCache.Strategy.WriteToRemote {
@@ -228,8 +204,18 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Output verdict
-	out, _ := json.MarshalIndent(verdict, "", "  ")
+	// Output analysis summary
+	findingCount := 0
+	if len(sarifLog.Runs) > 0 {
+		findingCount = len(sarifLog.Runs[0].Results)
+	}
+	summary := map[string]interface{}{
+		"id":       id,
+		"findings": findingCount,
+		"scope":    inputScope,
+		"persona":  cfg.Persona,
+	}
+	out, _ := json.MarshalIndent(summary, "", "  ")
 	fmt.Println(string(out))
 
 	return nil
