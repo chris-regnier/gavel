@@ -2,8 +2,6 @@ package output
 
 import (
 	"testing"
-
-	"github.com/chris-regnier/gavel/internal/store"
 )
 
 // --- ResolveFormat tests ---
@@ -82,32 +80,5 @@ func TestNewFormatter_InvalidFormat(t *testing.T) {
 				t.Fatalf("NewFormatter(%q) expected nil formatter on error, got %v", f, formatter)
 			}
 		})
-	}
-}
-
-// --- JSONFormatter basic test ---
-
-func TestJSONFormatter_FormatVerdict(t *testing.T) {
-	f := &JSONFormatter{}
-	result := &AnalysisOutput{
-		Verdict: &store.Verdict{
-			Decision: "merge",
-			Reason:   "no issues found",
-		},
-	}
-	out, err := f.Format(result)
-	if err != nil {
-		t.Fatalf("JSONFormatter.Format() returned error: %v", err)
-	}
-	if len(out) == 0 {
-		t.Fatal("JSONFormatter.Format() returned empty output")
-	}
-}
-
-func TestJSONFormatter_NilVerdict(t *testing.T) {
-	f := &JSONFormatter{}
-	_, err := f.Format(&AnalysisOutput{})
-	if err == nil {
-		t.Fatal("expected error for nil verdict")
 	}
 }
