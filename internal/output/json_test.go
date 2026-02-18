@@ -25,7 +25,7 @@ func TestJSONFormatter_Format(t *testing.T) {
 	}
 
 	// Verify it is valid JSON (strip trailing newline for unmarshal).
-	var parsed map[string]interface{}
+	var parsed map[string]any
 	if err := json.Unmarshal(out, &parsed); err != nil {
 		t.Fatalf("output is not valid JSON: %v\noutput: %s", err, out)
 	}
@@ -107,7 +107,7 @@ func TestJSONFormatter_OmitsEmptyOptionalFields(t *testing.T) {
 		t.Fatalf("JSONFormatter.Format() returned error: %v", err)
 	}
 
-	var parsed map[string]interface{}
+	var parsed map[string]any
 	if err := json.Unmarshal(out, &parsed); err != nil {
 		t.Fatalf("output is not valid JSON: %v", err)
 	}
@@ -126,7 +126,7 @@ func TestJSONFormatter_WithMetadata(t *testing.T) {
 		Verdict: &store.Verdict{
 			Decision: "reject",
 			Reason:   "critical security issue",
-			Metadata: map[string]interface{}{
+			Metadata: map[string]any{
 				"provider": "anthropic",
 				"model":    "claude-sonnet-4",
 			},
@@ -137,12 +137,12 @@ func TestJSONFormatter_WithMetadata(t *testing.T) {
 		t.Fatalf("JSONFormatter.Format() returned error: %v", err)
 	}
 
-	var parsed map[string]interface{}
+	var parsed map[string]any
 	if err := json.Unmarshal(out, &parsed); err != nil {
 		t.Fatalf("output is not valid JSON: %v", err)
 	}
 
-	meta, ok := parsed["metadata"].(map[string]interface{})
+	meta, ok := parsed["metadata"].(map[string]any)
 	if !ok {
 		t.Fatal("expected 'metadata' to be present as a map")
 	}
