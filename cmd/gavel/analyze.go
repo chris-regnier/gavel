@@ -4,14 +4,14 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"time"
 
+	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
 
 	"github.com/chris-regnier/gavel/internal/analyzer"
@@ -19,6 +19,7 @@ import (
 	"github.com/chris-regnier/gavel/internal/config"
 	"github.com/chris-regnier/gavel/internal/evaluator"
 	"github.com/chris-regnier/gavel/internal/input"
+	"github.com/chris-regnier/gavel/internal/output"
 	"github.com/chris-regnier/gavel/internal/rules"
 	"github.com/chris-regnier/gavel/internal/sarif"
 	"github.com/chris-regnier/gavel/internal/store"
@@ -41,6 +42,7 @@ var (
 	flagRegoDir     string
 	flagRulesDir    string
 	flagCacheServer string
+	flagFormat      string
 )
 
 func init() {
@@ -58,6 +60,7 @@ func init() {
 	analyzeCmd.Flags().StringVar(&flagRegoDir, "rego", ".gavel/rego", "Directory containing Rego policies")
 	analyzeCmd.Flags().StringVar(&flagRulesDir, "rules-dir", "", "Directory containing custom rule YAML files")
 	analyzeCmd.Flags().StringVar(&flagCacheServer, "cache-server", "", "Remote cache server URL to upload results (e.g., https://gavel.company.com)")
+	analyzeCmd.Flags().StringVarP(&flagFormat, "format", "f", "", "Output format: json, sarif, markdown, pretty (default: auto-detect)")
 
 	rootCmd.AddCommand(analyzeCmd)
 }
@@ -224,13 +227,24 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 	if remoteCacheURL != "" {
 		if err := uploadResultsToCache(ctx, cfg, remoteCacheURL, artifacts, results); err != nil {
 			// Log but don't fail - local storage succeeded
-			log.Printf("Warning: failed to upload results to remote cache: %v", err)
+			slog.Warn("cache upload failed", "err", err)
 		}
 	}
 
-	// Output verdict
-	out, _ := json.MarshalIndent(verdict, "", "  ")
-	fmt.Println(string(out))
+	// Format and output
+	format := output.ResolveFormat(flagFormat, isatty.IsTerminal(os.Stdout.Fd()))
+	formatter, err := output.NewFormatter(format)
+	if err != nil {
+		return err
+	}
+	data, err := formatter.Format(&output.AnalysisOutput{
+		Verdict:  verdict,
+		SARIFLog: sarifLog,
+	})
+	if err != nil {
+		return fmt.Errorf("formatting output: %w", err)
+	}
+	os.Stdout.Write(data)
 
 	return nil
 }

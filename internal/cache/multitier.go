@@ -3,7 +3,7 @@ package cache
 
 import (
 	"context"
-	"log"
+	"log/slog"
 )
 
 // MultiTierConfig configures the multi-tier cache behavior
@@ -77,7 +77,7 @@ func (c *MultiTierCache) getLocalFirst(ctx context.Context, key CacheKey) (*Cach
 	// Warm local cache on remote hit
 	if c.config.WarmLocalOnRemoteHit {
 		if putErr := c.local.Put(ctx, entry); putErr != nil {
-			log.Printf("Failed to warm local cache: %v", putErr)
+			slog.Warn("failed to warm local cache", "err", putErr)
 		}
 	}
 
@@ -93,7 +93,7 @@ func (c *MultiTierCache) getRemoteFirst(ctx context.Context, key CacheKey) (*Cac
 			// Warm local cache on remote hit
 			if c.config.WarmLocalOnRemoteHit {
 				if putErr := c.local.Put(ctx, entry); putErr != nil {
-					log.Printf("Failed to warm local cache: %v", putErr)
+					slog.Warn("failed to warm local cache", "err", putErr)
 				}
 			}
 			return entry, nil
@@ -115,7 +115,7 @@ func (c *MultiTierCache) Put(ctx context.Context, entry *CacheEntry) error {
 	if c.config.WriteToRemote && c.remote != nil {
 		if err := c.remote.Put(ctx, entry); err != nil {
 			// Log but don't fail - local write succeeded
-			log.Printf("Failed to write to remote cache: %v", err)
+			slog.Warn("failed to write to remote cache", "err", err)
 		}
 	}
 
@@ -133,7 +133,7 @@ func (c *MultiTierCache) Delete(ctx context.Context, key CacheKey) error {
 	if c.remote != nil {
 		if err := c.remote.Delete(ctx, key); err != nil {
 			// Log but don't fail - local delete succeeded
-			log.Printf("Failed to delete from remote cache: %v", err)
+			slog.Warn("failed to delete from remote cache", "err", err)
 		}
 	}
 
