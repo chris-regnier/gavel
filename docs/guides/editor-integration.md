@@ -70,22 +70,29 @@ Or analyze specific files:
 gavel analyze --files main.go,handler.go
 ```
 
-Gavel prints a JSON verdict to stdout and writes two files under `.gavel/results/`:
+Gavel prints an analysis summary to stdout and writes a SARIF file under `.gavel/results/`:
 
 ```
 .gavel/results/
   2026-02-13T14-30-00Z-a1b2c3/
     sarif.json       # SARIF 2.1.0 log with all findings
-    verdict.json     # Gate decision: merge, review, or reject
 ```
 
-The verdict looks like this:
+The summary looks like this:
 
 ```json
 {
-  "decision": "review",
-  "reason": "findings require human review"
+  "id": "2026-02-13T14-30-00Z-a1b2c3",
+  "findings": 3,
+  "scope": "directory",
+  "persona": "code-reviewer"
 }
+```
+
+To get a gate verdict (merge, review, or reject), run `gavel judge`:
+
+```sh
+gavel judge
 ```
 
 The SARIF file contains every finding with its location, message, explanation, recommendation, and confidence score. This is the file your editor will consume.
@@ -237,10 +244,10 @@ nvim -q /tmp/gavel-qf.txt
 
 ### Option B: Use gavel review in a split terminal
 
-Gavel ships with a built-in TUI for reviewing findings. Run it alongside Neovim in a terminal split or tmux pane:
+Gavel ships with a built-in TUI for reviewing findings. After running `gavel analyze`, launch the TUI to browse findings from the most recent analysis:
 
 ```sh
-gavel review --dir ./src
+gavel review
 ```
 
 The TUI shows findings in a navigable list with full explanations, recommendations, and confidence scores. Use it as a companion to your editor -- review findings in the TUI, then switch to Neovim to make fixes.
@@ -273,7 +280,7 @@ Each run creates a new timestamped directory under `.gavel/results/`. Old result
 
 - **Use Ollama for fast local iteration.** A local `qwen2.5-coder:7b` model responds in seconds. Save cloud API calls for CI and final reviews.
 - **Switch personas for focused review.** Use `--persona security` to get OWASP/CWE-focused findings, or `--persona architect` for design-level feedback. The default `code-reviewer` persona covers general quality.
-- **Combine with the TUI.** Run `gavel review --dir .` to see findings in an interactive terminal UI with full explanations. Useful for triaging before you start fixing.
+- **Combine with the TUI.** Run `gavel review` to see findings in an interactive terminal UI with full explanations. Useful for triaging before you start fixing.
 - **Analyze only changed files.** Use `--files` with specific paths instead of `--dir` to get faster results when you know what you changed.
 
 ## Next Steps
