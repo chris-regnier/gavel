@@ -244,7 +244,9 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("formatting output: %w", err)
 	}
-	os.Stdout.Write(data)
+	if _, err := os.Stdout.Write(data); err != nil {
+		return fmt.Errorf("writing output: %w", err)
+	}
 
 	return nil
 }

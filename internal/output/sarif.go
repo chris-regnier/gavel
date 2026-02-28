@@ -42,7 +42,10 @@ func enrichRun(run *sarif.Run) {
 	run.Tool.Driver.InformationURI = "https://github.com/chris-regnier/gavel"
 
 	// Add invocations with working directory.
-	wd, _ := os.Getwd()
+	wd, err := os.Getwd()
+	if err != nil {
+		wd = ""
+	}
 	run.Invocations = []sarif.Invocation{{
 		WorkingDirectory:    sarif.ArtifactLocation{URI: wd},
 		ExecutionSuccessful: true,

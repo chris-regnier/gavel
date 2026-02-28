@@ -84,7 +84,7 @@ func resultConfidence(r sarif.Result) string {
 	if r.Properties == nil {
 		return ""
 	}
-	if v, ok := r.Properties["gavel/confidence"]; ok {
+	if v, ok := r.Properties["gavel/confidence"].(float64); ok {
 		return fmt.Sprintf("%.2f", v)
 	}
 	return ""
