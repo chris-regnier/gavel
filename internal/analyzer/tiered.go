@@ -72,9 +72,10 @@ type TieredAnalyzer struct {
 	astRegistry *astcheck.Registry
 
 	// Configuration
-	fastModel       string
-	fastEnabled     bool
-	instantEnabled  bool
+	fastModel         string
+	fastEnabled       bool
+	instantEnabled    bool
+	additionalContext string // Diff enrichment context (commit messages, full files, cross-file awareness)
 
 	// Metrics
 	metricsCollector *metrics.Collector
@@ -126,6 +127,15 @@ func WithMetricsCollector(collector *metrics.Collector) TieredAnalyzerOption {
 	return func(ta *TieredAnalyzer) {
 		ta.metricsCollector = collector
 		ta.metricsEnabled = collector != nil
+	}
+}
+
+// WithDiffContext sets additional context for diff analysis to reduce false positives.
+// The context typically includes commit messages, full file contents, and cross-file
+// movement awareness built by diffcontext.BuildDiffContext.
+func WithDiffContext(ctx string) TieredAnalyzerOption {
+	return func(ta *TieredAnalyzer) {
+		ta.additionalContext = ctx
 	}
 }
 
@@ -509,7 +519,11 @@ func (ta *TieredAnalyzer) runFastTier(ctx context.Context, art input.Artifact, p
 	start := time.Now()
 	ta.fastCalls.Add(1)
 
-	analyzer := NewAnalyzer(ta.fastClient)
+	var fastOpts []AnalyzerOption
+	if ta.additionalContext != "" {
+		fastOpts = append(fastOpts, WithAdditionalContext(ta.additionalContext))
+	}
+	analyzer := NewAnalyzer(ta.fastClient, fastOpts...)
 	results, err := analyzer.Analyze(ctx, []input.Artifact{art}, policies, personaPrompt)
 	duration := time.Since(start)
 
@@ -555,7 +569,11 @@ func (ta *TieredAnalyzer) runComprehensiveTier(ctx context.Context, art input.Ar
 
 	ta.comprehensiveCalls.Add(1)
 
-	analyzer := NewAnalyzer(ta.comprehensiveClient)
+	var compOpts []AnalyzerOption
+	if ta.additionalContext != "" {
+		compOpts = append(compOpts, WithAdditionalContext(ta.additionalContext))
+	}
+	analyzer := NewAnalyzer(ta.comprehensiveClient, compOpts...)
 	results, err := analyzer.Analyze(ctx, []input.Artifact{art}, policies, personaPrompt)
 	duration := time.Since(start)
 

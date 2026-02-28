@@ -17,6 +17,7 @@ import (
 	"github.com/chris-regnier/gavel/internal/analyzer"
 	"github.com/chris-regnier/gavel/internal/cache"
 	"github.com/chris-regnier/gavel/internal/config"
+	"github.com/chris-regnier/gavel/internal/diffcontext"
 	"github.com/chris-regnier/gavel/internal/input"
 	"github.com/chris-regnier/gavel/internal/rules"
 	"github.com/chris-regnier/gavel/internal/sarif"
@@ -160,7 +161,19 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 
 	// Analyze with tiered analyzer (instant pattern matching + LLM)
 	client := analyzer.NewBAMLLiveClient(cfg.Provider)
-	ta := analyzer.NewTieredAnalyzer(client, analyzer.WithInstantPatterns(loadedRules))
+	tieredOpts := []analyzer.TieredAnalyzerOption{analyzer.WithInstantPatterns(loadedRules)}
+
+	// Build diff context to reduce false positives when analyzing diffs
+	if inputScope == "diff" {
+		repoDir, _ := os.Getwd()
+		diffCtx := diffcontext.BuildDiffContext(artifacts, repoDir)
+		if diffCtx != "" {
+			tieredOpts = append(tieredOpts, analyzer.WithDiffContext(diffCtx))
+			slog.Debug("diff context enrichment enabled", "context_size", len(diffCtx))
+		}
+	}
+
+	ta := analyzer.NewTieredAnalyzer(client, tieredOpts...)
 	results, err := ta.Analyze(ctx, artifacts, cfg.Policies, personaPrompt)
 	if err != nil {
 		span.RecordError(err)
