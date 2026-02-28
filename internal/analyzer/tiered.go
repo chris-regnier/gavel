@@ -519,11 +519,7 @@ func (ta *TieredAnalyzer) runFastTier(ctx context.Context, art input.Artifact, p
 	start := time.Now()
 	ta.fastCalls.Add(1)
 
-	var fastOpts []AnalyzerOption
-	if ta.additionalContext != "" {
-		fastOpts = append(fastOpts, WithAdditionalContext(ta.additionalContext))
-	}
-	analyzer := NewAnalyzer(ta.fastClient, fastOpts...)
+	analyzer := ta.newAnalyzerForClient(ta.fastClient)
 	results, err := analyzer.Analyze(ctx, []input.Artifact{art}, policies, personaPrompt)
 	duration := time.Since(start)
 
@@ -569,11 +565,7 @@ func (ta *TieredAnalyzer) runComprehensiveTier(ctx context.Context, art input.Ar
 
 	ta.comprehensiveCalls.Add(1)
 
-	var compOpts []AnalyzerOption
-	if ta.additionalContext != "" {
-		compOpts = append(compOpts, WithAdditionalContext(ta.additionalContext))
-	}
-	analyzer := NewAnalyzer(ta.comprehensiveClient, compOpts...)
+	analyzer := ta.newAnalyzerForClient(ta.comprehensiveClient)
 	results, err := analyzer.Analyze(ctx, []input.Artifact{art}, policies, personaPrompt)
 	duration := time.Since(start)
 
@@ -724,6 +716,16 @@ func (ta *TieredAnalyzer) Stats() TieredAnalyzerStats {
 		ComprehensiveCalls: ta.comprehensiveCalls.Load(),
 		CacheStats:         ta.cache.Stats(),
 	}
+}
+
+// newAnalyzerForClient creates an Analyzer for the given client, forwarding
+// any TieredAnalyzer-level options (such as additionalContext for diff enrichment).
+func (ta *TieredAnalyzer) newAnalyzerForClient(client BAMLClient) *Analyzer {
+	var opts []AnalyzerOption
+	if ta.additionalContext != "" {
+		opts = append(opts, WithAdditionalContext(ta.additionalContext))
+	}
+	return NewAnalyzer(client, opts...)
 }
 
 // ClearCache clears the analysis cache
