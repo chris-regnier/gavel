@@ -129,7 +129,10 @@ func runJudge(cmd *cobra.Command, args []string) error {
 	)
 
 	// Output verdict
-	out, _ := json.MarshalIndent(verdict, "", "  ")
+	out, err := json.MarshalIndent(verdict, "", "  ")
+	if err != nil {
+		return fmt.Errorf("serialising verdict: %w", err)
+	}
 	fmt.Println(string(out))
 
 	return nil
