@@ -28,6 +28,18 @@ type Policy struct {
 	AdditionalContexts []ContextSelector `yaml:"additional_contexts,omitempty"`
 }
 
+// TelemetryConfig holds OpenTelemetry configuration.
+type TelemetryConfig struct {
+	Enabled        bool              `yaml:"enabled"`
+	Endpoint       string            `yaml:"endpoint"`
+	Protocol       string            `yaml:"protocol"`        // "grpc" or "http"
+	Insecure       bool              `yaml:"insecure"`
+	ServiceName    string            `yaml:"service_name"`
+	ServiceVersion string            `yaml:"service_version"`
+	SampleRate     float64           `yaml:"sample_rate"`
+	Headers        map[string]string `yaml:"headers"`
+}
+
 // Config holds the full gavel configuration.
 type Config struct {
 	Provider    ProviderConfig      `yaml:"provider"`
@@ -35,6 +47,7 @@ type Config struct {
 	Policies    map[string]Policy   `yaml:"policies"`
 	LSP         LSPConfig           `yaml:"lsp"`
 	RemoteCache RemoteCacheConfig   `yaml:"remote_cache"`
+	Telemetry   TelemetryConfig     `yaml:"telemetry"`
 }
 
 // RemoteCacheConfig holds remote cache server settings
@@ -270,6 +283,37 @@ func MergeConfigs(configs ...*Config) *Config {
 		// Strategy booleans - only override if the whole RemoteCache section is present
 		if cfg.RemoteCache.URL != "" || cfg.RemoteCache.Enabled {
 			result.RemoteCache.Strategy = cfg.RemoteCache.Strategy
+		}
+
+		// Merge telemetry config - non-empty string fields override.
+		// If the telemetry section is explicitly present (endpoint or service_name set),
+		// boolean and float fields are applied as-is to allow disabling.
+		telemetrySectionPresent := cfg.Telemetry.Endpoint != "" || cfg.Telemetry.ServiceName != ""
+		if telemetrySectionPresent || cfg.Telemetry.Enabled {
+			result.Telemetry.Enabled = cfg.Telemetry.Enabled
+		}
+		if cfg.Telemetry.Endpoint != "" {
+			result.Telemetry.Endpoint = cfg.Telemetry.Endpoint
+		}
+		if cfg.Telemetry.Protocol != "" {
+			result.Telemetry.Protocol = cfg.Telemetry.Protocol
+		}
+		if telemetrySectionPresent {
+			result.Telemetry.Insecure = cfg.Telemetry.Insecure
+		} else if cfg.Telemetry.Insecure {
+			result.Telemetry.Insecure = true
+		}
+		if cfg.Telemetry.ServiceName != "" {
+			result.Telemetry.ServiceName = cfg.Telemetry.ServiceName
+		}
+		if cfg.Telemetry.ServiceVersion != "" {
+			result.Telemetry.ServiceVersion = cfg.Telemetry.ServiceVersion
+		}
+		if telemetrySectionPresent || cfg.Telemetry.SampleRate != 0 {
+			result.Telemetry.SampleRate = cfg.Telemetry.SampleRate
+		}
+		if len(cfg.Telemetry.Headers) > 0 {
+			result.Telemetry.Headers = cfg.Telemetry.Headers
 		}
 
 		// Merge policies (existing logic)

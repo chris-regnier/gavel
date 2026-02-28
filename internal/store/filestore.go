@@ -11,8 +11,14 @@ import (
 	"sort"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+
 	"github.com/chris-regnier/gavel/internal/sarif"
 )
+
+var storeTracer = otel.Tracer("github.com/chris-regnier/gavel/internal/store")
 
 type FileStore struct {
 	dir string
@@ -34,28 +40,61 @@ func (s *FileStore) resultDir(id string) string {
 }
 
 func (s *FileStore) WriteSARIF(ctx context.Context, doc *sarif.Log) (string, error) {
+	ctx, span := storeTracer.Start(ctx, "write sarif")
+	defer span.End()
+
 	id := s.generateID()
 	dir := s.resultDir(id)
 	if err := os.MkdirAll(dir, 0755); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return "", err
 	}
 	data, err := json.MarshalIndent(doc, "", "  ")
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return "", err
 	}
 	if err := os.WriteFile(filepath.Join(dir, "sarif.json"), data, 0644); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return "", err
 	}
+
+	resultCount := 0
+	if len(doc.Runs) > 0 {
+		resultCount = len(doc.Runs[0].Results)
+	}
+	span.SetAttributes(
+		attribute.String("gavel.store.id", id),
+		attribute.Int("gavel.store.result_count", resultCount),
+	)
 	return id, nil
 }
 
 func (s *FileStore) WriteVerdict(ctx context.Context, sarifID string, verdict *Verdict) error {
+	_, span := storeTracer.Start(ctx, "write verdict")
+	defer span.End()
+
 	dir := s.resultDir(sarifID)
 	data, err := json.MarshalIndent(verdict, "", "  ")
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return err
 	}
-	return os.WriteFile(filepath.Join(dir, "verdict.json"), data, 0644)
+	if err := os.WriteFile(filepath.Join(dir, "verdict.json"), data, 0644); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return err
+	}
+
+	span.SetAttributes(
+		attribute.String("gavel.store.id", sarifID),
+		attribute.String("gavel.decision", verdict.Decision),
+	)
+	return nil
 }
 
 func (s *FileStore) ReadSARIF(ctx context.Context, id string) (*sarif.Log, error) {

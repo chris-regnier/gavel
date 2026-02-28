@@ -4,6 +4,10 @@ import (
 	"context"
 	"fmt"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
+
 	baml_client "github.com/chris-regnier/gavel/baml_client"
 	"github.com/chris-regnier/gavel/baml_client/types"
 	"github.com/chris-regnier/gavel/internal/config"
@@ -24,8 +28,37 @@ func NewBAMLLiveClient(cfg config.ProviderConfig) *BAMLLiveClient {
 	}
 }
 
+// modelName returns the configured model name for the current provider.
+func (c *BAMLLiveClient) modelName() string {
+	switch c.providerConfig.Name {
+	case "ollama":
+		return c.providerConfig.Ollama.Model
+	case "openrouter":
+		return c.providerConfig.OpenRouter.Model
+	case "anthropic":
+		return c.providerConfig.Anthropic.Model
+	case "bedrock":
+		return c.providerConfig.Bedrock.Model
+	case "openai":
+		return c.providerConfig.OpenAI.Model
+	default:
+		return "unknown"
+	}
+}
+
 // AnalyzeCode calls the appropriate BAML client based on provider config.
 func (c *BAMLLiveClient) AnalyzeCode(ctx context.Context, code string, policies string, personaPrompt string, additionalContext string) ([]Finding, error) {
+	model := c.modelName()
+	ctx, span := analyzerTracer.Start(ctx, "chat "+model,
+		trace.WithSpanKind(trace.SpanKindClient),
+		trace.WithAttributes(
+			attribute.String("gen_ai.operation.name", "chat"),
+			attribute.String("gen_ai.request.model", model),
+			attribute.String("gen_ai.provider.name", c.providerConfig.Name),
+		),
+	)
+	defer span.End()
+
 	var results []types.Finding
 	var err error
 
@@ -45,6 +78,8 @@ func (c *BAMLLiveClient) AnalyzeCode(ctx context.Context, code string, policies 
 	}
 
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return nil, fmt.Errorf("analysis failed with %s: %w", c.providerConfig.Name, err)
 	}
 

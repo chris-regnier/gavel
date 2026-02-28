@@ -22,7 +22,7 @@ func TestEvaluator_Reject(t *testing.T) {
 		},
 	}
 
-	e, err := NewEvaluator("")
+	e, err := NewEvaluator(context.Background(), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +40,7 @@ func TestEvaluator_Reject(t *testing.T) {
 func TestEvaluator_Merge(t *testing.T) {
 	log := sarif.NewLog("gavel", "0.1.0")
 
-	e, err := NewEvaluator("")
+	e, err := NewEvaluator(context.Background(), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +68,7 @@ func TestEvaluator_Review(t *testing.T) {
 		},
 	}
 
-	e, err := NewEvaluator("")
+	e, err := NewEvaluator(context.Background(), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +103,7 @@ decision := "reject" if {
 		{RuleID: "any-rule", Level: "note", Message: sarif.Message{Text: "Minor"}},
 	}
 
-	e, err := NewEvaluator(dir)
+	e, err := NewEvaluator(context.Background(), dir)
 	if err != nil {
 		t.Fatal(err)
 	}

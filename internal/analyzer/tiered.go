@@ -9,6 +9,10 @@ import (
 	"time"
 
 	sitter "github.com/smacker/go-tree-sitter"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/chris-regnier/gavel/internal/astcheck"
 	"github.com/chris-regnier/gavel/internal/cache"
@@ -18,6 +22,8 @@ import (
 	"github.com/chris-regnier/gavel/internal/rules"
 	"github.com/chris-regnier/gavel/internal/sarif"
 )
+
+var analyzerTracer = otel.Tracer("github.com/chris-regnier/gavel/internal/analyzer")
 
 // Tier represents an analysis tier level
 type Tier int
@@ -163,40 +169,74 @@ func (ta *TieredAnalyzer) AnalyzeProgressive(ctx context.Context, artifacts []in
 
 		// Phase 1: Run instant tier for ALL artifacts first (~0-100ms total)
 		if ta.instantEnabled {
+			instantCtx, instantSpan := analyzerTracer.Start(ctx, "run instant tier",
+				trace.WithAttributes(
+					attribute.String("gavel.tier", "instant"),
+					attribute.Int("gavel.rule_count", len(ta.instantPatterns)),
+				),
+			)
 			for _, art := range artifacts {
 				select {
-				case <-ctx.Done():
+				case <-instantCtx.Done():
 					resultChan <- TieredResult{
 						Tier:     TierInstant,
 						FilePath: art.Path,
-						Error:    ctx.Err(),
+						Error:    instantCtx.Err(),
 					}
+					instantSpan.End()
 					return
 				default:
 				}
-				ta.runInstantTier(ctx, art, policyText, personaPrompt, resultChan)
+				ta.runInstantTier(instantCtx, art, policyText, personaPrompt, resultChan)
 			}
+			instantSpan.End()
 		}
 
-		// Phase 2: Run slow tiers (fast + comprehensive) per artifact
+		// Phase 2a: Run fast tier if enabled
+		if ta.fastEnabled && ta.fastClient != nil {
+			fastCtx, fastSpan := analyzerTracer.Start(ctx, "run fast tier",
+				trace.WithAttributes(
+					attribute.String("gavel.tier", "fast"),
+				),
+			)
+			for _, art := range artifacts {
+				select {
+				case <-fastCtx.Done():
+					resultChan <- TieredResult{
+						Tier:     TierFast,
+						FilePath: art.Path,
+						Error:    fastCtx.Err(),
+					}
+					fastSpan.End()
+					return
+				default:
+				}
+				ta.runFastTier(fastCtx, art, policies, personaPrompt, resultChan)
+			}
+			fastSpan.End()
+		}
+
+		// Phase 2b: Run comprehensive tier
+		comprehensiveCtx, comprehensiveSpan := analyzerTracer.Start(ctx, "run comprehensive tier",
+			trace.WithAttributes(
+				attribute.String("gavel.tier", "comprehensive"),
+			),
+		)
 		for _, art := range artifacts {
 			select {
-			case <-ctx.Done():
+			case <-comprehensiveCtx.Done():
 				resultChan <- TieredResult{
-					Tier:     TierFast,
+					Tier:     TierComprehensive,
 					FilePath: art.Path,
-					Error:    ctx.Err(),
+					Error:    comprehensiveCtx.Err(),
 				}
+				comprehensiveSpan.End()
 				return
 			default:
 			}
-
-			if ta.fastEnabled && ta.fastClient != nil {
-				ta.runFastTier(ctx, art, policies, personaPrompt, resultChan)
-			}
-
-			ta.runComprehensiveTier(ctx, art, policies, personaPrompt, policyText, resultChan)
+			ta.runComprehensiveTier(comprehensiveCtx, art, policies, personaPrompt, policyText, resultChan)
 		}
+		comprehensiveSpan.End()
 	}()
 
 	return resultChan
@@ -204,6 +244,16 @@ func (ta *TieredAnalyzer) AnalyzeProgressive(ctx context.Context, artifacts []in
 
 // runInstantTier executes instant-tier analysis
 func (ta *TieredAnalyzer) runInstantTier(ctx context.Context, art input.Artifact, policyText, personaPrompt string, resultChan chan<- TieredResult) {
+	ctx, span := analyzerTracer.Start(ctx, "analyze file",
+		trace.WithAttributes(
+			attribute.String("gavel.file_path", art.Path),
+			attribute.Int("gavel.file_size", len(art.Content)),
+			attribute.Int("gavel.line_count", countLines(art.Content)),
+			attribute.String("gavel.tier", "instant"),
+		),
+	)
+	defer span.End()
+
 	start := time.Now()
 	cacheKey := cache.ContentKey(art.Content, policyText, personaPrompt)
 
@@ -233,6 +283,8 @@ func (ta *TieredAnalyzer) runInstantTier(ctx context.Context, art input.Artifact
 	duration := time.Since(start)
 	
 	ta.recordMetrics(art, metrics.TierInstant, duration, len(results), metrics.CacheMiss, nil)
+
+	span.SetAttributes(attribute.Int("gavel.finding_count", len(results)))
 
 	resultChan <- TieredResult{
 		Tier:      TierInstant,
@@ -444,6 +496,16 @@ func matchesLanguage(path string, languages []string) bool {
 
 // runFastTier executes fast-tier analysis with local model
 func (ta *TieredAnalyzer) runFastTier(ctx context.Context, art input.Artifact, policies map[string]config.Policy, personaPrompt string, resultChan chan<- TieredResult) {
+	ctx, span := analyzerTracer.Start(ctx, "analyze file",
+		trace.WithAttributes(
+			attribute.String("gavel.file_path", art.Path),
+			attribute.Int("gavel.file_size", len(art.Content)),
+			attribute.Int("gavel.line_count", countLines(art.Content)),
+			attribute.String("gavel.tier", "fast"),
+		),
+	)
+	defer span.End()
+
 	start := time.Now()
 	ta.fastCalls.Add(1)
 
@@ -459,6 +521,12 @@ func (ta *TieredAnalyzer) runFastTier(ctx context.Context, art input.Artifact, p
 		results[i].Properties["gavel/tier"] = "fast"
 	}
 
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+	}
+	span.SetAttributes(attribute.Int("gavel.finding_count", len(results)))
+
 	ta.recordMetrics(art, metrics.TierFast, duration, len(results), metrics.CacheMiss, err)
 
 	resultChan <- TieredResult{
@@ -472,6 +540,16 @@ func (ta *TieredAnalyzer) runFastTier(ctx context.Context, art input.Artifact, p
 
 // runComprehensiveTier executes full LLM analysis
 func (ta *TieredAnalyzer) runComprehensiveTier(ctx context.Context, art input.Artifact, policies map[string]config.Policy, personaPrompt, policyText string, resultChan chan<- TieredResult) {
+	ctx, span := analyzerTracer.Start(ctx, "analyze file",
+		trace.WithAttributes(
+			attribute.String("gavel.file_path", art.Path),
+			attribute.Int("gavel.file_size", len(art.Content)),
+			attribute.Int("gavel.line_count", countLines(art.Content)),
+			attribute.String("gavel.tier", "comprehensive"),
+		),
+	)
+	defer span.End()
+
 	start := time.Now()
 	cacheKey := cache.ContentKey(art.Content, policyText, personaPrompt)
 
@@ -493,6 +571,12 @@ func (ta *TieredAnalyzer) runComprehensiveTier(ctx context.Context, art input.Ar
 		}
 		results[i].Properties["gavel/tier"] = "comprehensive"
 	}
+
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+	}
+	span.SetAttributes(attribute.Int("gavel.finding_count", len(results)))
 
 	ta.recordMetrics(art, metrics.TierComprehensive, duration, len(results), metrics.CacheMiss, err)
 

@@ -35,18 +35,19 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          ASSET_NAME="gavel_Linux_x86_64"
+          BINARY_NAME="gavel_Linux_x86_64"
 
-          gh release download --repo "${{ github.repository }}" --pattern "${ASSET_NAME}.tar.gz" --dir /tmp || true
-          if [ ! -f "/tmp/${ASSET_NAME}.tar.gz" ]; then
+          gh release download --repo "${{ github.repository }}" --pattern "gavel_*_Linux_x86_64.tar.gz" --dir /tmp || true
+          TARBALL=$(ls /tmp/gavel_*_Linux_x86_64.tar.gz 2>/dev/null | head -1)
+          if [ -z "$TARBALL" ]; then
             echo "::warning::No released Gavel binary found. Skipping gate."
             echo "SKIP_ANALYSIS=true" >> "$GITHUB_ENV"
             exit 0
           fi
 
-          tar -xzf "/tmp/${ASSET_NAME}.tar.gz" -C /tmp
-          chmod +x "/tmp/${ASSET_NAME}"
-          mv "/tmp/${ASSET_NAME}" /tmp/gavel-released
+          tar -xzf "$TARBALL" -C /tmp
+          chmod +x "/tmp/${BINARY_NAME}"
+          mv "/tmp/${BINARY_NAME}" /tmp/gavel-released
           /tmp/gavel-released version
 
       - name: Run Gavel analysis
@@ -57,8 +58,21 @@ jobs:
           /tmp/gavel-released analyze \
             --diff /tmp/pr.diff \
             --policies .github \
-            --output /tmp/gavel-results \
-            | tee /tmp/verdict.json
+            --output /tmp/gavel-results
+
+      - name: Collect results
+        if: env.SKIP_ANALYSIS != 'true'
+        run: |
+          # Find the verdict and SARIF files from the timestamped result directory
+          RESULT_DIR=$(ls -td /tmp/gavel-results/*/ 2>/dev/null | head -1)
+          if [ -z "$RESULT_DIR" ]; then
+            echo "::error::No Gavel result directory found"
+            exit 1
+          fi
+          cp "$RESULT_DIR/verdict.json" /tmp/verdict.json
+          # Copy SARIF with .sarif extension for CodeQL upload action
+          mkdir -p /tmp/gavel-sarif
+          cp "$RESULT_DIR/sarif.json" /tmp/gavel-sarif/gavel.sarif
 
       - name: Evaluate verdict
         if: env.SKIP_ANALYSIS != 'true'
@@ -86,7 +100,7 @@ jobs:
         uses: github/codeql-action/upload-sarif@v4
         if: always() && env.SKIP_ANALYSIS != 'true'
         with:
-          sarif_file: /tmp/gavel-results/
+          sarif_file: /tmp/gavel-sarif/
           category: gavel
 
   # Only runs when PR title contains /benchmark
@@ -131,12 +145,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          ASSET_NAME="gavel_Linux_x86_64"
-          gh release download --repo "${{ github.repository }}" --pattern "${ASSET_NAME}.tar.gz" --dir /tmp || true
-          if [ -f "/tmp/${ASSET_NAME}.tar.gz" ]; then
-            tar -xzf "/tmp/${ASSET_NAME}.tar.gz" -C /tmp
-            chmod +x "/tmp/${ASSET_NAME}"
-            mv "/tmp/${ASSET_NAME}" /tmp/gavel-released
+          BINARY_NAME="gavel_Linux_x86_64"
+          gh release download --repo "${{ github.repository }}" --pattern "gavel_*_Linux_x86_64.tar.gz" --dir /tmp || true
+          TARBALL=$(ls /tmp/gavel_*_Linux_x86_64.tar.gz 2>/dev/null | head -1)
+          if [ -n "$TARBALL" ]; then
+            tar -xzf "$TARBALL" -C /tmp
+            chmod +x "/tmp/${BINARY_NAME}"
+            mv "/tmp/${BINARY_NAME}" /tmp/gavel-released
             echo "HAS_RELEASED=true" >> "$GITHUB_ENV"
           else
             echo "::warning::No released binary found, running dev build only."

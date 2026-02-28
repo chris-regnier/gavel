@@ -70,7 +70,7 @@ func TestFullPipeline(t *testing.T) {
 	}
 
 	// 6. Evaluate
-	eval, err := evaluator.NewEvaluator("")
+	eval, err := evaluator.NewEvaluator(ctx, "")
 	if err != nil {
 		t.Fatal(err)
 	}
