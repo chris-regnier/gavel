@@ -1,18 +1,29 @@
 package diffcontext
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/chris-regnier/gavel/internal/input"
 )
 
 // maxFileContentSize limits the size of file content included as context (64KB per file).
 const maxFileContentSize = 64 * 1024
+
+// maxTotalContextSize caps the total size of all file contents in the context (256KB).
+// This prevents sending excessively large context to the LLM for diffs touching many files.
+const maxTotalContextSize = 256 * 1024
+
+// gitTimeout limits how long we wait for git commands to complete.
+const gitTimeout = 5 * time.Second
 
 // BuildDiffContext enriches diff artifacts with additional context to reduce false positives.
 // It extracts commit messages, reads full file contents, detects cross-file movements,
@@ -55,7 +66,10 @@ func BuildDiffContext(artifacts []input.Artifact, repoDir string) string {
 // getCommitMessages retrieves recent commit messages from git log.
 // Returns empty string if git is not available or the directory is not a git repo.
 func getCommitMessages(repoDir string) string {
-	cmd := exec.Command("git", "log", "--oneline", "--no-decorate", "-n", "20")
+	ctx, cancel := context.WithTimeout(context.Background(), gitTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "git", "log", "--oneline", "--no-decorate", "-n", "20")
 	cmd.Dir = repoDir
 
 	out, err := cmd.Output()
@@ -73,9 +87,11 @@ func getCommitMessages(repoDir string) string {
 
 // buildFileContentsSection reads the current full file contents for files referenced in the diff.
 // This provides the LLM with complete context beyond the narrow diff hunks.
+// Total output is capped at maxTotalContextSize to avoid sending excessively large context.
 func buildFileContentsSection(artifacts []input.Artifact, repoDir string) string {
 	var sb strings.Builder
 	hasContent := false
+	totalSize := 0
 
 	for _, art := range artifacts {
 		if art.Kind != input.KindDiff {
@@ -87,6 +103,13 @@ func buildFileContentsSection(artifacts []input.Artifact, repoDir string) string
 			continue
 		}
 
+		if totalSize+len(content) > maxTotalContextSize {
+			if hasContent {
+				sb.WriteString("... (remaining file contents omitted due to context size limit)\n\n")
+			}
+			break
+		}
+
 		if !hasContent {
 			sb.WriteString("## Full File Contents (Post-Change)\n")
 			sb.WriteString("The following are the current complete contents of files referenced in the diff.\n")
@@ -95,6 +118,7 @@ func buildFileContentsSection(artifacts []input.Artifact, repoDir string) string
 		}
 
 		sb.WriteString(fmt.Sprintf("### %s\n```\n%s\n```\n\n", art.Path, content))
+		totalSize += len(content)
 	}
 
 	if !hasContent {
@@ -105,30 +129,35 @@ func buildFileContentsSection(artifacts []input.Artifact, repoDir string) string
 
 // readFileContent reads a file's content from disk, returning empty string on failure.
 // Files larger than maxFileContentSize are truncated with a note.
+// Uses a capped read to avoid loading entire large files into memory.
 func readFileContent(filePath, repoDir string) string {
 	fullPath := filePath
 	if !filepath.IsAbs(filePath) {
 		fullPath = filepath.Join(repoDir, filePath)
 	}
 
-	info, err := os.Stat(fullPath)
+	f, err := os.Open(fullPath)
 	if err != nil {
 		return ""
 	}
+	defer f.Close()
 
-	if info.Size() > maxFileContentSize {
-		data, err := os.ReadFile(fullPath)
-		if err != nil {
-			return ""
-		}
-		return string(data[:maxFileContentSize]) + "\n... (file truncated, showing first 64KB)"
-	}
-
-	data, err := os.ReadFile(fullPath)
-	if err != nil {
+	// Read at most maxFileContentSize+1 to detect whether truncation is needed.
+	buf := make([]byte, maxFileContentSize+1)
+	n, err := io.ReadFull(f, buf)
+	if n == 0 {
 		return ""
 	}
-	return string(data)
+	// io.ReadFull returns ErrUnexpectedEOF when it reads less than len(buf), which is the
+	// normal case for files smaller than the limit.
+	if err != nil && err != io.ErrUnexpectedEOF {
+		return ""
+	}
+
+	if n > maxFileContentSize {
+		return string(buf[:maxFileContentSize]) + "\n... (file truncated, showing first 64KB)"
+	}
+	return string(buf[:n])
 }
 
 // buildCrossFileSummary analyzes diff artifacts to detect potential cross-file code movements.
@@ -180,9 +209,15 @@ func buildCrossFileSummary(artifacts []input.Artifact) string {
 	sb.WriteString("## Cross-File Change Summary\n")
 	sb.WriteString("This diff spans multiple files. The following summary helps identify potential code movements:\n\n")
 
-	// List all changed files with their change type
+	// List all changed files with their change type (sorted for deterministic output)
 	sb.WriteString("**Changed files:**\n")
-	for path, s := range stats {
+	sortedPaths := make([]string, 0, len(stats))
+	for path := range stats {
+		sortedPaths = append(sortedPaths, path)
+	}
+	sort.Strings(sortedPaths)
+	for _, path := range sortedPaths {
+		s := stats[path]
 		sb.WriteString(fmt.Sprintf("- `%s`: +%d additions, -%d removals\n", path, s.additions, s.removals))
 	}
 	sb.WriteString("\n")
@@ -194,7 +229,9 @@ func buildCrossFileSummary(artifacts []input.Artifact) string {
 		sb.WriteString(strings.Join(wrapPaths(removeFiles), ", "))
 		sb.WriteString("\n")
 		sb.WriteString("Files with additions: ")
-		targets := append(addFiles, mixedFiles...)
+		targets := make([]string, 0, len(addFiles)+len(mixedFiles))
+		targets = append(targets, addFiles...)
+		targets = append(targets, mixedFiles...)
 		sb.WriteString(strings.Join(wrapPaths(targets), ", "))
 		sb.WriteString("\n")
 		sb.WriteString("Code removed from one file may have been relocated to another. Verify before flagging as removed functionality.\n")
