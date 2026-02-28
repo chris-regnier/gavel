@@ -2,6 +2,7 @@ package review
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -27,7 +28,7 @@ func (m ReviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Save review state before quitting
 			if err := m.saveState(); err != nil {
 				// Log error but don't prevent quit
-				fmt.Fprintf(os.Stderr, "Warning: failed to save review state: %v\n", err)
+				slog.Warn("failed to save review state", "err", err)
 			}
 			return m, tea.Quit
 

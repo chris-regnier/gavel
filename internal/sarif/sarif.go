@@ -10,9 +10,15 @@ type Log struct {
 }
 
 type Run struct {
-	Tool       Tool                   `json:"tool"`
-	Results    []Result               `json:"results"`
-	Properties map[string]interface{} `json:"properties,omitempty"`
+	Tool        Tool                   `json:"tool"`
+	Results     []Result               `json:"results"`
+	Invocations []Invocation           `json:"invocations,omitempty"`
+	Properties  map[string]interface{} `json:"properties,omitempty"`
+}
+
+type Invocation struct {
+	WorkingDirectory    ArtifactLocation `json:"workingDirectory"`
+	ExecutionSuccessful bool             `json:"executionSuccessful"`
 }
 
 type Tool struct {
@@ -37,11 +43,12 @@ type ReportingConfiguration struct {
 }
 
 type Result struct {
-	RuleID     string                 `json:"ruleId"`
-	Level      string                 `json:"level"`
-	Message    Message                `json:"message"`
-	Locations  []Location             `json:"locations,omitempty"`
-	Properties map[string]interface{} `json:"properties,omitempty"`
+	RuleID              string                 `json:"ruleId"`
+	Level               string                 `json:"level"`
+	Message             Message                `json:"message"`
+	Locations           []Location             `json:"locations,omitempty"`
+	PartialFingerprints map[string]string      `json:"partialFingerprints,omitempty"`
+	Properties          map[string]interface{} `json:"properties,omitempty"`
 }
 
 type Message struct {

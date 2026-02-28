@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"strconv"
 	"strings"
 	"sync"
@@ -168,7 +168,7 @@ func (s *Server) Run(ctx context.Context) error {
 				if err == io.EOF {
 					return nil
 				}
-				log.Printf("Error handling message: %v", err)
+				slog.Error("error handling message", "err", err)
 			}
 		}
 	}
@@ -234,7 +234,7 @@ func (s *Server) handleMessage(ctx context.Context) error {
 	case MethodExit:
 		return io.EOF
 	default:
-		log.Printf("Unhandled method: %s", msg.Method)
+		slog.Warn("unhandled LSP method", "method", msg.Method)
 		return nil
 	}
 }
@@ -465,7 +465,7 @@ func (s *Server) analyzeAndPublish(ctx context.Context, uri, path, content strin
 	// Run analysis
 	results, err := s.analyze(ctx, path, content)
 	if err != nil {
-		log.Printf("Analysis error for %s: %v", uri, err)
+		slog.Error("analysis failed", "uri", uri, "err", err)
 		return
 	}
 
@@ -482,7 +482,7 @@ func (s *Server) analyzeAndPublish(ctx context.Context, uri, path, content strin
 
 	// Publish diagnostics
 	if err := s.publishDiagnostics(uri, diagnostics); err != nil {
-		log.Printf("Failed to publish diagnostics for %s: %v", uri, err)
+		slog.Error("failed to publish diagnostics", "uri", uri, "err", err)
 	}
 }
 
