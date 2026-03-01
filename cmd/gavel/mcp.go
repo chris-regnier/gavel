@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/spf13/cobra"
@@ -18,6 +20,7 @@ var (
 	mcpMachineConfig string
 	mcpProjectConfig string
 	mcpOutputDir     string
+	mcpRegoDir       string
 )
 
 func init() {
@@ -56,12 +59,14 @@ Prompts:
 	cmd.Flags().StringVar(&mcpMachineConfig, "machine-config", "", "Machine-level config file (default: $HOME/.config/gavel/policies.yaml)")
 	cmd.Flags().StringVar(&mcpProjectConfig, "project-config", ".gavel/policies.yaml", "Project-level config file")
 	cmd.Flags().StringVar(&mcpOutputDir, "output", ".gavel/results", "Output directory for results")
+	cmd.Flags().StringVar(&mcpRegoDir, "rego-dir", "", "Directory containing custom Rego policies (default: embedded policy)")
 
 	return cmd
 }
 
 func runMCP(cmd *cobra.Command, args []string) error {
-	ctx := context.Background()
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
 	// Set defaults for config paths
 	if mcpMachineConfig == "" {
@@ -78,11 +83,6 @@ func runMCP(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
-	// Override persona from CLI flag if provided
-	if personaFlag, _ := cmd.Flags().GetString("persona"); personaFlag != "" {
-		cfg.Persona = personaFlag
-	}
-
 	// Validate configuration
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("invalid config: %w", err)
@@ -93,9 +93,9 @@ func runMCP(cmd *cobra.Command, args []string) error {
 
 	// Create MCP server
 	mcpServer := gavelmcp.NewMCPServer(gavelmcp.ServerConfig{
-		Config:    cfg,
-		Store:     fs,
-		OutputDir: mcpOutputDir,
+		Config:  cfg,
+		Store:   fs,
+		RegoDir: mcpRegoDir,
 	})
 
 	// Serve over stdio

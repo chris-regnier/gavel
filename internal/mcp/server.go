@@ -22,24 +22,30 @@ import (
 	"github.com/chris-regnier/gavel/internal/store"
 )
 
+const version = "0.2.0"
+
 // ServerConfig holds configuration for the MCP server.
 type ServerConfig struct {
-	Config    *config.Config
-	Store     store.Store
-	OutputDir string
+	Config   *config.Config
+	Store    store.Store
+	RegoDir  string // Directory for custom Rego policies (empty = default embedded policy)
+	RootDir  string // Root directory for path validation (empty = cwd)
 }
 
 // NewMCPServer creates a configured MCP server with all Gavel tools, resources, and prompts.
 func NewMCPServer(cfg ServerConfig) *server.MCPServer {
 	s := server.NewMCPServer(
 		"gavel",
-		"0.2.0",
+		version,
 		server.WithToolCapabilities(true),
 		server.WithResourceCapabilities(true, false),
 		server.WithPromptCapabilities(true),
 	)
 
-	h := &handlers{cfg: cfg}
+	h := &handlers{
+		cfg:    cfg,
+		client: analyzer.NewBAMLLiveClient(cfg.Config.Provider),
+	}
 
 	// Register tools
 	s.AddTool(analyzeFileTool(), h.handleAnalyzeFile)
@@ -62,7 +68,8 @@ func NewMCPServer(cfg ServerConfig) *server.MCPServer {
 
 // handlers holds the server config and implements all tool/resource/prompt handlers.
 type handlers struct {
-	cfg ServerConfig
+	cfg    ServerConfig
+	client analyzer.BAMLClient
 }
 
 // --- Tool definitions ---
@@ -175,6 +182,10 @@ func (h *handlers) handleAnalyzeFile(ctx context.Context, request mcp.CallToolRe
 		return mcp.NewToolResultError("path is required"), nil
 	}
 
+	if err := h.validatePath(path); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
 	persona := request.GetString("persona", h.cfg.Config.Persona)
 	if persona == "" {
 		persona = "code-reviewer"
@@ -192,10 +203,25 @@ func (h *handlers) handleAnalyzeFile(ctx context.Context, request mcp.CallToolRe
 		return mcp.NewToolResultError(fmt.Sprintf("analysis failed: %v", err)), nil
 	}
 
-	// Format results
-	out, err := json.MarshalIndent(results, "", "  ")
+	// Build SARIF and store so judge can evaluate later
+	rules := buildRules(h.cfg.Config.Policies)
+	sarifLog := sarif.Assemble(results, rules, "file", persona)
+
+	id, err := h.cfg.Store.WriteSARIF(ctx, sarifLog)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("marshaling results: %v", err)), nil
+		return mcp.NewToolResultError(fmt.Sprintf("storing results: %v", err)), nil
+	}
+
+	summary := map[string]interface{}{
+		"id":       id,
+		"findings": len(results),
+		"files":    1,
+		"persona":  persona,
+		"path":     path,
+	}
+	out, err := json.MarshalIndent(summary, "", "  ")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("marshaling summary: %v", err)), nil
 	}
 
 	return mcp.NewToolResultText(string(out)), nil
@@ -205,6 +231,10 @@ func (h *handlers) handleAnalyzeDirectory(ctx context.Context, request mcp.CallT
 	dir := request.GetString("path", "")
 	if dir == "" {
 		return mcp.NewToolResultError("path is required"), nil
+	}
+
+	if err := h.validatePath(dir); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
 	}
 
 	persona := request.GetString("persona", h.cfg.Config.Persona)
@@ -274,7 +304,7 @@ func (h *handlers) handleJudge(ctx context.Context, request mcp.CallToolRequest)
 	}
 
 	// Evaluate with Rego
-	eval, err := evaluator.NewEvaluator(ctx, "")
+	eval, err := evaluator.NewEvaluator(ctx, h.cfg.RegoDir)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("creating evaluator: %v", err)), nil
 	}
@@ -447,9 +477,43 @@ func (h *handlers) runAnalysis(ctx context.Context, artifacts []input.Artifact, 
 		return nil, fmt.Errorf("loading persona %s: %w", persona, err)
 	}
 
-	client := analyzer.NewBAMLLiveClient(h.cfg.Config.Provider)
-	a := analyzer.NewAnalyzer(client)
+	a := analyzer.NewAnalyzer(h.client)
 	return a.Analyze(ctx, artifacts, h.cfg.Config.Policies, personaPrompt)
+}
+
+// validatePath checks that the resolved path is within the configured root directory
+// to prevent path traversal attacks from MCP clients.
+func (h *handlers) validatePath(path string) error {
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return fmt.Errorf("resolving path: %w", err)
+	}
+
+	// Resolve symlinks to prevent symlink-based traversal
+	realPath, err := filepath.EvalSymlinks(absPath)
+	if err != nil {
+		// If the file doesn't exist yet, EvalSymlinks fails; fall back to Abs
+		realPath = absPath
+	}
+
+	root := h.cfg.RootDir
+	if root == "" {
+		root, err = os.Getwd()
+		if err != nil {
+			return fmt.Errorf("getting working directory: %w", err)
+		}
+	}
+
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return fmt.Errorf("resolving root: %w", err)
+	}
+
+	if !strings.HasPrefix(realPath, absRoot+string(filepath.Separator)) && realPath != absRoot {
+		return fmt.Errorf("path %s is outside the allowed root directory", path)
+	}
+
+	return nil
 }
 
 func buildRules(policies map[string]config.Policy) []sarif.ReportingDescriptor {
@@ -464,12 +528,4 @@ func buildRules(policies map[string]config.Policy) []sarif.ReportingDescriptor {
 		}
 	}
 	return rules
-}
-
-// ResolveOutputDir returns the output directory, defaulting to .gavel/results.
-func ResolveOutputDir(dir string) string {
-	if dir != "" {
-		return dir
-	}
-	return filepath.Join(".gavel", "results")
 }
