@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/chris-regnier/gavel/internal/input"
 )
@@ -154,10 +155,17 @@ func readFileContent(filePath, repoDir string) string {
 		return ""
 	}
 
-	if n > maxFileContentSize {
-		return string(buf[:maxFileContentSize]) + "\n... (file truncated, showing first 64KB)"
+	content := buf[:n]
+
+	// Skip binary files — they contain non-text data that would corrupt LLM context.
+	if !utf8.Valid(content) {
+		return ""
 	}
-	return string(buf[:n])
+
+	if n > maxFileContentSize {
+		return string(content[:maxFileContentSize]) + "\n... (file truncated, showing first 64KB)"
+	}
+	return string(content)
 }
 
 // buildCrossFileSummary analyzes diff artifacts to detect potential cross-file code movements.
@@ -179,10 +187,25 @@ func buildCrossFileSummary(artifacts []input.Artifact) string {
 			continue
 		}
 		s := &fileDiffStats{}
+		inHunk := false
 		for _, line := range strings.Split(art.Content, "\n") {
-			if strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "+++") {
+			// Detect hunk headers to know we're inside diff content
+			if strings.HasPrefix(line, "@@") {
+				inHunk = true
+				continue
+			}
+			// Skip diff metadata lines before the first hunk
+			if !inHunk {
+				continue
+			}
+			// Count actual content additions/removals within hunks
+			if len(line) == 0 {
+				continue
+			}
+			switch line[0] {
+			case '+':
 				s.additions++
-			} else if strings.HasPrefix(line, "-") && !strings.HasPrefix(line, "---") {
+			case '-':
 				s.removals++
 			}
 		}
