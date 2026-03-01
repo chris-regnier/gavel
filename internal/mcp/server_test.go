@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	mcpgo "github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/mcptest"
 
+	"github.com/chris-regnier/gavel/internal/analyzer"
 	"github.com/chris-regnier/gavel/internal/config"
 	"github.com/chris-regnier/gavel/internal/sarif"
 	"github.com/chris-regnier/gavel/internal/store"
@@ -54,24 +56,44 @@ func testStore(t *testing.T) store.Store {
 	return store.NewFileStore(dir)
 }
 
+// newTestHandlers creates handlers with the same wiring as NewMCPServer,
+// so tests stay aligned with production registration.
+func newTestHandlers(t *testing.T, cfg *config.Config, fs store.Store, rootDir string) *handlers {
+	t.Helper()
+	return &handlers{
+		cfg: ServerConfig{
+			Config:  cfg,
+			Store:   fs,
+			RootDir: rootDir,
+		},
+		client: analyzer.NewBAMLLiveClient(cfg.Provider),
+	}
+}
+
+// registerAll adds every tool/resource/prompt to a test server,
+// mirroring the registration order in NewMCPServer.
+func registerAll(ts *mcptest.Server, h *handlers) {
+	ts.AddTool(analyzeFileTool(), h.handleAnalyzeFile)
+	ts.AddTool(analyzeDirectoryTool(), h.handleAnalyzeDirectory)
+	ts.AddTool(judgeTool(), h.handleJudge)
+	ts.AddTool(listResultsTool(), h.handleListResults)
+	ts.AddTool(getResultTool(), h.handleGetResult)
+	ts.AddResource(policiesResource(), h.handlePoliciesResource)
+	ts.AddResourceTemplate(resultTemplate(), h.handleResultTemplate)
+	ts.AddPrompt(codeReviewPrompt(), h.handleCodeReviewPrompt)
+	ts.AddPrompt(securityAuditPrompt(), h.handleSecurityAuditPrompt)
+	ts.AddPrompt(architectureReviewPrompt(), h.handleArchitectureReviewPrompt)
+}
+
 func setupTestServer(t *testing.T) *mcptest.Server {
 	t.Helper()
 
 	cfg := testConfig()
 	fs := testStore(t)
-	h := &handlers{cfg: ServerConfig{Config: cfg, Store: fs, OutputDir: t.TempDir()}}
+	h := newTestHandlers(t, cfg, fs, "")
 
 	testServer := mcptest.NewUnstartedServer(t)
-	testServer.AddTool(analyzeFileTool(), h.handleAnalyzeFile)
-	testServer.AddTool(analyzeDirectoryTool(), h.handleAnalyzeDirectory)
-	testServer.AddTool(judgeTool(), h.handleJudge)
-	testServer.AddTool(listResultsTool(), h.handleListResults)
-	testServer.AddTool(getResultTool(), h.handleGetResult)
-	testServer.AddResource(policiesResource(), h.handlePoliciesResource)
-	testServer.AddResourceTemplate(resultTemplate(), h.handleResultTemplate)
-	testServer.AddPrompt(codeReviewPrompt(), h.handleCodeReviewPrompt)
-	testServer.AddPrompt(securityAuditPrompt(), h.handleSecurityAuditPrompt)
-	testServer.AddPrompt(architectureReviewPrompt(), h.handleArchitectureReviewPrompt)
+	registerAll(testServer, h)
 
 	if err := testServer.Start(context.Background()); err != nil {
 		t.Fatalf("starting test server: %v", err)
@@ -81,7 +103,8 @@ func setupTestServer(t *testing.T) *mcptest.Server {
 	return testServer
 }
 
-// callTool is a helper that constructs a CallToolRequest with the proper types.
+// --- MCP protocol helpers ---
+
 func callTool(ctx context.Context, client interface {
 	CallTool(context.Context, mcpgo.CallToolRequest) (*mcpgo.CallToolResult, error)
 }, name string, args map[string]any) (*mcpgo.CallToolResult, error) {
@@ -91,7 +114,6 @@ func callTool(ctx context.Context, client interface {
 	return client.CallTool(ctx, req)
 }
 
-// readResource is a helper that constructs a ReadResourceRequest with the proper types.
 func readResource(ctx context.Context, client interface {
 	ReadResource(context.Context, mcpgo.ReadResourceRequest) (*mcpgo.ReadResourceResult, error)
 }, uri string) (*mcpgo.ReadResourceResult, error) {
@@ -100,7 +122,6 @@ func readResource(ctx context.Context, client interface {
 	return client.ReadResource(ctx, req)
 }
 
-// getPrompt is a helper that constructs a GetPromptRequest with the proper types.
 func getPrompt(ctx context.Context, client interface {
 	GetPrompt(context.Context, mcpgo.GetPromptRequest) (*mcpgo.GetPromptResult, error)
 }, name string, args map[string]string) (*mcpgo.GetPromptResult, error) {
@@ -110,14 +131,15 @@ func getPrompt(ctx context.Context, client interface {
 	return client.GetPrompt(ctx, req)
 }
 
+// --- Tests ---
+
 func TestNewMCPServer(t *testing.T) {
 	cfg := testConfig()
 	fs := testStore(t)
 
 	s := NewMCPServer(ServerConfig{
-		Config:    cfg,
-		Store:     fs,
-		OutputDir: t.TempDir(),
+		Config: cfg,
+		Store:  fs,
 	})
 
 	if s == nil {
@@ -271,8 +293,9 @@ func TestAnalyzeFileTool_NonexistentFile(t *testing.T) {
 	ts := setupTestServer(t)
 	client := ts.Client()
 
+	// Use a path inside cwd that doesn't exist (passes path validation, fails on read)
 	result, err := callTool(context.Background(), client, "analyze_file", map[string]any{
-		"path": "/nonexistent/file.go",
+		"path": "nonexistent_test_file.go",
 	})
 	if err != nil {
 		t.Fatalf("CallTool analyze_file: %v", err)
@@ -358,7 +381,7 @@ func TestJudgeTool_WithStoredResult(t *testing.T) {
 	dir := t.TempDir()
 	fs := store.NewFileStore(dir)
 
-	sarifLog := sarif.NewLog("gavel", "0.2.0")
+	sarifLog := sarif.NewLog("gavel", version)
 	sarifLog.Runs[0].Results = []sarif.Result{
 		{
 			RuleID:  "test-rule",
@@ -372,12 +395,10 @@ func TestJudgeTool_WithStoredResult(t *testing.T) {
 		t.Fatalf("writing SARIF: %v", err)
 	}
 
-	h := &handlers{cfg: ServerConfig{Config: cfg, Store: fs, OutputDir: dir}}
+	h := newTestHandlers(t, cfg, fs, dir)
 
 	testServer := mcptest.NewUnstartedServer(t)
 	testServer.AddTool(judgeTool(), h.handleJudge)
-	testServer.AddTool(getResultTool(), h.handleGetResult)
-	testServer.AddTool(listResultsTool(), h.handleListResults)
 
 	if err := testServer.Start(context.Background()); err != nil {
 		t.Fatalf("starting test server: %v", err)
@@ -422,13 +443,13 @@ func TestJudgeTool_MostRecent(t *testing.T) {
 	dir := t.TempDir()
 	fs := store.NewFileStore(dir)
 
-	sarifLog := sarif.NewLog("gavel", "0.2.0")
+	sarifLog := sarif.NewLog("gavel", version)
 	_, err := fs.WriteSARIF(context.Background(), sarifLog)
 	if err != nil {
 		t.Fatalf("writing SARIF: %v", err)
 	}
 
-	h := &handlers{cfg: ServerConfig{Config: cfg, Store: fs, OutputDir: dir}}
+	h := newTestHandlers(t, cfg, fs, dir)
 
 	testServer := mcptest.NewUnstartedServer(t)
 	testServer.AddTool(judgeTool(), h.handleJudge)
@@ -455,7 +476,7 @@ func TestGetResultTool_WithStoredResult(t *testing.T) {
 	dir := t.TempDir()
 	fs := store.NewFileStore(dir)
 
-	sarifLog := sarif.NewLog("gavel", "0.2.0")
+	sarifLog := sarif.NewLog("gavel", version)
 	sarifLog.Runs[0].Results = []sarif.Result{
 		{
 			RuleID:  "test-rule",
@@ -469,7 +490,7 @@ func TestGetResultTool_WithStoredResult(t *testing.T) {
 		t.Fatalf("writing SARIF: %v", err)
 	}
 
-	h := &handlers{cfg: ServerConfig{Config: cfg, Store: fs, OutputDir: dir}}
+	h := newTestHandlers(t, cfg, fs, dir)
 
 	testServer := mcptest.NewUnstartedServer(t)
 	testServer.AddTool(getResultTool(), h.handleGetResult)
@@ -512,7 +533,7 @@ func TestListResultsTool_WithResults(t *testing.T) {
 	dir := t.TempDir()
 	fs := store.NewFileStore(dir)
 
-	sarifLog := sarif.NewLog("gavel", "0.2.0")
+	sarifLog := sarif.NewLog("gavel", version)
 	_, err := fs.WriteSARIF(context.Background(), sarifLog)
 	if err != nil {
 		t.Fatalf("writing SARIF 1: %v", err)
@@ -522,7 +543,7 @@ func TestListResultsTool_WithResults(t *testing.T) {
 		t.Fatalf("writing SARIF 2: %v", err)
 	}
 
-	h := &handlers{cfg: ServerConfig{Config: cfg, Store: fs, OutputDir: dir}}
+	h := newTestHandlers(t, cfg, fs, dir)
 
 	testServer := mcptest.NewUnstartedServer(t)
 	testServer.AddTool(listResultsTool(), h.handleListResults)
@@ -570,10 +591,23 @@ func TestAnalyzeDirectoryTool_MissingPath(t *testing.T) {
 }
 
 func TestAnalyzeDirectoryTool_EmptyDir(t *testing.T) {
-	ts := setupTestServer(t)
-	client := ts.Client()
-
+	// Use a root that contains the temp dir so path validation passes
+	rootDir := os.TempDir()
 	emptyDir := t.TempDir()
+
+	cfg := testConfig()
+	fs := testStore(t)
+	h := newTestHandlers(t, cfg, fs, rootDir)
+
+	testServer := mcptest.NewUnstartedServer(t)
+	registerAll(testServer, h)
+
+	if err := testServer.Start(context.Background()); err != nil {
+		t.Fatalf("starting test server: %v", err)
+	}
+	defer testServer.Close()
+
+	client := testServer.Client()
 
 	result, err := callTool(context.Background(), client, "analyze_directory", map[string]any{
 		"path": emptyDir,
@@ -597,13 +631,13 @@ func TestReadResultTemplate(t *testing.T) {
 	dir := t.TempDir()
 	fs := store.NewFileStore(dir)
 
-	sarifLog := sarif.NewLog("gavel", "0.2.0")
+	sarifLog := sarif.NewLog("gavel", version)
 	id, err := fs.WriteSARIF(context.Background(), sarifLog)
 	if err != nil {
 		t.Fatalf("writing SARIF: %v", err)
 	}
 
-	h := &handlers{cfg: ServerConfig{Config: cfg, Store: fs, OutputDir: dir}}
+	h := newTestHandlers(t, cfg, fs, dir)
 
 	testServer := mcptest.NewUnstartedServer(t)
 	testServer.AddResourceTemplate(resultTemplate(), h.handleResultTemplate)
@@ -654,21 +688,94 @@ func TestBuildRules(t *testing.T) {
 	}
 }
 
-func TestResolveOutputDir(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected string
-	}{
-		{"", filepath.Join(".gavel", "results")},
-		{"/custom/dir", "/custom/dir"},
-		{"relative/dir", "relative/dir"},
+func TestValidatePath_InsideRoot(t *testing.T) {
+	root := t.TempDir()
+	h := &handlers{cfg: ServerConfig{RootDir: root}}
+
+	// File inside root should pass
+	inside := filepath.Join(root, "subdir", "file.go")
+	if err := h.validatePath(inside); err != nil {
+		t.Errorf("expected path inside root to pass, got: %v", err)
 	}
 
-	for _, tt := range tests {
-		result := ResolveOutputDir(tt.input)
-		if result != tt.expected {
-			t.Errorf("ResolveOutputDir(%q) = %q, want %q", tt.input, result, tt.expected)
+	// Root itself should pass
+	if err := h.validatePath(root); err != nil {
+		t.Errorf("expected root itself to pass, got: %v", err)
+	}
+}
+
+func TestValidatePath_OutsideRoot(t *testing.T) {
+	root := t.TempDir()
+	h := &handlers{cfg: ServerConfig{RootDir: root}}
+
+	outsidePaths := []string{
+		"/etc/passwd",
+		filepath.Join(root, "..", "escape"),
+		"/tmp/other",
+	}
+
+	for _, p := range outsidePaths {
+		err := h.validatePath(p)
+		if err == nil {
+			t.Errorf("expected path %q outside root to be rejected", p)
 		}
+		if err != nil && !strings.Contains(err.Error(), "outside the allowed root") {
+			t.Errorf("expected 'outside the allowed root' error for %q, got: %v", p, err)
+		}
+	}
+}
+
+func TestValidatePath_DefaultRoot(t *testing.T) {
+	// When RootDir is empty, validatePath uses cwd
+	h := &handlers{cfg: ServerConfig{}}
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getting cwd: %v", err)
+	}
+
+	// Path inside cwd should pass
+	inside := filepath.Join(cwd, "somefile.go")
+	if err := h.validatePath(inside); err != nil {
+		t.Errorf("expected path inside cwd to pass, got: %v", err)
+	}
+
+	// Path outside cwd should fail
+	if err := h.validatePath("/etc/passwd"); err == nil {
+		t.Error("expected /etc/passwd to be rejected when root defaults to cwd")
+	}
+}
+
+func TestAnalyzeFileTool_PathTraversal(t *testing.T) {
+	root := t.TempDir()
+	cfg := testConfig()
+	fs := testStore(t)
+	h := newTestHandlers(t, cfg, fs, root)
+
+	testServer := mcptest.NewUnstartedServer(t)
+	testServer.AddTool(analyzeFileTool(), h.handleAnalyzeFile)
+
+	if err := testServer.Start(context.Background()); err != nil {
+		t.Fatalf("starting test server: %v", err)
+	}
+	defer testServer.Close()
+
+	client := testServer.Client()
+
+	result, err := callTool(context.Background(), client, "analyze_file", map[string]any{
+		"path": "/etc/passwd",
+	})
+	if err != nil {
+		t.Fatalf("CallTool analyze_file: %v", err)
+	}
+
+	if !result.IsError {
+		t.Error("expected error for path traversal attempt")
+	}
+
+	text := result.Content[0].(mcpgo.TextContent).Text
+	if !strings.Contains(text, "outside the allowed root") {
+		t.Errorf("expected path traversal error, got: %s", text)
 	}
 }
 
@@ -687,7 +794,7 @@ func main() {
 
 	cfg := testConfig()
 	fs := testStore(t)
-	h := &handlers{cfg: ServerConfig{Config: cfg, Store: fs, OutputDir: t.TempDir()}}
+	h := newTestHandlers(t, cfg, fs, tmpDir)
 
 	testServer := mcptest.NewUnstartedServer(t)
 	testServer.AddTool(analyzeFileTool(), h.handleAnalyzeFile)
@@ -709,11 +816,14 @@ func main() {
 	}
 
 	// We expect this to fail at the BAML client level (no LLM available),
-	// but the error message should mention analysis, not file reading
+	// but the error message should mention analysis, not file reading or path
 	if result.IsError {
 		text := result.Content[0].(mcpgo.TextContent).Text
-		if text == "path is required" || text == "reading file:" {
+		if text == "path is required" || strings.HasPrefix(text, "reading file:") {
 			t.Errorf("got unexpected error type: %s", text)
+		}
+		if strings.Contains(text, "outside the allowed root") {
+			t.Errorf("path validation rejected a valid path: %s", text)
 		}
 	}
 }
