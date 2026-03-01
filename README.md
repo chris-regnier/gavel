@@ -45,7 +45,7 @@ sudo mv gavel /usr/local/bin/
 
 #### Prerequisites
 
-- Go 1.25+
+- Go 1.24+
 - [Task](https://taskfile.dev/) (task runner)
 - [BAML CLI](https://docs.boundaryml.com/) (for regenerating the LLM client)
 - An LLM provider (see [Supported Providers](#supported-providers) below)
@@ -54,7 +54,7 @@ sudo mv gavel /usr/local/bin/
 task build
 ```
 
-This produces a `gavel` binary in the project root.
+This produces a `gavel` binary in the `dist/` directory.
 
 ## Quick Start
 
@@ -115,7 +115,17 @@ git diff main...HEAD | ./gavel analyze --diff -
 | `--diff` | Path to unified diff (`-` for stdin) | — |
 | `--output` | Output directory for results | `.gavel/results` |
 | `--policies` | Policy config directory | `.gavel` |
-| `--rules-dir` | Custom rules directory (overrides `.gavel/rules/`) | `.gavel/rules` |
+| `--rules-dir` | Custom rules directory (overrides `.gavel/rules/`) | — |
+| `--cache-server` | Remote cache server URL to upload results | — |
+
+### Global Flags
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--persona` | Persona for analysis (`code-reviewer`, `architect`, `security`) | `code-reviewer` |
+| `-q`, `--quiet` | Suppress all log output | `false` |
+| `-v`, `--verbose` | Enable verbose (info-level) logging | `false` |
+| `--debug` | Enable debug-level logging | `false` |
 
 ### `judge` Flags
 
@@ -514,29 +524,30 @@ go test -run TestIntegration -v
 
 ### Releasing
 
-Releases are automated via GitHub Actions and [GoReleaser](https://goreleaser.com/). To create a new release:
+Releases are automated via GitHub Actions and [Task](https://taskfile.dev/). To create a new release:
 
 ```bash
-# Tag a new version (following semver)
+# Recommended: use the release task (validates, tests, tags, and pushes)
+task release VERSION=v0.1.0
+
+# Or manually:
 git tag -a v0.1.0 -m "Release v0.1.0"
 git push origin v0.1.0
 
 # GitHub Actions will automatically:
-# 1. Run tests and linter
-# 2. Generate BAML client
-# 3. Build binaries for multiple platforms
-# 4. Create a GitHub release with changelog
-# 5. Upload release artifacts
+# 1. Run tests
+# 2. Build binaries for Linux, macOS (amd64 + arm64)
+# 3. Create a GitHub release with all artifacts
 ```
 
-To test the release process locally without publishing:
+To test the build process locally without publishing:
 
 ```bash
-# Install goreleaser
-go install github.com/goreleaser/goreleaser/v2@latest
+# Build for current platform
+task build
 
-# Run a local snapshot build
-goreleaser release --snapshot --clean
+# Build release binaries for current OS (amd64 + arm64)
+task build:release
 
 # Check the dist/ directory for built artifacts
 ls -la dist/
