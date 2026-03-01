@@ -31,11 +31,11 @@ Download the latest release for your platform from the [releases page](https://g
 ```bash
 # macOS (arm64)
 curl -L https://github.com/chris-regnier/gavel/releases/latest/download/gavel_<version>_Darwin_arm64.tar.gz | tar xz
-sudo mv gavel /usr/local/bin/
+sudo mv gavel_Darwin_arm64 /usr/local/bin/gavel
 
 # Linux (amd64)
 curl -L https://github.com/chris-regnier/gavel/releases/latest/download/gavel_<version>_Linux_x86_64.tar.gz | tar xz
-sudo mv gavel /usr/local/bin/
+sudo mv gavel_Linux_x86_64 /usr/local/bin/gavel
 
 # Windows (amd64)
 # Download the .zip file from the releases page and extract
