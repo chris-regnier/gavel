@@ -298,35 +298,28 @@ export AWS_REGION=us-east-1
 
 ## Advanced: Multiple Configurations
 
-You can maintain different configurations for different scenarios:
+You can maintain different configurations for different scenarios using Gavel's tiered config system. Place your default provider in `~/.config/gavel/policies.yaml` (machine-level) and override it per-project in `.gavel/policies.yaml`.
 
-```bash
-# Fast local checks
-gavel analyze --config .gavel/fast.yaml
+For example, use Ollama locally and Anthropic in CI:
 
-# Production quality review
-gavel analyze --config .gavel/production.yaml
-```
-
-Example `.gavel/fast.yaml`:
+**Local development** (`~/.config/gavel/policies.yaml`):
 ```yaml
 provider:
   name: ollama
   ollama:
     model: qwen2.5-coder:7b
-policies:
-  # ... policies ...
+    base_url: http://localhost:11434/v1
 ```
 
-Example `.gavel/production.yaml`:
+**CI / production** (`.gavel/policies.yaml` in the repo):
 ```yaml
 provider:
   name: anthropic
   anthropic:
-    model: claude-sonnet-4-20250514
-policies:
-  # ... policies ...
+    model: claude-haiku-4-5
 ```
+
+The project-level config takes precedence over the machine-level config.
 
 ## See Also
 

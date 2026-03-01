@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build & Development Commands
 
 ```bash
-task build          # go build -o gavel ./cmd/gavel
+task build          # builds dist/gavel for current platform
 task test           # go test ./... -v
 task lint           # go vet ./...
 task generate       # baml-cli generate (regenerates baml_client/ from baml_src/)
@@ -16,10 +16,10 @@ go test ./internal/config/ -run TestMergeOverrides -v
 # Run integration test only
 go test -run TestIntegration -v
 
-# Run the tool
-OPENROUTER_API_KEY=... ./gavel analyze --dir ./internal/input
-./gavel judge                    # evaluate most recent analysis
-./gavel judge --result <id>      # evaluate specific analysis
+# Run the tool (after task build, binary is in dist/)
+OPENROUTER_API_KEY=... ./dist/gavel analyze --dir ./internal/input
+./dist/gavel judge                    # evaluate most recent analysis
+./dist/gavel judge --result <id>      # evaluate specific analysis
 ```
 
 ## Architecture
