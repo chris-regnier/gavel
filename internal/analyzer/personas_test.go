@@ -120,3 +120,25 @@ func TestApplicabilityFilterPrompt_ContainsKeyPhrases(t *testing.T) {
 		}
 	}
 }
+
+func TestGetPersonaPrompt_WithFilter(t *testing.T) {
+	personas := []string{"code-reviewer", "architect", "security"}
+	for _, persona := range personas {
+		t.Run(persona, func(t *testing.T) {
+			prompt, err := GetPersonaPrompt(context.Background(), persona)
+			if err != nil {
+				t.Fatalf("GetPersonaPrompt(%s): %v", persona, err)
+			}
+
+			// Simulate what the caller does when StrictFilter is true
+			filtered := prompt + ApplicabilityFilterPrompt
+
+			if !strings.Contains(filtered, "APPLICABILITY FILTER") {
+				t.Errorf("filtered %s prompt missing filter block", persona)
+			}
+			if !strings.Contains(filtered, "CONFIDENCE GUIDANCE") {
+				t.Errorf("filtered %s prompt lost original confidence guidance", persona)
+			}
+		})
+	}
+}
