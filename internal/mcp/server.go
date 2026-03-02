@@ -477,6 +477,11 @@ func (h *handlers) runAnalysis(ctx context.Context, artifacts []input.Artifact, 
 		return nil, fmt.Errorf("loading persona %s: %w", persona, err)
 	}
 
+	// Append applicability filter if enabled (default)
+	if h.cfg.Config.StrictFilter {
+		personaPrompt += analyzer.ApplicabilityFilterPrompt
+	}
+
 	a := analyzer.NewAnalyzer(h.client)
 	return a.Analyze(ctx, artifacts, h.cfg.Config.Policies, personaPrompt)
 }
