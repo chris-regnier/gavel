@@ -100,3 +100,23 @@ func TestGetPersonaPromptIsStatic(t *testing.T) {
 		t.Errorf("GetPersonaPrompt() returned different results on successive calls (should be static)")
 	}
 }
+
+func TestApplicabilityFilterPrompt_NotEmpty(t *testing.T) {
+	if ApplicabilityFilterPrompt == "" {
+		t.Error("ApplicabilityFilterPrompt should not be empty")
+	}
+}
+
+func TestApplicabilityFilterPrompt_ContainsKeyPhrases(t *testing.T) {
+	phrases := []string{
+		"PRACTICAL IMPACT",
+		"CONCRETE EVIDENCE",
+		"PROPORTIONAL SEVERITY",
+		"do not report it",
+	}
+	for _, phrase := range phrases {
+		if !strings.Contains(ApplicabilityFilterPrompt, phrase) {
+			t.Errorf("ApplicabilityFilterPrompt missing phrase: %q", phrase)
+		}
+	}
+}
