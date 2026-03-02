@@ -42,12 +42,13 @@ type TelemetryConfig struct {
 
 // Config holds the full gavel configuration.
 type Config struct {
-	Provider    ProviderConfig      `yaml:"provider"`
-	Persona     string              `yaml:"persona"` // AI expert role
-	Policies    map[string]Policy   `yaml:"policies"`
-	LSP         LSPConfig           `yaml:"lsp"`
-	RemoteCache RemoteCacheConfig   `yaml:"remote_cache"`
-	Telemetry   TelemetryConfig     `yaml:"telemetry"`
+	Provider     ProviderConfig    `yaml:"provider"`
+	Persona      string            `yaml:"persona"`       // AI expert role
+	StrictFilter bool              `yaml:"strict_filter"` // When true, only report findings relevant to the analyzed artifact
+	Policies     map[string]Policy `yaml:"policies"`
+	LSP          LSPConfig         `yaml:"lsp"`
+	RemoteCache  RemoteCacheConfig `yaml:"remote_cache"`
+	Telemetry    TelemetryConfig   `yaml:"telemetry"`
 }
 
 // RemoteCacheConfig holds remote cache server settings
@@ -239,6 +240,14 @@ func MergeConfigs(configs ...*Config) *Config {
 		// Merge persona - non-empty string overrides
 		if cfg.Persona != "" {
 			result.Persona = cfg.Persona
+		}
+
+		// Merge strict_filter - only override if this config appears intentional
+		// (has at least one non-zero field set, indicating it was loaded from a file).
+		// This prevents an empty/nil config's zero-value false from clearing the default.
+		if cfg.Provider.Name != "" || cfg.Persona != "" || len(cfg.Policies) > 0 ||
+			cfg.Telemetry.Endpoint != "" || cfg.RemoteCache.URL != "" || cfg.StrictFilter {
+			result.StrictFilter = cfg.StrictFilter
 		}
 
 		// Merge LSP config - non-empty fields override

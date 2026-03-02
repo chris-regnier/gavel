@@ -396,3 +396,32 @@ func TestMergeConfigs_PersonaPreserved(t *testing.T) {
 		t.Errorf("expected persona 'architect' preserved, got %q", merged.Persona)
 	}
 }
+
+func TestSystemDefaults_StrictFilterEnabled(t *testing.T) {
+	defaults := SystemDefaults()
+	if !defaults.StrictFilter {
+		t.Error("expected StrictFilter to default to true")
+	}
+}
+
+func TestMergeConfigs_StrictFilterOverride(t *testing.T) {
+	system := &Config{StrictFilter: true, Policies: map[string]Policy{}}
+	project := &Config{
+		StrictFilter: false,
+		Persona:      "code-reviewer", // non-empty field signals intentional config
+		Policies:     map[string]Policy{},
+	}
+	merged := MergeConfigs(system, project)
+	if merged.StrictFilter {
+		t.Error("expected project to override StrictFilter to false")
+	}
+}
+
+func TestMergeConfigs_StrictFilterPreserved(t *testing.T) {
+	system := &Config{StrictFilter: true, Policies: map[string]Policy{}}
+	project := &Config{Policies: map[string]Policy{}} // empty config, no intentional fields
+	merged := MergeConfigs(system, project)
+	if !merged.StrictFilter {
+		t.Error("expected StrictFilter to remain true when project doesn't set it")
+	}
+}
