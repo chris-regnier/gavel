@@ -23,7 +23,8 @@ func SystemDefaults() *Config {
 				Model: "gpt-5.2",
 			},
 		},
-		Persona: "code-reviewer",
+		Persona:      "code-reviewer",
+		StrictFilter: true,
 		Telemetry: TelemetryConfig{
 			Enabled:     false,
 			Endpoint:    "localhost:4317",
