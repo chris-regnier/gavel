@@ -112,6 +112,11 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("loading persona %s: %w", cfg.Persona, err)
 	}
 
+	// Append applicability filter if enabled (default)
+	if cfg.StrictFilter {
+		personaPrompt += analyzer.ApplicabilityFilterPrompt
+	}
+
 	// Read input
 	h := input.NewHandler()
 	var artifacts []input.Artifact
