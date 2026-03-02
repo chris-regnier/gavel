@@ -111,8 +111,7 @@ func TestApplicabilityFilterPrompt_ContainsKeyPhrases(t *testing.T) {
 	phrases := []string{
 		"PRACTICAL IMPACT",
 		"CONCRETE EVIDENCE",
-		"PROPORTIONAL SEVERITY",
-		"do not report it",
+		"do not report",
 	}
 	for _, phrase := range phrases {
 		if !strings.Contains(ApplicabilityFilterPrompt, phrase) {

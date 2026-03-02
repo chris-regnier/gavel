@@ -84,8 +84,8 @@ type and provide remediation steps. Only report genuine security concerns.`
 )
 
 // ApplicabilityFilterPrompt is an optional instruction block appended to persona
-// prompts to suppress findings that are theoretical, speculative, or
-// severity-miscalibrated. Controlled by Config.StrictFilter (default true).
+// prompts to suppress findings that are theoretical or speculative.
+// Controlled by Config.StrictFilter (default true).
 const ApplicabilityFilterPrompt = `
 
 ===== APPLICABILITY FILTER =====
@@ -99,10 +99,7 @@ Before reporting any finding, apply this applicability test:
    an actual problem? If it is purely speculative ("this might not be
    thread-safe", "this could theoretically fail"), do not report it.
 
-3. PROPORTIONAL SEVERITY: Assign severity proportional to actual impact.
-   Test hygiene issues are "note" level. Theoretical concerns that survive
-   tests 1-2 are "warning" at most. Reserve "error" for clear,
-   demonstrable defects.
+Do not report findings that fail either test.
 ===== END FILTER =====`
 
 // GetPersonaPrompt returns the system prompt string for the given persona.
