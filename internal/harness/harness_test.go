@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/chris-regnier/gavel/internal/config"
@@ -309,11 +310,12 @@ variants:
 }
 
 func TestResolveTargets(t *testing.T) {
-	rm := NewRepositoryManager(t.TempDir())
+	tmpDir := t.TempDir()
+	rm := NewRepositoryManager(tmpDir)
 
-	// Simulate already-cloned repos
-	rm.repos["juice-shop"] = "/tmp/juice-shop"
-	rm.repos["dvwa"] = "/tmp/dvwa"
+	// Simulate already-cloned repos using cross-platform paths
+	rm.repos["juice-shop"] = filepath.Join(tmpDir, "juice-shop")
+	rm.repos["dvwa"] = filepath.Join(tmpDir, "dvwa")
 
 	tests := []struct {
 		name     string
@@ -405,21 +407,213 @@ func TestSanitizeRepoName(t *testing.T) {
 	}
 }
 
+func TestHarnessConfigValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		yaml    string
+		wantErr string
+	}{
+		{
+			name: "valid config",
+			yaml: `
+variants:
+  - name: baseline
+packages:
+  - internal/mcp
+`,
+			wantErr: "",
+		},
+		{
+			name: "no targets",
+			yaml: `
+variants:
+  - name: baseline
+`,
+			wantErr: "no targets specified",
+		},
+		{
+			name: "duplicate variant names",
+			yaml: `
+variants:
+  - name: baseline
+  - name: baseline
+packages:
+  - internal/mcp
+`,
+			wantErr: "duplicate variant name",
+		},
+		{
+			name: "missing variant name",
+			yaml: `
+variants:
+  - name: ""
+packages:
+  - internal/mcp
+`,
+			wantErr: "name is required",
+		},
+		{
+			name: "unknown baseline",
+			yaml: `
+variants:
+  - name: baseline
+baseline: unknown
+packages:
+  - internal/mcp
+`,
+			wantErr: "baseline variant",
+		},
+		{
+			name: "target with both path and repo",
+			yaml: `
+variants:
+  - name: baseline
+repos:
+  - name: test
+    url: https://github.com/test/test
+targets:
+  - path: local
+    repo: test
+`,
+			wantErr: "cannot specify both path and repo",
+		},
+		{
+			name: "target with neither path nor repo",
+			yaml: `
+variants:
+  - name: baseline
+targets:
+  - {}
+`,
+			wantErr: "must specify either path or repo",
+		},
+		{
+			name: "target references unknown repo",
+			yaml: `
+variants:
+  - name: baseline
+targets:
+  - repo: unknown
+`,
+			wantErr: "unknown repo",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg, err := LoadHarnessConfig([]byte(tt.yaml))
+			if err != nil {
+				t.Fatalf("LoadHarnessConfig() error = %v", err)
+			}
+
+			err = cfg.Validate()
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Errorf("Validate() unexpected error: %v", err)
+				}
+			} else {
+				if err == nil {
+					t.Errorf("Validate() expected error containing %q, got nil", tt.wantErr)
+				} else if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Errorf("Validate() error = %v, want error containing %q", err, tt.wantErr)
+				}
+			}
+		})
+	}
+}
+
+func TestRepositoryConfigValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		repo    RepositoryConfig
+		wantErr string
+	}{
+		{
+			name: "valid config",
+			repo: RepositoryConfig{
+				Name: "test",
+				URL:  "https://github.com/test/test",
+			},
+			wantErr: "",
+		},
+		{
+			name: "missing name",
+			repo: RepositoryConfig{
+				URL: "https://github.com/test/test",
+			},
+			wantErr: "name is required",
+		},
+		{
+			name: "missing url",
+			repo: RepositoryConfig{
+				Name: "test",
+			},
+			wantErr: "url is required",
+		},
+		{
+			name: "file scheme not allowed",
+			repo: RepositoryConfig{
+				Name: "test",
+				URL:  "file:///etc/passwd",
+			},
+			wantErr: "URL scheme must be https or http",
+		},
+		{
+			name: "ssh scheme not allowed",
+			repo: RepositoryConfig{
+				Name: "test",
+				URL:  "ssh://git@github.com/test/test.git",
+			},
+			wantErr: "URL scheme must be https or http",
+		},
+		{
+			name: "multiple git refs",
+			repo: RepositoryConfig{
+				Name:   "test",
+				URL:    "https://github.com/test/test",
+				Branch: "main",
+				Commit: "abc123",
+			},
+			wantErr: "only one of branch, commit, or tag",
+		},
+		{
+			name: "branch only is valid",
+			repo: RepositoryConfig{
+				Name:   "test",
+				URL:    "https://github.com/test/test",
+				Branch: "main",
+			},
+			wantErr: "",
+		},
+		{
+			name: "commit only is valid",
+			repo: RepositoryConfig{
+				Name:   "test",
+				URL:    "https://github.com/test/test",
+				Commit: "abc123",
+			},
+			wantErr: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.repo.Validate()
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Errorf("Validate() unexpected error: %v", err)
+				}
+			} else {
+				if err == nil {
+					t.Errorf("Validate() expected error containing %q, got nil", tt.wantErr)
+				} else if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Errorf("Validate() error = %v, want error containing %q", err, tt.wantErr)
+				}
+			}
+		})
+	}
+}
+
 func splitLines(s string) []string {
-	var lines []string
-	for _, line := range []byte(s) {
-		_ = line
-	}
-	// Simplified split
-	start := 0
-	for i, c := range s {
-		if c == '\n' {
-			lines = append(lines, s[start:i])
-			start = i + 1
-		}
-	}
-	if start < len(s) {
-		lines = append(lines, s[start:])
-	}
-	return lines
+	return strings.Split(strings.TrimSuffix(s, "\n"), "\n")
 }

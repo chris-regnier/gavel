@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -74,30 +76,41 @@ func runHarness(cmd *cobra.Command, args []string) error {
 		cfg.Packages = harnessPackages
 	}
 
-	// Validate
+	// Validate configuration
 	if len(cfg.Variants) == 0 {
 		return fmt.Errorf("no variants defined in %s", variantsPath)
 	}
-	if len(cfg.Packages) == 0 {
-		return fmt.Errorf("no packages specified (use --packages or define in config)")
+	if err := cfg.Validate(); err != nil {
+		return fmt.Errorf("invalid harness configuration: %w", err)
 	}
 
-	// Determine output path
+	// Determine output path - use unique filename if not specified
 	outputPath := harnessOutput
 	if outputPath == "" {
-		outputPath = "experiment-results.jsonl"
+		outputPath = fmt.Sprintf("experiment-results-%d.jsonl", time.Now().Unix())
 	}
 
 	// Get working directory
 	workDir, err := os.Getwd()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get working directory: %w", err)
 	}
 
-	// Find gavel binary (use current process for testing, or lookup in PATH)
+	// Find and validate gavel binary
 	gavelBinary := os.Getenv("GAVEL_BINARY")
 	if gavelBinary == "" {
 		gavelBinary = "gavel"
+		// Validate that gavel binary exists in PATH
+		if _, err := exec.LookPath(gavelBinary); err != nil {
+			return fmt.Errorf("gavel binary not found in PATH: %w (set GAVEL_BINARY env var to specify location)", err)
+		}
+	} else {
+		// Validate explicit path
+		if info, err := os.Stat(gavelBinary); err != nil {
+			return fmt.Errorf("gavel binary not found at %s: %w", gavelBinary, err)
+		} else if info.Mode()&0111 == 0 {
+			return fmt.Errorf("gavel binary at %s is not executable", gavelBinary)
+		}
 	}
 
 	// Create harness
