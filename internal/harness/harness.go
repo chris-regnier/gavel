@@ -1,7 +1,6 @@
 package harness
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -205,36 +204,47 @@ func (h *Harness) writeVariantConfig(path string, cfg *config.Config) error {
 	return os.WriteFile(path, data, 0644)
 }
 
-// parseResultID extracts the result ID from gavel analyze output
+// parseResultID extracts the result ID from gavel analyze output.
+// Output may contain BAML log lines before the JSON summary, so we
+// scan for the last JSON object in the output.
 func parseResultID(output []byte) string {
 	var summary struct {
 		ID string `json:"id"`
 	}
-	if err := json.Unmarshal(output, &summary); err != nil {
-		return ""
+	// Try direct parse first (clean output)
+	if err := json.Unmarshal(output, &summary); err == nil && summary.ID != "" {
+		return summary.ID
 	}
-	return summary.ID
+	// Scan for the last '{' that starts a valid JSON object
+	for i := len(output) - 1; i >= 0; i-- {
+		if output[i] == '{' {
+			if err := json.Unmarshal(output[i:], &summary); err == nil && summary.ID != "" {
+				return summary.ID
+			}
+		}
+	}
+	return ""
 }
 
-// parseDecision extracts the decision from judge output
+// parseDecision extracts the decision from judge output.
+// Output may contain BAML log lines before the JSON, so we
+// scan for the last JSON object.
 func parseDecision(output []byte) string {
-	// Try to parse as JSON first
 	var result struct {
 		Decision string `json:"decision"`
 	}
+	// Try direct parse first (clean output)
 	if err := json.Unmarshal(output, &result); err == nil && result.Decision != "" {
 		return result.Decision
 	}
-
-	// Try to find JSON object in mixed output
-	dec := json.NewDecoder(bytes.NewReader(output))
-	var obj map[string]interface{}
-	if err := dec.Decode(&obj); err == nil {
-		if d, ok := obj["decision"].(string); ok {
-			return d
+	// Scan for the last '{' that starts a valid JSON object
+	for i := len(output) - 1; i >= 0; i-- {
+		if output[i] == '{' {
+			if err := json.Unmarshal(output[i:], &result); err == nil && result.Decision != "" {
+				return result.Decision
+			}
 		}
 	}
-
 	return "unknown"
 }
 
