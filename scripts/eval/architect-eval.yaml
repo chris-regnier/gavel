@@ -1,0 +1,25 @@
+# Evaluate the architect persona against the default code-reviewer persona.
+#
+# Hypothesis: The architect persona should produce architecturally-focused
+# findings (coupling, boundaries, API design) while the code-reviewer persona
+# should produce more code-level findings (bugs, patterns, error handling).
+# We expect similar total finding counts but different finding distributions.
+
+runs: 3
+baseline: code-reviewer
+
+targets:
+  - path: internal/store
+  - path: internal/evaluator
+  - path: internal/config
+
+variants:
+  - name: code-reviewer
+    description: "Default code-reviewer persona (baseline)"
+    persona: code-reviewer
+    strict_filter: true
+
+  - name: architect
+    description: "Architect persona — system design focus"
+    persona: architect
+    strict_filter: true
