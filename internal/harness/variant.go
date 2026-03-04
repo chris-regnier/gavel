@@ -1,7 +1,10 @@
 package harness
 
 import (
+	"fmt"
+	"net/url"
 	"os"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 
@@ -144,6 +147,113 @@ func LoadHarnessConfigFile(path string) (*HarnessConfig, error) {
 
 func readFile(path string) ([]byte, error) {
 	return os.ReadFile(path)
+}
+
+// Validate validates the harness configuration
+func (c *HarnessConfig) Validate() error {
+	// Check for at least one target (packages or targets)
+	if len(c.Packages) == 0 && len(c.Targets) == 0 {
+		return fmt.Errorf("no targets specified (use packages or targets)")
+	}
+
+	// Validate variants have unique names
+	seenNames := make(map[string]bool)
+	for i, v := range c.Variants {
+		if v.Name == "" {
+			return fmt.Errorf("variant %d: name is required", i)
+		}
+		if seenNames[v.Name] {
+			return fmt.Errorf("duplicate variant name: %s", v.Name)
+		}
+		seenNames[v.Name] = true
+	}
+
+	// Validate baseline exists if specified
+	if c.Baseline != "" && !seenNames[c.Baseline] {
+		return fmt.Errorf("baseline variant %q not found in variants", c.Baseline)
+	}
+
+	// Build repo name index for target validation
+	repoNames := make(map[string]bool)
+	for _, repo := range c.Repos {
+		repoNames[repo.Name] = true
+		if err := repo.Validate(); err != nil {
+			return fmt.Errorf("repo %s: %w", repo.Name, err)
+		}
+	}
+
+	// Validate targets
+	for i, t := range c.Targets {
+		if err := t.Validate(repoNames); err != nil {
+			return fmt.Errorf("target %d: %w", i, err)
+		}
+	}
+
+	return nil
+}
+
+// Validate validates a repository configuration
+func (r *RepositoryConfig) Validate() error {
+	if r.Name == "" {
+		return fmt.Errorf("name is required")
+	}
+	if r.URL == "" {
+		return fmt.Errorf("url is required")
+	}
+
+	// Validate URL scheme - only allow https and http for security
+	parsedURL, err := url.Parse(r.URL)
+	if err != nil {
+		return fmt.Errorf("invalid URL: %w", err)
+	}
+	if parsedURL.Scheme != "https" && parsedURL.Scheme != "http" {
+		return fmt.Errorf("URL scheme must be https or http, got: %s", parsedURL.Scheme)
+	}
+
+	// Validate mutually exclusive git reference fields
+	refCount := 0
+	if r.Branch != "" {
+		refCount++
+	}
+	if r.Commit != "" {
+		refCount++
+	}
+	if r.Tag != "" {
+		refCount++
+	}
+	if refCount > 1 {
+		return fmt.Errorf("only one of branch, commit, or tag can be specified (got %d)", refCount)
+	}
+
+	return nil
+}
+
+// Validate validates a target configuration
+func (t *TargetConfig) Validate(repoNames map[string]bool) error {
+	// Must have either Path or Repo, but not both
+	if t.Path != "" && t.Repo != "" {
+		return fmt.Errorf("cannot specify both path and repo")
+	}
+	if t.Path == "" && t.Repo == "" {
+		return fmt.Errorf("must specify either path or repo")
+	}
+
+	// If referencing a repo, it must exist
+	if t.Repo != "" && !repoNames[t.Repo] {
+		return fmt.Errorf("unknown repo: %s", t.Repo)
+	}
+
+	return nil
+}
+
+// sanitizeRepoName creates a safe directory name from a repo name (used by repository.go)
+func sanitizeRepoName(name string) string {
+	// Replace characters that are problematic in filenames
+	name = strings.ReplaceAll(name, "/", "-")
+	name = strings.ReplaceAll(name, "\\", "-")
+	name = strings.ReplaceAll(name, ":", "-")
+	name = strings.ReplaceAll(name, " ", "-")
+	return name
 }
 
 // MergeWithConfig merges a variant configuration with a base config

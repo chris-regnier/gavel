@@ -7,13 +7,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
+	"sync"
 )
 
 // RepositoryManager handles cloning and caching of external repositories
 type RepositoryManager struct {
 	cacheDir string
 	repos    map[string]string // name -> local path
+	mu       sync.RWMutex      // protects repos map
 }
 
 // NewRepositoryManager creates a new repository manager
@@ -38,16 +39,42 @@ func (rm *RepositoryManager) Prepare(ctx context.Context, repos []RepositoryConf
 		if err != nil {
 			return nil, fmt.Errorf("cloning %s: %w", repo.Name, err)
 		}
+		rm.mu.Lock()
 		rm.repos[repo.Name] = path
+		rm.mu.Unlock()
 	}
 
-	return rm.repos, nil
+	rm.mu.RLock()
+	result := make(map[string]string, len(rm.repos))
+	for k, v := range rm.repos {
+		result[k] = v
+	}
+	rm.mu.RUnlock()
+
+	return result, nil
 }
 
 // GetPath returns the local path for a cloned repository
 func (rm *RepositoryManager) GetPath(name string) (string, bool) {
+	rm.mu.RLock()
+	defer rm.mu.RUnlock()
 	path, ok := rm.repos[name]
 	return path, ok
+}
+
+// Cleanup removes all cached repositories
+func (rm *RepositoryManager) Cleanup() error {
+	rm.mu.Lock()
+	defer rm.mu.Unlock()
+
+	for name, path := range rm.repos {
+		if err := os.RemoveAll(path); err != nil {
+			slog.Warn("Failed to clean up cached repo", "name", name, "error", err)
+		}
+	}
+	rm.repos = make(map[string]string)
+
+	return os.RemoveAll(rm.cacheDir)
 }
 
 // cloneRepo clones a repository to the cache directory
@@ -168,14 +195,4 @@ func (rm *RepositoryManager) ResolveTargets(targets []TargetConfig, packages []s
 	}
 
 	return paths, nil
-}
-
-// sanitizeRepoName creates a safe directory name from a repo name
-func sanitizeRepoName(name string) string {
-	// Replace characters that are problematic in filenames
-	name = strings.ReplaceAll(name, "/", "-")
-	name = strings.ReplaceAll(name, "\\", "-")
-	name = strings.ReplaceAll(name, ":", "-")
-	name = strings.ReplaceAll(name, " ", "-")
-	return name
 }
