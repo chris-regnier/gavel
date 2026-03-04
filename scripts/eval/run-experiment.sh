@@ -129,13 +129,21 @@ else:
       decision=$(echo "$verdict_raw" | python3 -c "
 import sys, json, re
 text = sys.stdin.read()
-matches = re.findall(r'\{[^{}]+\}', text)
-if matches:
-    d = json.loads(matches[-1])
-    print(d.get('decision','unknown'))
-else:
+# Try to find top-level JSON by matching balanced braces
+try:
+    # Find last opening brace and parse from there
+    start = text.rfind('{')
+    while start >= 0:
+        try:
+            d = json.loads(text[start:])
+            print(d.get('decision','unknown'))
+            sys.exit(0)
+        except json.JSONDecodeError:
+            start = text.rfind('{', 0, start)
     print('unknown')
-")
+except Exception:
+    print('unknown')
+" 2>/dev/null || echo "unknown")
 
       # Extract detailed stats from SARIF
       python3 -c "

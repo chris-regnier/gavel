@@ -288,3 +288,58 @@ The confidence calibration framing ("would you block a PR?") was intended as a h
 1. Keep measured tone but add explicit distribution constraints ("most findings should be warning-level; fewer than 20% should be error-level")
 2. Separate the tone instruction from confidence calibration — firm tone in the general section, but keep the original baseline confidence scale
 3. Test on a larger model (Sonnet, GPT-4) where confidence calibration may respond differently to nuanced instructions
+
+## Experiment: Repeated Instructions
+
+**Hypothesis**: Repeating the code-reviewer persona instructions twice within the prompt — once as the primary instructions and again as a "REMINDER: KEY INSTRUCTIONS" block — would increase accuracy and reduce error rate. This technique has been shown to improve instruction-following in some LLM benchmarks.
+
+**Setup**: qwen2.5-coder:7b via Ollama, 3 runs across 5 packages (`internal/mcp`, `internal/evaluator`, `internal/store`, `internal/sarif`, `internal/input`). Baseline used the standard `code-reviewer` persona.
+
+**Variant change**: Appended a `===== REMINDER: KEY INSTRUCTIONS =====` section to the code-reviewer prompt that restated the focus areas, confidence guidance, and tone instructions verbatim (with "(restated)" labels).
+
+**Results** (filter ON / strict filter enabled):
+
+```
+                        Baseline    Variant     Delta
+Total findings          38.0        43.3        +14.0%
+LLM findings            29.0        34.3        +18.3%
+Instant findings         9.0         9.0         0.0%  (control stable)
+Error-level              5.7         7.0        +22.8%
+Warning-level           14.0        22.0        +57.1%
+Note-level              17.0        12.3        -27.6%
+Errors w/ conf>0.8       4.7         4.0        -14.9%
+Avg confidence           0.811       0.830      +0.019
+Std dev (total)         ±3.5        ±4.5
+```
+
+**Results** (filter OFF):
+
+```
+                        Baseline    Variant     Delta
+Total findings          41.0        50.0        +22.0%
+LLM findings            32.0        41.0        +28.1%
+Error-level             10.3         9.0        -12.6%
+Warning-level           17.7        24.0        +35.6%
+Note-level              12.7        14.3        +12.6%
+Errors w/ conf>0.8       4.7         5.0         +6.4%
+Avg confidence           0.823       0.799      -0.024
+```
+
+**Verdict: Do not ship.** Repeating instructions increased noise across the board:
+
+1. **More findings, not fewer** — LLM findings increased 18-28%. The repeated focus areas were interpreted as encouragement to report more issues, not as reinforcement of quality thresholds.
+2. **Warning inflation** — Warning-level findings jumped 36-57%. The model treated the repeated emphasis on "what to look for" as a stronger mandate to generate findings in each category.
+3. **High-confidence errors stable** — Errors with conf>0.8 stayed within ±15% (4.7→4.0 ON, 4.7→5.0 OFF), so the extra findings are predominantly noise rather than signal.
+4. **No confidence inflation** — Unlike the blunt and measured tone experiments, average confidence stayed roughly stable. The repeated instructions didn't cause severity reclassification — just volume increase.
+
+**Comparison with previous experiments:**
+
+| Metric (filter ON) | Blunt Δ | Measured Δ | Repeated Δ | Assessment |
+|---------------------|---------|------------|------------|------------|
+| LLM findings | +17.1% | -10.3% | +18.3% | Repeated is as bad as blunt |
+| Error-level | +143% | +216% | +22.8% | Repeated avoids inflation |
+| Errors w/ conf>0.8 | +287% | +162% | -14.9% | Repeated is safe here |
+| Avg confidence | +0.039 | +0.092 | +0.019 | Repeated is stable |
+| Warnings | — | -55% | +57.1% | Repeated inflates warnings |
+
+**Takeaway**: Instruction repetition is a fundamentally different failure mode from tone changes. Tone experiments caused severity reclassification (findings migrate from warning → error). Repetition caused volume inflation (more findings across all levels, especially warnings). For a 7B model, restating "what to look for" is read as "look harder" rather than "look more carefully." The baseline prompt's single statement of focus areas is already sufficient — doubling it adds noise without improving precision.
