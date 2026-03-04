@@ -1,0 +1,12 @@
+findings:
+  - rule_id: "any"
+    severity: error
+    line_range: [6, 6]
+    category: code-injection
+    must_find: true
+  - rule_id: "any"
+    severity: error
+    line_range: [13, 13]
+    category: code-injection
+    must_find: true
+false_positives: 0

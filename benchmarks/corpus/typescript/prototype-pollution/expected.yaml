@@ -1,0 +1,7 @@
+findings:
+  - rule_id: "any"
+    severity: error
+    line_range: [5, 16]
+    category: prototype-pollution
+    must_find: true
+false_positives: 0

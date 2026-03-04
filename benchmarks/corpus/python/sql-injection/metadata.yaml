@@ -1,0 +1,5 @@
+name: SQL Injection via f-string
+language: python
+category: security
+difficulty: easy
+description: User input directly interpolated into SQL query via Python f-string
