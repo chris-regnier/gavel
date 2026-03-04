@@ -1,0 +1,5 @@
+name: Clean Security Utilities (Negative Case)
+language: typescript
+category: security
+difficulty: easy
+description: Well-written TypeScript security utilities with proper cryptography and input sanitization. No issues expected.

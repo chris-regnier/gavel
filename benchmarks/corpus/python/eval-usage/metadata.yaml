@@ -1,0 +1,5 @@
+name: Dangerous eval() Usage
+language: python
+category: security
+difficulty: easy
+description: eval() called on user-controlled input allowing arbitrary code execution

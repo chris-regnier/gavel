@@ -1,0 +1,7 @@
+findings:
+  - rule_id: "any"
+    severity: error
+    line_range: [6, 7]
+    category: sql-injection
+    must_find: true
+false_positives: 0

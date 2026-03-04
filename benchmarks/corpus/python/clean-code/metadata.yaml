@@ -1,0 +1,5 @@
+name: Clean Security Code (Negative Case)
+language: python
+category: security
+difficulty: easy
+description: Well-written Python security utilities using proper cryptographic primitives. No issues expected.

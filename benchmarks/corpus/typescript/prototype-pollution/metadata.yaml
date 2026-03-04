@@ -1,0 +1,5 @@
+name: Prototype Pollution via Deep Merge
+language: typescript
+category: security
+difficulty: medium
+description: Recursive object merge without __proto__ or constructor checks allows prototype pollution
