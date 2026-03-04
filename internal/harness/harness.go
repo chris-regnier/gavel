@@ -28,6 +28,9 @@ type Harness struct {
 
 	// Config is the loaded base configuration
 	config *config.Config
+
+	// RepoManager handles external repository cloning
+	repoManager *RepositoryManager
 }
 
 // New creates a new Harness instance
@@ -37,6 +40,7 @@ func New(gavelBinary, workDir string) *Harness {
 		workDir:     workDir,
 		outputDir:   filepath.Join(workDir, ".gavel", "results"),
 		configPath:  filepath.Join(workDir, ".gavel", "policies.yaml"),
+		repoManager: NewRepositoryManager(filepath.Join(workDir, ".gavel", "cache")),
 	}
 }
 
@@ -71,6 +75,24 @@ func (h *Harness) Run(ctx context.Context, cfg *HarnessConfig, resultsPath strin
 		return nil, fmt.Errorf("creating output directory: %w", err)
 	}
 
+	// Clone external repositories if configured
+	if len(cfg.Repos) > 0 {
+		slog.Info("Preparing external repositories", "count", len(cfg.Repos))
+		if _, err := h.repoManager.Prepare(ctx, cfg.Repos); err != nil {
+			return nil, fmt.Errorf("preparing repos: %w", err)
+		}
+	}
+
+	// Resolve targets to actual paths
+	paths, err := h.repoManager.ResolveTargets(cfg.Targets, cfg.Packages)
+	if err != nil {
+		return nil, fmt.Errorf("resolving targets: %w", err)
+	}
+
+	if len(paths) == 0 {
+		return nil, fmt.Errorf("no targets to analyze (specify packages or targets)")
+	}
+
 	// Clear results file
 	if err := os.WriteFile(resultsPath, []byte{}, 0644); err != nil {
 		return nil, fmt.Errorf("clearing results file: %w", err)
@@ -81,17 +103,17 @@ func (h *Harness) Run(ctx context.Context, cfg *HarnessConfig, resultsPath strin
 	slog.Info("Starting harness run",
 		"variants", len(cfg.Variants),
 		"runs", cfg.Runs,
-		"packages", len(cfg.Packages))
+		"targets", len(paths))
 
 	for _, variant := range cfg.Variants {
 		for run := 1; run <= cfg.Runs; run++ {
-			for _, pkg := range cfg.Packages {
-				metrics, err := h.runVariant(ctx, variant, run, pkg)
+			for _, targetPath := range paths {
+				metrics, err := h.runVariant(ctx, variant, run, targetPath)
 				if err != nil {
 					slog.Error("Run failed",
 						"variant", variant.Name,
 						"run", run,
-						"package", pkg,
+						"target", targetPath,
 						"error", err)
 					continue
 				}
@@ -114,7 +136,7 @@ func (h *Harness) Run(ctx context.Context, cfg *HarnessConfig, resultsPath strin
 }
 
 // runVariant executes a single variant run
-func (h *Harness) runVariant(ctx context.Context, variant VariantConfig, run int, pkg string) (RunMetrics, error) {
+func (h *Harness) runVariant(ctx context.Context, variant VariantConfig, run int, targetPath string) (RunMetrics, error) {
 	start := time.Now()
 
 	// Merge variant config with base config
@@ -130,7 +152,7 @@ func (h *Harness) runVariant(ctx context.Context, variant VariantConfig, run int
 	// Run gavel analyze
 	cmd := exec.CommandContext(ctx, h.gavelBinary,
 		"analyze",
-		"--dir", pkg,
+		"--dir", targetPath,
 		"--output", h.outputDir,
 		"--policies", filepath.Dir(variantConfigPath),
 	)
@@ -166,7 +188,7 @@ func (h *Harness) runVariant(ctx context.Context, variant VariantConfig, run int
 
 	metrics.Run = run
 	metrics.Variant = variant.Name
-	metrics.Package = pkg
+	metrics.Target = targetPath
 	metrics.Decision = decision
 	metrics.ResultID = resultID
 	metrics.Duration = time.Since(start).Milliseconds()

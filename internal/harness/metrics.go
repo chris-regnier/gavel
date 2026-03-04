@@ -14,8 +14,9 @@ type RunMetrics struct {
 	// Variant is the name of the variant
 	Variant string `json:"variant"`
 
-	// Package is the analyzed package/directory
-	Package string `json:"package"`
+	// Target is the analyzed target (package, directory, or repo path)
+	// Serialized as "package" for backward compatibility
+	Target string `json:"package"`
 
 	// Total findings count
 	Total int `json:"total"`

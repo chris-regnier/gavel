@@ -1,0 +1,81 @@
+# Juice Shop Security Calibration Harness
+#
+# Run Gavel against OWASP Juice Shop (a deliberately vulnerable web application)
+# to calibrate the security persona and test vulnerability detection capabilities.
+#
+# Usage:
+#   gavel harness run juice-shop-security.yaml
+#   gavel harness summarize experiment-results.jsonl --baseline security_baseline
+#
+# Prerequisites:
+#   - Ollama running with a code model (e.g., qwen2.5-coder:7b)
+#   - Internet connection for initial repo clone
+
+runs: 3
+baseline: security_baseline
+
+# Juice Shop is an OWASP flagship project with ~100+ known vulnerabilities
+# across OWASP Top 10 categories: injection, XSS, broken auth, etc.
+repos:
+  - name: juice-shop
+    url: https://github.com/juice-shop/juice-shop
+    branch: master
+    depth: 1
+
+targets:
+  # Backend server (Node.js/Express) - where most vulnerabilities are
+  - repo: juice-shop
+    paths:
+      - server
+
+  # Frontend (Angular) - XSS and DOM-based vulnerabilities
+  - repo: juice-shop
+    paths:
+      - frontend/src/app
+
+variants:
+  # Baseline security persona
+  - name: security_baseline
+    description: "Standard security persona"
+    persona: security
+    strict_filter: true
+
+  # Without strict filter - may produce more findings but also more noise
+  - name: security_no_filter
+    description: "Security persona without applicability filter"
+    persona: security
+    strict_filter: false
+
+  # General code reviewer - should find fewer security issues
+  - name: code_reviewer
+    description: "General code reviewer (not security-focused)"
+    persona: code-reviewer
+    strict_filter: true
+
+  # Larger model - does it find more vulnerabilities?
+  - name: bigger_model
+    description: "14B model (better quality)"
+    persona: security
+    strict_filter: true
+    provider:
+      name: ollama
+      ollama:
+        model: qwen2.5-coder:14b
+
+  # Custom OWASP-focused prompt
+  - name: owasp_prompt
+    description: "OWASP Top 10 focused prompt"
+    prompt_add: |
+      Focus specifically on OWASP Top 10 vulnerabilities:
+      - A01 Broken Access Control: Path traversal, IDOR, missing auth checks
+      - A02 Cryptographic Failures: Weak crypto, hardcoded secrets, insecure storage
+      - A03 Injection: SQL injection, NoSQL injection, command injection, LDAP injection
+      - A04 Insecure Design: Business logic flaws, missing security controls
+      - A05 Security Misconfiguration: Default credentials, unnecessary features enabled
+      - A06 Vulnerable Components: Known vulnerable dependencies
+      - A07 Authentication Failures: Weak passwords, session issues, credential stuffing
+      - A08 Software Integrity Failures: Insecure CI/CD, unsigned code
+      - A09 Logging Failures: Missing security logging, sensitive data in logs
+      - A10 SSRF: Server-side request forgery, unsafe URL handling
+    persona: security
+    strict_filter: true

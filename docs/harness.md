@@ -8,12 +8,29 @@ The harness provides a systematic way to compare analysis variants - different c
 # Create a variants.yaml configuration
 cp scripts/eval/example-variants.yaml variants.yaml
 
-# Run the harness
-gavel harness run variants.yaml --packages internal/mcp,internal/store
+# Run the harness (with local packages)
+gavel harness run variants.yaml
 
 # Summarize results with baseline comparison
 gavel harness summarize experiment-results.jsonl --baseline baseline
 ```
+
+## External Repositories (NEW)
+
+Analyze external repositories like OWASP Juice Shop for security calibration:
+
+```bash
+# Use the Juice Shop security calibration config
+gavel harness run scripts/eval/juice-shop-security.yaml
+
+# Compare security persona variants on a vulnerable codebase
+gavel harness summarize experiment-results.jsonl --baseline security_baseline
+```
+
+This enables:
+- **Security calibration**: Test Gavel against known vulnerable codebases
+- **Persona evaluation**: Compare security vs code-reviewer personas on real code
+- **Model comparison**: Does a larger model find more vulnerabilities?
 
 ## Configuration
 
@@ -22,9 +39,22 @@ Create a `variants.yaml` file that defines the variants to compare:
 ```yaml
 runs: 3  # Iterations per variant (default: 3)
 
-packages:  # Directories/packages to analyze
+# Option 1: Local packages
+packages:
   - internal/mcp
   - internal/store
+
+# Option 2: External repositories
+repos:
+  - name: juice-shop
+    url: https://github.com/juice-shop/juice-shop
+    branch: master
+
+targets:
+  - repo: juice-shop
+    paths:
+      - server
+      - frontend/src/app
 
 baseline: baseline  # Optional: name of baseline for delta calculations
 
@@ -61,6 +91,29 @@ Each variant can configure:
 | `prompt_replace` | Complete replacement for the persona prompt |
 | `policies` | Override specific policies |
 | `provider` | Override provider/model settings |
+
+## Repository Options
+
+External repositories support:
+
+| Option | Description |
+|--------|-------------|
+| `name` | Unique identifier for the repo (used in targets) |
+| `url` | Git repository URL |
+| `branch` | Git branch to checkout (optional) |
+| `commit` | Specific commit hash for reproducibility (optional) |
+| `tag` | Specific tag to checkout (optional) |
+| `depth` | Clone depth (default: 1 for shallow) |
+
+## Target Options
+
+Analysis targets support:
+
+| Option | Description |
+|--------|-------------|
+| `path` | Local directory path |
+| `repo` | Reference to a cloned repository by name |
+| `paths` | Subdirectories within the repo to analyze |
 
 ## Metrics Captured
 

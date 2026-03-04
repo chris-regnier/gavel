@@ -4,72 +4,95 @@
 # allowing systematic evaluation of prompts, personas, policies, and other parameters.
 #
 # Usage:
-#   gavel harness run variants.yaml --packages internal/mcp,internal/store
+#   gavel harness run variants.yaml
 #   gavel harness summarize experiment-results.jsonl --baseline baseline
 
 # Number of runs per variant (default: 3). More runs smooth out LLM variance.
 runs: 3
 
-# Packages to analyze (can also be specified via --packages flag)
-packages:
-  - internal/mcp
-  - internal/evaluator
-  - internal/store
-  - internal/sarif
-  - internal/input
-
 # Optional: name of the baseline variant for delta calculations
 baseline: baseline
 
+# ============================================================
+# Option 1: Local packages (same as before)
+# ============================================================
+# packages:
+#   - internal/mcp
+#   - internal/evaluator
+#   - internal/store
+
+# ============================================================
+# Option 2: External repositories (NEW!)
+# ============================================================
+# Clone and analyze external repositories. Useful for:
+# - Calibrating Gavel against known vulnerable codebases
+# - Testing security persona on deliberately insecure apps
+# - Comparing analysis quality across different codebases
+
+# External repositories to clone (cached locally)
+repos:
+  - name: juice-shop
+    url: https://github.com/juice-shop/juice-shop
+    branch: master
+    # commit: abc123  # Pin to specific commit for reproducibility
+    # depth: 1        # Default: shallow clone (depth=1)
+
+# Analysis targets - can be local paths or reference cloned repos
+targets:
+  # External repo with specific subdirectories
+  - repo: juice-shop
+    paths:
+      - server
+      - frontend/src/app
+
+  # Or analyze entire repo:
+  # - repo: juice-shop
+
+  # Mix with local paths:
+  # - path: internal/mcp
+
+# ============================================================
 # Variant definitions
+# ============================================================
 variants:
   # Baseline: standard configuration
   - name: baseline
-    description: "Standard code-reviewer persona with strict filter enabled"
-    persona: code-reviewer
+    description: "Standard security persona with strict filter"
+    persona: security
     strict_filter: true
 
   # Filter comparison: same baseline but with filter disabled
   - name: filter_off
-    description: "Standard code-reviewer persona without strict filter"
-    persona: code-reviewer
+    description: "Security persona without strict filter"
+    persona: security
     strict_filter: false
 
-  # Persona comparison: architect persona
-  - name: architect
-    description: "Architect persona focused on design patterns and structure"
-    persona: architect
-    strict_filter: true
-
-  # Persona comparison: security persona
-  - name: security
-    description: "Security persona focused on vulnerabilities and risks"
-    persona: security
-    strict_filter: true
-
-  # Prompt experiment: minimal persona (from experiments)
-  - name: minimal
-    description: "Minimal prompt - 3 sentences, no elaborate instructions"
-    prompt_replace: |
-      You are a code reviewer. Find bugs, broken error handling, and security issues.
-      Use high confidence (0.8+) only for clear bugs. Use medium (0.5-0.8) for code smells. Skip anything below 0.5.
-      Be precise with line numbers. Only report real issues with evidence in the code.
+  # Persona comparison: code-reviewer (different focus)
+  - name: code_reviewer
+    description: "Code reviewer persona (general purpose)"
+    persona: code-reviewer
     strict_filter: true
 
   # Model comparison: different model with same config
   - name: bigger_model
     description: "Larger model for better analysis quality"
+    persona: security
     provider:
       name: ollama
       ollama:
         model: qwen2.5-coder:14b
 
-  # Policy experiment: stricter error handling policy
-  - name: strict_errors
-    description: "Stricter error handling policy"
+  # Policy experiment: OWASP-focused security policy
+  - name: owasp_focused
+    description: "OWASP Top 10 focused security analysis"
+    persona: security
     strict_filter: true
     policies:
-      check-error-handling:
+      owasp-injection:
         enabled: true
         severity: error
-        instruction: "Flag all error handling that silently drops failures or uses empty catch blocks. This is a critical reliability issue."
+        instruction: "Flag all SQL injection, XSS, and command injection vulnerabilities. Check user input handling, query construction, and output encoding."
+      owasp-auth:
+        enabled: true
+        severity: error
+        instruction: "Flag authentication and session management issues. Check password handling, session tokens, and access controls."
