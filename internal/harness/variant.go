@@ -58,6 +58,39 @@ type ProviderOverride struct {
 	} `yaml:"openai,omitempty"`
 }
 
+// RepositoryConfig defines an external repository to clone for analysis
+type RepositoryConfig struct {
+	// Name is a unique identifier for this repo (used in targets)
+	Name string `yaml:"name"`
+
+	// URL is the git repository URL (e.g., https://github.com/juice-shop/juice-shop)
+	URL string `yaml:"url"`
+
+	// Branch is the git branch to checkout (default: default branch)
+	Branch string `yaml:"branch,omitempty"`
+
+	// Commit is a specific commit hash to checkout (for reproducibility)
+	Commit string `yaml:"commit,omitempty"`
+
+	// Tag is a specific tag to checkout
+	Tag string `yaml:"tag,omitempty"`
+
+	// Depth is the git clone depth (default: 1 for shallow clone)
+	Depth int `yaml:"depth,omitempty"`
+}
+
+// TargetConfig defines what to analyze - can be local or from an external repo
+type TargetConfig struct {
+	// Path is a local directory path (for local analysis)
+	Path string `yaml:"path,omitempty"`
+
+	// Repo references an external repository by name
+	Repo string `yaml:"repo,omitempty"`
+
+	// Paths are subdirectories within the repo to analyze (default: root)
+	Paths []string `yaml:"paths,omitempty"`
+}
+
 // HarnessConfig is the top-level configuration for a harness run
 type HarnessConfig struct {
 	// Variants is the list of variants to compare
@@ -66,8 +99,17 @@ type HarnessConfig struct {
 	// Runs is the number of iterations per variant (default: 3)
 	Runs int `yaml:"runs"`
 
-	// Packages is the list of packages/directories to analyze
-	Packages []string `yaml:"packages"`
+	// Packages is the list of packages/directories to analyze (deprecated, use Targets)
+	Packages []string `yaml:"packages,omitempty"`
+
+	// Targets is the list of analysis targets (supports local and external repos)
+	Targets []TargetConfig `yaml:"targets,omitempty"`
+
+	// Repos is the list of external repositories to clone
+	Repos []RepositoryConfig `yaml:"repos,omitempty"`
+
+	// CacheDir is where external repos are cached (default: .gavel/cache)
+	CacheDir string `yaml:"cache_dir,omitempty"`
 
 	// OutputDir is where results are written (default: .gavel/results)
 	OutputDir string `yaml:"output_dir,omitempty"`
