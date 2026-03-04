@@ -167,9 +167,10 @@ func stddevScore(scores []CaseScore, m CaseScore) CaseScore {
 		sumR2 += (s.Recall - m.Recall) * (s.Recall - m.Recall)
 		sumF12 += (s.F1 - m.F1) * (s.F1 - m.F1)
 	}
+	// Use sample stddev (Bessel's correction) since runs are a sample
 	return CaseScore{
-		Precision: math.Sqrt(sumP2 / n),
-		Recall:    math.Sqrt(sumR2 / n),
-		F1:        math.Sqrt(sumF12 / n),
+		Precision: math.Sqrt(sumP2 / (n - 1)),
+		Recall:    math.Sqrt(sumR2 / (n - 1)),
+		F1:        math.Sqrt(sumF12 / (n - 1)),
 	}
 }

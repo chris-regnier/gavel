@@ -143,3 +143,78 @@ func TestScoreCase_HallucinationDetection(t *testing.T) {
 		t.Errorf("Hallucinations = %d, want 1", score.Hallucinations)
 	}
 }
+
+func TestScoreCase_EmptySourcePathNoHallucination(t *testing.T) {
+	c := Case{
+		Name:             "clean",
+		ExpectedFindings: nil,
+	}
+	actual := []sarif.Result{
+		{
+			RuleID: "QA001",
+			Level:  "warning",
+			Locations: []sarif.Location{{
+				PhysicalLocation: sarif.PhysicalLocation{
+					ArtifactLocation: sarif.ArtifactLocation{URI: "some-file.go"},
+					Region:           sarif.Region{StartLine: 1},
+				},
+			}},
+			Properties: map[string]interface{}{"gavel/confidence": 0.5},
+		},
+	}
+	score := ScoreCase(c, actual, 5)
+	if score.Hallucinations != 0 {
+		t.Errorf("Hallucinations = %d, want 0 (empty SourcePath should skip detection)", score.Hallucinations)
+	}
+}
+
+func TestScoreCase_HallucinationOnlyUnmatched(t *testing.T) {
+	c := Case{
+		Name:       "test",
+		SourcePath: "source.go",
+		ExpectedFindings: []ExpectedFinding{
+			{RuleID: "SEC001", Severity: "error", MustFind: true},
+		},
+	}
+	actual := []sarif.Result{
+		// This matches expected — should NOT be a hallucination even with wrong URI
+		{
+			RuleID: "SEC001",
+			Level:  "error",
+			Locations: []sarif.Location{{
+				PhysicalLocation: sarif.PhysicalLocation{
+					ArtifactLocation: sarif.ArtifactLocation{URI: "other.go"},
+					Region:           sarif.Region{StartLine: 1},
+				},
+			}},
+			Properties: map[string]interface{}{"gavel/confidence": 0.9},
+		},
+	}
+	score := ScoreCase(c, actual, 5)
+	if score.TruePositives != 1 {
+		t.Errorf("TP = %d, want 1", score.TruePositives)
+	}
+	if score.Hallucinations != 0 {
+		t.Errorf("Hallucinations = %d, want 0 (matched TP should not count as hallucination)", score.Hallucinations)
+	}
+}
+
+func TestAggregateScores_ConfCalibration(t *testing.T) {
+	scores := []CaseScore{
+		{TruePositives: 1, Precision: 1.0, Recall: 1.0, F1: 1.0, MeanTPConf: 0.9, MeanFPConf: 0.0},
+		{TruePositives: 1, FalsePositives: 1, Precision: 0.5, Recall: 1.0, F1: 0.667, MeanTPConf: 0.85, MeanFPConf: 0.4},
+	}
+	agg := AggregateScores(scores)
+	// MeanTPConf = mean(0.9, 0.85) = 0.875, MeanFPConf = mean(0.4) = 0.4
+	// ConfCalibration = 0.875 - 0.4 = 0.475
+	if agg.ConfCalibration < 0.47 || agg.ConfCalibration > 0.48 {
+		t.Errorf("ConfCalibration = %f, want ~0.475", agg.ConfCalibration)
+	}
+}
+
+func TestAggregateScores_Empty(t *testing.T) {
+	agg := AggregateScores(nil)
+	if agg.TotalTP != 0 || agg.MicroPrecision != 0 || agg.ConfCalibration != 0 {
+		t.Error("empty input should produce all zeros")
+	}
+}

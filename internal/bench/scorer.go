@@ -79,13 +79,18 @@ func ScoreCase(c Case, actual []sarif.Result, lineTolerance int) CaseScore {
 		}
 	}
 
-	// Detect hallucinations (wrong file path)
-	sourceBase := filepath.Base(c.SourcePath)
-	for _, act := range actual {
-		if len(act.Locations) > 0 {
-			uri := act.Locations[0].PhysicalLocation.ArtifactLocation.URI
-			if uri != "" && !strings.HasSuffix(uri, sourceBase) && filepath.Base(uri) != sourceBase {
-				score.Hallucinations++
+	// Detect hallucinations (wrong file path) among unmatched results only
+	if c.SourcePath != "" {
+		sourceBase := filepath.Base(c.SourcePath)
+		for i, act := range actual {
+			if matched[i] {
+				continue
+			}
+			if len(act.Locations) > 0 {
+				uri := act.Locations[0].PhysicalLocation.ArtifactLocation.URI
+				if uri != "" && !strings.HasSuffix(uri, sourceBase) && filepath.Base(uri) != sourceBase {
+					score.Hallucinations++
+				}
 			}
 		}
 	}
@@ -124,6 +129,12 @@ func AggregateScores(scores []CaseScore) AggregateScore {
 		sumR += s.Recall
 		sumF1 += s.F1
 		totalFindings += s.TruePositives + s.FalsePositives
+		if s.MeanTPConf > 0 {
+			allTPConfs = append(allTPConfs, s.MeanTPConf)
+		}
+		if s.MeanFPConf > 0 {
+			allFPConfs = append(allFPConfs, s.MeanFPConf)
+		}
 	}
 
 	n := float64(len(scores))
