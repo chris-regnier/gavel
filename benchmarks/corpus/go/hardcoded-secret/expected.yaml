@@ -1,0 +1,7 @@
+findings:
+  - rule_id: "any"
+    severity: error
+    line_range: [10, 10]
+    category: hardcoded-secret
+    must_find: true
+false_positives: 0
