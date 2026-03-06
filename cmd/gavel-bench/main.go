@@ -31,6 +31,7 @@ func main() {
 	runCmd.Flags().Int("line-tolerance", 5, "Line matching tolerance")
 	runCmd.Flags().String("persona", "code-reviewer", "Persona to use")
 	runCmd.Flags().String("policies", ".gavel", "Directory containing policies.yaml")
+	runCmd.Flags().Bool("judge", false, "Enable LLM-as-judge evaluation of findings")
 
 	compareCmd := &cobra.Command{
 		Use:   "compare <baseline> <current>",
@@ -72,11 +73,22 @@ func runBenchmark(cmd *cobra.Command, args []string) error {
 
 	client := analyzer.NewBAMLLiveClient(cfg.Provider)
 
+	judgeEnabled, _ := cmd.Flags().GetBool("judge")
+
 	runCfg := bench.RunConfig{
 		Runs:          runs,
 		LineTolerance: tolerance,
 		Policies:      cfg.Policies,
 		Persona:       persona,
+	}
+
+	if judgeEnabled {
+		// Use same client for judging (could be a different model in future)
+		runCfg.Judge = bench.JudgeConfig{
+			Enabled: true,
+			Client:  client,
+		}
+		log.Printf("LLM-as-judge evaluation enabled")
 	}
 
 	result, err := bench.RunBenchmark(ctx, corpus, client, runCfg)
