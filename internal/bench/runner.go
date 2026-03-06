@@ -11,12 +11,19 @@ import (
 	"github.com/chris-regnier/gavel/internal/sarif"
 )
 
+// JudgeConfig configures LLM-as-judge evaluation.
+type JudgeConfig struct {
+	Enabled bool
+	Client  analyzer.BAMLClient
+}
+
 // RunConfig configures a benchmark run.
 type RunConfig struct {
 	Runs          int                      // Number of iterations for averaging
 	LineTolerance int                      // Line matching tolerance
 	Policies      map[string]config.Policy // Policies to use
 	Persona       string                   // Persona prompt to use
+	Judge         JudgeConfig              // Optional LLM-as-judge
 }
 
 // BenchmarkResult holds the complete results of a benchmark run.
@@ -34,12 +41,13 @@ type BenchmarkResult struct {
 
 // CaseResult holds per-case results across all runs.
 type CaseResult struct {
-	CaseName  string      `json:"case_name"`
-	Language  string      `json:"language,omitempty"`
-	Category  string      `json:"category,omitempty"`
-	Mean      CaseScore   `json:"mean"`
-	StdDev    CaseScore   `json:"std_dev"`
-	RunScores []CaseScore `json:"run_scores"`
+	CaseName     string       `json:"case_name"`
+	Language     string       `json:"language,omitempty"`
+	Category     string       `json:"category,omitempty"`
+	Mean         CaseScore    `json:"mean"`
+	StdDev       CaseScore    `json:"std_dev"`
+	RunScores    []CaseScore  `json:"run_scores"`
+	JudgeResult  *JudgeResult `json:"judge_result,omitempty"`
 }
 
 // RunBenchmark executes the benchmark suite against a corpus.
@@ -72,6 +80,7 @@ func RunBenchmark(ctx context.Context, corpus *Corpus, client analyzer.BAMLClien
 			Category: c.Metadata.Category,
 		}
 
+		var lastRunResults []sarif.Result
 		for run := 0; run < cfg.Runs; run++ {
 			// Run analysis
 			findings, err := client.AnalyzeCode(ctx, c.SourceContent, policiesText, personaPrompt, "")
@@ -81,6 +90,7 @@ func RunBenchmark(ctx context.Context, corpus *Corpus, client analyzer.BAMLClien
 
 			// Convert findings to SARIF results
 			results := findingsToResults(findings)
+			lastRunResults = results
 
 			// Score against expected
 			score := ScoreCase(c, results, cfg.LineTolerance)
@@ -90,6 +100,16 @@ func RunBenchmark(ctx context.Context, corpus *Corpus, client analyzer.BAMLClien
 		// Compute mean and stddev across runs
 		caseResult.Mean = meanScore(caseResult.RunScores)
 		caseResult.StdDev = stddevScore(caseResult.RunScores, caseResult.Mean)
+
+		// Run LLM-as-judge on last run's results if enabled
+		if cfg.Judge.Enabled && cfg.Judge.Client != nil && len(lastRunResults) > 0 {
+			jr, err := JudgeCase(ctx, cfg.Judge.Client, c.Name, lastRunResults, c.SourceContent)
+			if err != nil {
+				return nil, fmt.Errorf("judge case %s: %w", c.Name, err)
+			}
+			caseResult.JudgeResult = jr
+		}
+
 		result.PerCase = append(result.PerCase, caseResult)
 	}
 
