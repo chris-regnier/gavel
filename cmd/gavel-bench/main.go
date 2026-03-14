@@ -11,7 +11,9 @@ import (
 	"github.com/chris-regnier/gavel/internal/analyzer"
 	"github.com/chris-regnier/gavel/internal/bench"
 	"github.com/chris-regnier/gavel/internal/config"
+	"github.com/chris-regnier/gavel/internal/telemetry"
 	"github.com/spf13/cobra"
+	"go.opentelemetry.io/otel"
 )
 
 func main() {
@@ -71,6 +73,15 @@ func runBenchmark(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("load config: %w", err)
 	}
 
+	// Initialize telemetry if configured
+	shutdownTelemetry, err := telemetry.Init(ctx, cfg.Telemetry)
+	if err != nil {
+		log.Printf("Warning: telemetry init failed: %v", err)
+	}
+	if shutdownTelemetry != nil {
+		defer shutdownTelemetry(ctx)
+	}
+
 	client := analyzer.NewBAMLLiveClient(cfg.Provider)
 
 	judgeEnabled, _ := cmd.Flags().GetBool("judge")
@@ -99,6 +110,18 @@ func runBenchmark(cmd *cobra.Command, args []string) error {
 	result.Provider = cfg.Provider.Name
 	result.Model = getModel(cfg.Provider)
 	result.CorpusDir = corpusDir
+
+	// Emit OTel quality metrics if telemetry is enabled
+	if cfg.Telemetry.Enabled {
+		bm := telemetry.NewBenchMetrics(otel.Meter("gavel-bench"))
+		bm.RecordQuality(ctx, telemetry.QualityMetrics{
+			Precision:       result.Aggregate.MicroPrecision,
+			Recall:          result.Aggregate.MicroRecall,
+			F1:              result.Aggregate.MicroF1,
+			HallucinRate:    result.Aggregate.HallucinRate,
+			ConfCalibration: result.Aggregate.ConfCalibration,
+		}, result.Model, result.Provider, persona)
+	}
 
 	// Output results
 	data, _ := json.MarshalIndent(result, "", "  ")
