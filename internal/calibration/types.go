@@ -165,23 +165,47 @@ type CrossOrgSignal struct {
 	// feedback for this rule.
 	GlobalNoiseRate float64 `json:"global_noise_rate"`
 
-	// TeamCount is the number of distinct teams contributing to this signal.
-	TeamCount int `json:"team_count"`
+	// TotalTeams is the number of distinct teams contributing to this signal.
+	TotalTeams int `json:"total_teams"`
 
 	// TotalFeedbackEvents is the sum of all feedback events across teams.
 	TotalFeedbackEvents int `json:"total_feedback_events"`
+
+	// Warning carries an optional human-readable note, e.g. when TotalTeams is
+	// too small for the aggregate to be statistically meaningful.
+	Warning string `json:"warning,omitempty"`
 
 	// ComputedAt is when this cross-org signal was last computed.
 	ComputedAt time.Time `json:"computed_at"`
 }
 
-// CalibrationResponse is the payload returned by the calibration server to the
-// CLI after it uploads a batch of events. It carries updated thresholds and
-// cross-org signals so the CLI can adjust future analysis output immediately.
-type CalibrationResponse struct {
-	// TeamThresholds maps rule ID to the updated threshold for that team.
-	TeamThresholds map[string]ThresholdOverride `json:"team_thresholds,omitempty"`
+// FewShotExample is a retrieved past finding used to augment LLM prompts with
+// concrete examples of how a rule was previously evaluated for a given file
+// type. Similarity is a [0,1] score indicating how closely the stored example
+// matches the current finding context.
+type FewShotExample struct {
+	RuleID      string  `json:"rule_id"`
+	FileType    string  `json:"file_type"`
+	CodeSnippet string  `json:"code_snippet,omitempty"`
+	Message     string  `json:"message"`
+	Verdict     string  `json:"verdict"`
+	Reason      string  `json:"reason,omitempty"`
+	Similarity  float64 `json:"similarity"`
+}
 
-	// CrossOrgSignals maps rule ID to the latest anonymised cross-org signal.
-	CrossOrgSignals map[string]CrossOrgSignal `json:"cross_org_signals,omitempty"`
+// CalibrationResponse is returned by GET /v1/calibration/{team_id}. It carries
+// all data the CLI needs to tune its analysis thresholds and augment prompts
+// for a single team.
+type CalibrationResponse struct {
+	// TeamThresholds maps rule IDs to per-rule threshold overrides derived from
+	// this team's historical feedback.
+	TeamThresholds map[string]ThresholdOverride `json:"team_thresholds"`
+
+	// CrossOrgSignals maps rule IDs to anonymised aggregate statistics across
+	// all teams, giving a global noise baseline for each rule.
+	CrossOrgSignals map[string]CrossOrgSignal `json:"cross_org_signals"`
+
+	// FewShotExamples are retrieved similar findings from the team's history,
+	// ordered by descending similarity score. Omitted when empty.
+	FewShotExamples []FewShotExample `json:"few_shot_examples,omitempty"`
 }
