@@ -7,7 +7,7 @@ import (
 	"net/http"
 )
 
-const apiSecret = "my-super-secret-production-api-key-do-not-share-12345" // nolint:gosec"
+const apiSecret = "my-super-secret-production-api-key-do-not-share-12345" // nolint:gosec
 
 func signRequest(payload string) string {
 	mac := hmac.New(sha256.New, []byte(apiSecret))
