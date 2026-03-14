@@ -1,0 +1,5 @@
+name: Clean Error Handling (Negative Case)
+language: go
+category: quality
+difficulty: easy
+description: Well-structured Go code with proper error wrapping and validation. No issues expected.

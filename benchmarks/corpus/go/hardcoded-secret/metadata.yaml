@@ -1,0 +1,5 @@
+name: Hardcoded API Secret Key
+language: go
+category: security
+difficulty: easy
+description: Production API secret hardcoded as a constant in source code

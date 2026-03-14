@@ -425,3 +425,60 @@ func TestMergeConfigs_StrictFilterPreserved(t *testing.T) {
 		t.Error("expected StrictFilter to remain true when project doesn't set it")
 	}
 }
+
+func TestCalibrationConfigDefaults(t *testing.T) {
+	cfg := SystemDefaults()
+	if cfg.Calibration.Enabled {
+		t.Error("calibration should be disabled by default")
+	}
+	if cfg.Calibration.Retrieve.TimeoutMs != 500 {
+		t.Errorf("timeout = %d, want 500", cfg.Calibration.Retrieve.TimeoutMs)
+	}
+	if cfg.Calibration.Retrieve.TopK != 3 {
+		t.Errorf("top_k = %d, want 3", cfg.Calibration.Retrieve.TopK)
+	}
+}
+
+func TestCalibrationConfigMerge(t *testing.T) {
+	base := &Config{
+		Calibration: CalibrationConfig{
+			Retrieve: CalibrationRetrieveConfig{TimeoutMs: 500, TopK: 3},
+		},
+	}
+	override := &Config{
+		Calibration: CalibrationConfig{
+			Enabled:   true,
+			ServerURL: "https://cal.example.com",
+			APIKeyEnv: "MY_KEY",
+		},
+	}
+	merged := MergeConfigs(base, override)
+	if !merged.Calibration.Enabled {
+		t.Error("calibration should be enabled after merge")
+	}
+	if merged.Calibration.ServerURL != "https://cal.example.com" {
+		t.Errorf("server_url = %q", merged.Calibration.ServerURL)
+	}
+	if merged.Calibration.Retrieve.TimeoutMs != 500 {
+		t.Errorf("timeout should be preserved from base, got %d", merged.Calibration.Retrieve.TimeoutMs)
+	}
+}
+
+func TestCalibrationConfigFromYAML(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/cal.yaml"
+	os.WriteFile(path, []byte("calibration:\n  enabled: true\n  server_url: \"https://calibration.gavel.dev\"\n  api_key_env: \"GAVEL_CALIBRATION_KEY\"\n  share_code: false\n  retrieve:\n    enabled: true\n    include_examples: true\n    top_k: 5\n    timeout_ms: 200\n  upload:\n    enabled: true\n    include_implicit: true\n    batch_size: 50\n"), 0644)
+	cfg, err := LoadFromFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Calibration.Enabled {
+		t.Error("expected calibration enabled")
+	}
+	if cfg.Calibration.Retrieve.TopK != 5 {
+		t.Errorf("top_k = %d, want 5", cfg.Calibration.Retrieve.TopK)
+	}
+	if cfg.Calibration.Upload.BatchSize != 50 {
+		t.Errorf("batch_size = %d, want 50", cfg.Calibration.Upload.BatchSize)
+	}
+}

@@ -1,0 +1,5 @@
+name: Path Traversal via Unvalidated Filename
+language: go
+category: security
+difficulty: easy
+description: User-supplied filename joined to base path without sanitization allows directory traversal

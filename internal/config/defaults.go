@@ -69,6 +69,20 @@ func SystemDefaults() *Config {
 				MaxSizeMB: 500,
 			},
 		},
+		Calibration: CalibrationConfig{
+			Enabled: false,
+			Retrieve: CalibrationRetrieveConfig{
+				Enabled:         true,
+				IncludeExamples: true,
+				TopK:            3,
+				TimeoutMs:       500,
+			},
+			Upload: CalibrationUploadConfig{
+				Enabled:         true,
+				IncludeImplicit: true,
+				BatchSize:       100,
+			},
+		},
 		Policies: map[string]Policy{
 			"shall-be-merged": {
 				Description: "Shall this code be merged?",

@@ -1,0 +1,5 @@
+name: SQL Injection via String Formatting
+language: go
+category: security
+difficulty: easy
+description: User input directly interpolated into SQL query via fmt.Sprintf

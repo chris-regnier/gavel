@@ -147,6 +147,18 @@ tasks:
       - git push origin {{.VERSION}}
       - echo "✓ Tag {{.VERSION}} created and pushed. GitHub Actions will build the release."
 
+  bench:build:
+    desc: Build gavel-bench binary
+    cmds:
+      - mkdir -p dist
+      - CGO_ENABLED=1 go build -o dist/gavel-bench ./cmd/gavel-bench
+
+  bench:run:
+    desc: Run benchmark suite against corpus
+    deps: [bench:build]
+    cmds:
+      - ./dist/gavel-bench run {{.CLI_ARGS}}
+
   analyze:
     desc: "Use gavel to analyze Gavel's code with current settings"
     deps: [build]

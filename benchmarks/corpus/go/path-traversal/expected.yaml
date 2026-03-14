@@ -1,0 +1,7 @@
+findings:
+  - rule_id: "any"
+    severity: error
+    line_range: [12, 14]
+    category: path-traversal
+    must_find: true
+false_positives: 0
