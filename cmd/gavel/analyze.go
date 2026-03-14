@@ -16,6 +16,7 @@ import (
 
 	"github.com/chris-regnier/gavel/internal/analyzer"
 	"github.com/chris-regnier/gavel/internal/cache"
+	"github.com/chris-regnier/gavel/internal/calibration"
 	"github.com/chris-regnier/gavel/internal/config"
 	"github.com/chris-regnier/gavel/internal/diffcontext"
 	"github.com/chris-regnier/gavel/internal/input"
@@ -117,6 +118,33 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 		personaPrompt += analyzer.ApplicabilityFilterPrompt
 	}
 
+	// Calibration: retrieve thresholds + few-shot examples
+	var thresholdOverrides map[string]calibration.ThresholdOverride
+	if cfg.Calibration.Enabled && cfg.Calibration.Retrieve.Enabled && cfg.Calibration.ServerURL != "" {
+		apiKey := os.Getenv(cfg.Calibration.APIKeyEnv)
+		if apiKey != "" {
+			calClient := calibration.NewClient(
+				cfg.Calibration.ServerURL, apiKey,
+				time.Duration(cfg.Calibration.Retrieve.TimeoutMs)*time.Millisecond,
+			)
+			var ruleIDs []string
+			for name, p := range cfg.Policies {
+				if p.Enabled {
+					ruleIDs = append(ruleIDs, name)
+				}
+			}
+			calData, calErr := calClient.GetCalibration(ctx, "default", ruleIDs, "")
+			if calErr != nil {
+				slog.Warn("calibration retrieval failed, proceeding with defaults", "err", calErr)
+			} else {
+				thresholdOverrides = calData.TeamThresholds
+				if cfg.Calibration.Retrieve.IncludeExamples && len(calData.FewShotExamples) > 0 {
+					personaPrompt += calibration.FormatCalibrationExamples(calData.FewShotExamples)
+				}
+			}
+		}
+	}
+
 	// Read input
 	h := input.NewHandler()
 	var artifacts []input.Artifact
@@ -200,6 +228,15 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 	// Assemble SARIF
 	sarifLog := sarif.Assemble(results, rules, inputScope, cfg.Persona)
 
+	// Calibration: apply threshold overrides
+	if thresholdOverrides != nil && len(sarifLog.Runs) > 0 {
+		suppressed := calibration.SuppressedResults(sarifLog.Runs[0].Results, thresholdOverrides)
+		if len(suppressed) > 0 {
+			slog.Info("calibration suppressed findings", "count", len(suppressed))
+			sarifLog.Runs[0].Results = calibration.ApplyThresholds(sarifLog.Runs[0].Results, thresholdOverrides)
+		}
+	}
+
 	// Store results
 	fs := store.NewFileStore(flagOutput)
 	id, err := fs.WriteSARIF(ctx, sarifLog)
@@ -207,6 +244,25 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("storing SARIF: %w", err)
+	}
+
+	// Calibration: upload events (non-blocking)
+	if cfg.Calibration.Enabled && cfg.Calibration.Upload.Enabled && cfg.Calibration.ServerURL != "" {
+		apiKey := os.Getenv(cfg.Calibration.APIKeyEnv)
+		if apiKey != "" {
+			go func() {
+				calClient := calibration.NewClient(cfg.Calibration.ServerURL, apiKey, 10*time.Second)
+				events := calibration.BuildEventsFromSARIF(sarifLog, id, cfg.Persona,
+					cfg.Provider.Name, "", cfg.Calibration.ShareCode)
+				if uploadErr := calClient.UploadEvents(context.Background(), "default", events); uploadErr != nil {
+					slog.Warn("calibration upload failed, queuing locally", "err", uploadErr)
+					q := calibration.NewLocalQueue(filepath.Join(flagPolicyDir, "pending_events"))
+					if qErr := q.Enqueue("default", events); qErr != nil {
+						slog.Error("failed to queue events locally", "err", qErr)
+					}
+				}
+			}()
+		}
 	}
 
 	// Upload results to remote cache if configured
