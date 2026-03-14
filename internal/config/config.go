@@ -49,6 +49,7 @@ type Config struct {
 	LSP          LSPConfig         `yaml:"lsp"`
 	RemoteCache  RemoteCacheConfig `yaml:"remote_cache"`
 	Telemetry    TelemetryConfig   `yaml:"telemetry"`
+	Calibration  CalibrationConfig `yaml:"calibration"`
 }
 
 // RemoteCacheConfig holds remote cache server settings
@@ -135,6 +136,31 @@ type AnalysisConfig struct {
 type CacheConfig struct {
 	TTL       string `yaml:"ttl"`
 	MaxSizeMB int    `yaml:"max_size_mb"`
+}
+
+// CalibrationConfig holds online calibration server settings.
+type CalibrationConfig struct {
+	Enabled   bool                      `yaml:"enabled"`
+	ServerURL string                    `yaml:"server_url"`
+	APIKeyEnv string                    `yaml:"api_key_env"`
+	ShareCode bool                      `yaml:"share_code"`
+	Retrieve  CalibrationRetrieveConfig `yaml:"retrieve"`
+	Upload    CalibrationUploadConfig   `yaml:"upload"`
+}
+
+// CalibrationRetrieveConfig controls calibration data retrieval.
+type CalibrationRetrieveConfig struct {
+	Enabled         bool `yaml:"enabled"`
+	IncludeExamples bool `yaml:"include_examples"`
+	TopK            int  `yaml:"top_k"`
+	TimeoutMs       int  `yaml:"timeout_ms"`
+}
+
+// CalibrationUploadConfig controls event upload behavior.
+type CalibrationUploadConfig struct {
+	Enabled         bool `yaml:"enabled"`
+	IncludeImplicit bool `yaml:"include_implicit"`
+	BatchSize       int  `yaml:"batch_size"`
 }
 
 // Validate checks that the configuration is valid and ready to use
@@ -323,6 +349,36 @@ func MergeConfigs(configs ...*Config) *Config {
 		}
 		if len(cfg.Telemetry.Headers) > 0 {
 			result.Telemetry.Headers = cfg.Telemetry.Headers
+		}
+
+		// Merge calibration config
+		calPresent := cfg.Calibration.ServerURL != "" || cfg.Calibration.Enabled
+		if calPresent {
+			result.Calibration.Enabled = cfg.Calibration.Enabled
+		}
+		if cfg.Calibration.ServerURL != "" {
+			result.Calibration.ServerURL = cfg.Calibration.ServerURL
+		}
+		if cfg.Calibration.APIKeyEnv != "" {
+			result.Calibration.APIKeyEnv = cfg.Calibration.APIKeyEnv
+		}
+		if calPresent {
+			result.Calibration.ShareCode = cfg.Calibration.ShareCode
+		}
+		if cfg.Calibration.Retrieve.TopK > 0 {
+			result.Calibration.Retrieve.TopK = cfg.Calibration.Retrieve.TopK
+		}
+		if cfg.Calibration.Retrieve.TimeoutMs > 0 {
+			result.Calibration.Retrieve.TimeoutMs = cfg.Calibration.Retrieve.TimeoutMs
+		}
+		if calPresent {
+			result.Calibration.Retrieve.Enabled = cfg.Calibration.Retrieve.Enabled
+			result.Calibration.Retrieve.IncludeExamples = cfg.Calibration.Retrieve.IncludeExamples
+			result.Calibration.Upload.Enabled = cfg.Calibration.Upload.Enabled
+			result.Calibration.Upload.IncludeImplicit = cfg.Calibration.Upload.IncludeImplicit
+		}
+		if cfg.Calibration.Upload.BatchSize > 0 {
+			result.Calibration.Upload.BatchSize = cfg.Calibration.Upload.BatchSize
 		}
 
 		// Merge policies (existing logic)
