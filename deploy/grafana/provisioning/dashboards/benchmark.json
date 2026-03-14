@@ -1,0 +1,125 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [],
+  "panels": [
+    {
+      "title": "Quality Over Time",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "gavel_gavel_bench_precision",
+          "legendFormat": "Precision ({{gavel_model}})"
+        },
+        {
+          "expr": "gavel_gavel_bench_recall",
+          "legendFormat": "Recall ({{gavel_model}})"
+        },
+        {
+          "expr": "gavel_gavel_bench_f1",
+          "legendFormat": "F1 ({{gavel_model}})"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 1,
+          "unit": "percentunit"
+        }
+      }
+    },
+    {
+      "title": "Model Comparison",
+      "type": "bargauge",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "gavel_gavel_bench_f1",
+          "legendFormat": "{{gavel_model}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 1,
+          "unit": "percentunit",
+          "thresholds": {
+            "steps": [
+              { "value": 0, "color": "red" },
+              { "value": 0.6, "color": "yellow" },
+              { "value": 0.8, "color": "green" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Hallucination & Noise Rates",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "expr": "gavel_gavel_bench_hallucination_rate",
+          "legendFormat": "Hallucination Rate ({{gavel_model}})"
+        },
+        {
+          "expr": "gavel_gavel_bench_noise_rate",
+          "legendFormat": "Noise Rate ({{gavel_model}})"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 1,
+          "unit": "percentunit"
+        }
+      }
+    },
+    {
+      "title": "Feedback Loop",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "expr": "gavel_gavel_feedback_useful_rate",
+          "legendFormat": "Useful Rate"
+        },
+        {
+          "expr": "gavel_gavel_feedback_noise_rate",
+          "legendFormat": "Noise Rate"
+        },
+        {
+          "expr": "sum(gavel_gavel_feedback_count)",
+          "legendFormat": "Total Feedback"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "value": 0, "color": "red" },
+              { "value": 0.5, "color": "yellow" },
+              { "value": 0.7, "color": "green" }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["gavel", "benchmark"],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-7d",
+    "to": "now"
+  },
+  "title": "Gavel Benchmark Dashboard",
+  "uid": "gavel-benchmark"
+}
