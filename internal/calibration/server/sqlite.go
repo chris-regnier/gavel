@@ -103,7 +103,7 @@ func (s *SQLiteStore) AppendEvents(ctx context.Context, teamID string, events []
 			return fmt.Errorf("marshal payload: %w", err)
 		}
 		_, err = stmt.ExecContext(ctx, teamID, string(e.Type), string(payload),
-			e.Timestamp.Format("2006-01-02T15:04:05Z"))
+			e.Timestamp.UTC().Format("2006-01-02T15:04:05Z"))
 		if err != nil {
 			return fmt.Errorf("insert event: %w", err)
 		}
@@ -205,13 +205,19 @@ func (s *SQLiteStore) GetGlobalStats(ctx context.Context, ruleIDs []string) (map
 // teamID. It satisfies GDPR right-to-erasure obligations by purging data from
 // both the events and team_rule_profiles tables.
 func (s *SQLiteStore) DeleteTeamData(ctx context.Context, teamID string) error {
-	if _, err := s.db.ExecContext(ctx, "DELETE FROM events WHERE team_id = ?", teamID); err != nil {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	if _, err := tx.ExecContext(ctx, "DELETE FROM events WHERE team_id = ?", teamID); err != nil {
 		return fmt.Errorf("delete events: %w", err)
 	}
-	if _, err := s.db.ExecContext(ctx, "DELETE FROM team_rule_profiles WHERE team_id = ?", teamID); err != nil {
+	if _, err := tx.ExecContext(ctx, "DELETE FROM team_rule_profiles WHERE team_id = ?", teamID); err != nil {
 		return fmt.Errorf("delete profiles: %w", err)
 	}
-	return nil
+	return tx.Commit()
 }
 
 // Close releases the underlying database connection. No further method calls

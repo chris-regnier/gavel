@@ -54,6 +54,13 @@ Labels:
 
 // JudgeFinding uses an LLM to evaluate the quality of a single finding.
 func JudgeFinding(ctx context.Context, client analyzer.BAMLClient, finding sarif.Result, sourceCode string) (*FindingVerdict, error) {
+	propStr := func(key string) string {
+		if v, ok := finding.Properties[key]; ok && v != nil {
+			return fmt.Sprintf("%v", v)
+		}
+		return ""
+	}
+
 	prompt := fmt.Sprintf(`%s
 
 SOURCE CODE:
@@ -63,17 +70,17 @@ FINDING TO EVALUATE:
 - Rule: %s
 - Severity: %s
 - Message: %s
-- Confidence: %v
-- Recommendation: %v
-- Explanation: %v`,
+- Confidence: %s
+- Recommendation: %s
+- Explanation: %s`,
 		judgePrompt,
 		sourceCode,
 		finding.RuleID,
 		finding.Level,
 		finding.Message.Text,
-		finding.Properties["gavel/confidence"],
-		finding.Properties["gavel/recommendation"],
-		finding.Properties["gavel/explanation"],
+		propStr("gavel/confidence"),
+		propStr("gavel/recommendation"),
+		propStr("gavel/explanation"),
 	)
 
 	results, err := client.AnalyzeCode(ctx, prompt, "", "", "")
@@ -88,7 +95,7 @@ FINDING TO EVALUATE:
 	var verdict FindingVerdict
 	if err := json.Unmarshal([]byte(results[0].Message), &verdict); err != nil {
 		// Fallback: treat the whole message as reasoning
-		return &FindingVerdict{Score: 3, Label: "valid", Reasoning: results[0].Message}, nil
+		return &FindingVerdict{Score: 1, Label: "noise", Reasoning: results[0].Message}, nil
 	}
 
 	return &verdict, nil

@@ -1,6 +1,7 @@
 package feedback
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os/exec"
@@ -36,7 +37,9 @@ type GitHubAlert struct {
 // and authenticated.
 func SyncGitHubFeedback(repo, resultID, resultDir string) ([]Entry, error) {
 	// Fetch alerts via gh CLI
-	cmd := exec.Command("gh", "api",
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "gh", "api",
 		fmt.Sprintf("repos/%s/code-scanning/alerts", repo),
 		"--paginate",
 		"-q", ".",
@@ -83,7 +86,7 @@ func mapAlertStateToVerdict(state, dismissedReason string) Verdict {
 	case "fixed":
 		return VerdictUseful
 	case "dismissed":
-		switch strings.ToLower(dismissedReason) {
+		switch strings.TrimSpace(strings.ToLower(dismissedReason)) {
 		case "false positive":
 			return VerdictWrong
 		case "won't fix", "used in tests":

@@ -133,7 +133,7 @@ func (p *RuleProfile) Recalculate() {
 	}
 
 	// ConfCalibration requires both confidence measurements to be non-zero.
-	if p.MeanUsefulConf != 0 || p.MeanNoiseConf != 0 {
+	if p.MeanUsefulConf != 0 && p.MeanNoiseConf != 0 {
 		p.ConfCalibration = p.MeanUsefulConf - p.MeanNoiseConf
 	} else {
 		p.ConfCalibration = 0
@@ -144,6 +144,8 @@ func (p *RuleProfile) Recalculate() {
 	const suppressThreshold = 0.7
 	if p.NoiseRate >= suppressThreshold && p.MeanNoiseConf > 0 {
 		p.SuppressBelow = p.MeanNoiseConf
+	} else {
+		p.SuppressBelow = 0
 	}
 }
 

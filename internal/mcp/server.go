@@ -531,7 +531,11 @@ func (h *handlers) validatePath(path string) error {
 		realRoot = absRoot
 	}
 
-	if !strings.HasPrefix(realPath, realRoot+string(filepath.Separator)) && realPath != realRoot {
+	rootPrefix := realRoot
+	if rootPrefix != "/" {
+		rootPrefix += string(filepath.Separator)
+	}
+	if !strings.HasPrefix(realPath, rootPrefix) && realPath != realRoot {
 		return fmt.Errorf("path %s is outside the allowed root directory", path)
 	}
 
