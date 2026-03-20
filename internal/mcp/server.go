@@ -497,8 +497,19 @@ func (h *handlers) validatePath(path string) error {
 	// Resolve symlinks to prevent symlink-based traversal
 	realPath, err := filepath.EvalSymlinks(absPath)
 	if err != nil {
-		// If the file doesn't exist yet, EvalSymlinks fails; fall back to Abs
+		// File doesn't exist yet; resolve the closest existing ancestor
+		// to handle platform symlinks (e.g. macOS /var -> /private/var)
 		realPath = absPath
+		remaining := ""
+		candidate := absPath
+		for candidate != "/" && candidate != "." {
+			remaining = filepath.Join(filepath.Base(candidate), remaining)
+			candidate = filepath.Dir(candidate)
+			if resolved, resolveErr := filepath.EvalSymlinks(candidate); resolveErr == nil {
+				realPath = filepath.Join(resolved, remaining)
+				break
+			}
+		}
 	}
 
 	root := h.cfg.RootDir
@@ -514,7 +525,13 @@ func (h *handlers) validatePath(path string) error {
 		return fmt.Errorf("resolving root: %w", err)
 	}
 
-	if !strings.HasPrefix(realPath, absRoot+string(filepath.Separator)) && realPath != absRoot {
+	// Resolve symlinks on root too (e.g. macOS /var -> /private/var)
+	realRoot, err := filepath.EvalSymlinks(absRoot)
+	if err != nil {
+		realRoot = absRoot
+	}
+
+	if !strings.HasPrefix(realPath, realRoot+string(filepath.Separator)) && realPath != realRoot {
 		return fmt.Errorf("path %s is outside the allowed root directory", path)
 	}
 
