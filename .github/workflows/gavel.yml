@@ -22,7 +22,7 @@ jobs:
 
       - name: Get PR diff
         run: |
-          git diff origin/${{ github.base_ref }}...HEAD -- ':!benchmarks/' > /tmp/pr.diff
+          git diff origin/${{ github.base_ref }}...HEAD -- ':!benchmarks/' ':!docs/' > /tmp/pr.diff
           echo "--- Diff stats ---"
           wc -l /tmp/pr.diff
           if [ ! -s /tmp/pr.diff ]; then
@@ -137,7 +137,7 @@ jobs:
 
       - name: Get PR diff
         run: |
-          git diff origin/${{ github.base_ref }}...HEAD -- ':!benchmarks/' > /tmp/pr.diff
+          git diff origin/${{ github.base_ref }}...HEAD -- ':!benchmarks/' ':!docs/' > /tmp/pr.diff
           echo "--- Diff stats ---"
           wc -l /tmp/pr.diff
 
