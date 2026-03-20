@@ -150,6 +150,20 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 	var artifacts []input.Artifact
 	var inputScope string
 
+	modeCount := 0
+	if len(flagFiles) > 0 {
+		modeCount++
+	}
+	if flagDiff != "" {
+		modeCount++
+	}
+	if flagDir != "" {
+		modeCount++
+	}
+	if modeCount > 1 {
+		return fmt.Errorf("specify only one of --files, --diff, or --dir")
+	}
+
 	switch {
 	case len(flagFiles) > 0:
 		artifacts, err = h.ReadFiles(flagFiles)
@@ -198,7 +212,10 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 
 	// Build diff context to reduce false positives when analyzing diffs
 	if inputScope == "diff" {
-		repoDir, _ := os.Getwd()
+		repoDir, err := os.Getwd()
+		if err != nil {
+			return fmt.Errorf("getting working directory: %w", err)
+		}
 		diffCtx := diffcontext.BuildDiffContext(artifacts, repoDir)
 		if diffCtx != "" {
 			tieredOpts = append(tieredOpts, analyzer.WithDiffContext(diffCtx))
@@ -373,6 +390,7 @@ func getModelFromConfig(cfg *config.Config) string {
 	case "openai":
 		return cfg.Provider.OpenAI.Model
 	default:
-		return "unknown"
+		slog.Warn("unrecognized provider for model lookup", "provider", cfg.Provider.Name)
+		return cfg.Provider.Name
 	}
 }

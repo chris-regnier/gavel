@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -75,12 +76,15 @@ func (c *Client) UploadEvents(ctx context.Context, teamID string, events []Event
 // Returns a parsed CalibrationResponse on success or an error when the request
 // fails, times out, or the server returns a non-200 status.
 func (c *Client) GetCalibration(ctx context.Context, teamID string, ruleIDs []string, fileType string) (*CalibrationResponse, error) {
-	url := fmt.Sprintf("%s/v1/calibration/%s?file_type=%s", c.baseURL, teamID, fileType)
+	reqURL := fmt.Sprintf("%s/v1/calibration/%s", c.baseURL, url.PathEscape(teamID))
+	params := url.Values{}
+	params.Set("file_type", fileType)
 	if len(ruleIDs) > 0 {
-		url += "&rules=" + strings.Join(ruleIDs, ",")
+		params.Set("rules", strings.Join(ruleIDs, ","))
 	}
+	reqURL += "?" + params.Encode()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, err
 	}

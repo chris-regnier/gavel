@@ -95,7 +95,9 @@ func LoadCase(dir string) (*Case, error) {
 	var meta CaseMetadata
 	metaData, err := os.ReadFile(filepath.Join(dir, "metadata.yaml"))
 	if err == nil {
-		yaml.Unmarshal(metaData, &meta)
+		if err := yaml.Unmarshal(metaData, &meta); err != nil {
+			return nil, fmt.Errorf("parse metadata.yaml: %w", err)
+		}
 	}
 
 	return &Case{
@@ -126,7 +128,7 @@ func LoadCorpus(dir string) (*Corpus, error) {
 		langPath := filepath.Join(dir, langDir.Name())
 		caseDirs, err := os.ReadDir(langPath)
 		if err != nil {
-			continue
+			return nil, fmt.Errorf("read language dir %s: %w", langDir.Name(), err)
 		}
 		for _, caseDir := range caseDirs {
 			if !caseDir.IsDir() || strings.HasPrefix(caseDir.Name(), ".") {

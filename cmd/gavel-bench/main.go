@@ -52,12 +52,30 @@ func runBenchmark(cmd *cobra.Command, args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
-	corpusDir, _ := cmd.Flags().GetString("corpus")
-	outputFile, _ := cmd.Flags().GetString("output")
-	runs, _ := cmd.Flags().GetInt("runs")
-	tolerance, _ := cmd.Flags().GetInt("line-tolerance")
-	persona, _ := cmd.Flags().GetString("persona")
-	policyDir, _ := cmd.Flags().GetString("policies")
+	corpusDir, err := cmd.Flags().GetString("corpus")
+	if err != nil {
+		return fmt.Errorf("flag corpus: %w", err)
+	}
+	outputFile, err := cmd.Flags().GetString("output")
+	if err != nil {
+		return fmt.Errorf("flag output: %w", err)
+	}
+	runs, err := cmd.Flags().GetInt("runs")
+	if err != nil {
+		return fmt.Errorf("flag runs: %w", err)
+	}
+	tolerance, err := cmd.Flags().GetInt("line-tolerance")
+	if err != nil {
+		return fmt.Errorf("flag line-tolerance: %w", err)
+	}
+	persona, err := cmd.Flags().GetString("persona")
+	if err != nil {
+		return fmt.Errorf("flag persona: %w", err)
+	}
+	policyDir, err := cmd.Flags().GetString("policies")
+	if err != nil {
+		return fmt.Errorf("flag policies: %w", err)
+	}
 
 	corpus, err := bench.LoadCorpus(corpusDir)
 	if err != nil {
@@ -84,7 +102,10 @@ func runBenchmark(cmd *cobra.Command, args []string) error {
 
 	client := analyzer.NewBAMLLiveClient(cfg.Provider)
 
-	judgeEnabled, _ := cmd.Flags().GetBool("judge")
+	judgeEnabled, err := cmd.Flags().GetBool("judge")
+	if err != nil {
+		return fmt.Errorf("flag judge: %w", err)
+	}
 
 	runCfg := bench.RunConfig{
 		Runs:          runs,
@@ -124,7 +145,10 @@ func runBenchmark(cmd *cobra.Command, args []string) error {
 	}
 
 	// Output results
-	data, _ := json.MarshalIndent(result, "", "  ")
+	data, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal results: %w", err)
+	}
 	if outputFile != "" {
 		return os.WriteFile(outputFile, data, 0o644)
 	}

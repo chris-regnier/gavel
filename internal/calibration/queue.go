@@ -3,6 +3,7 @@ package calibration
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"time"
@@ -80,10 +81,12 @@ func (q *LocalQueue) Drain() ([]QueuedBatch, error) {
 		}
 		data, err := os.ReadFile(filepath.Join(q.dir, e.Name()))
 		if err != nil {
+			slog.Warn("skipping unreadable queue file", "file", e.Name(), "err", err)
 			continue
 		}
 		var b QueuedBatch
 		if err := json.Unmarshal(data, &b); err != nil {
+			slog.Warn("skipping corrupt queue file", "file", e.Name(), "err", err)
 			continue
 		}
 		batches = append(batches, b)

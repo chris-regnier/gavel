@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"path/filepath"
-	"sort"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -83,18 +82,4 @@ func runFeedback(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Total feedback: %d (useful: %d, noise: %d, wrong: %d)\n", stats.Total, stats.Useful, stats.Noise, stats.Wrong)
 
 	return nil
-}
-
-// resolveLatestResult returns the most recent result ID from the output directory.
-func resolveLatestResult(outputDir string) (string, error) {
-	entries, err := filepath.Glob(filepath.Join(outputDir, "*"))
-	if err != nil {
-		return "", fmt.Errorf("list results: %w", err)
-	}
-	if len(entries) == 0 {
-		return "", fmt.Errorf("no results found in %s", outputDir)
-	}
-
-	sort.Strings(entries)
-	return filepath.Base(entries[len(entries)-1]), nil
 }
