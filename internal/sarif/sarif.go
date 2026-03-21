@@ -49,6 +49,13 @@ type Result struct {
 	Locations           []Location             `json:"locations,omitempty"`
 	PartialFingerprints map[string]string      `json:"partialFingerprints,omitempty"`
 	Properties          map[string]interface{} `json:"properties,omitempty"`
+	Suppressions        []SARIFSuppression     `json:"suppressions,omitempty"`
+}
+
+type SARIFSuppression struct {
+	Kind          string                 `json:"kind"`
+	Justification string                 `json:"justification,omitempty"`
+	Properties    map[string]interface{} `json:"properties,omitempty"`
 }
 
 type Message struct {
