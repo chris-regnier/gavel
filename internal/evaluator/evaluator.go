@@ -96,8 +96,13 @@ func (e *Evaluator) Evaluate(ctx context.Context, log *sarif.Log) (*store.Verdic
 	}
 
 	var relevant []sarif.Result
+	suppressedCount := 0
 	if len(log.Runs) > 0 {
 		for _, r := range log.Runs[0].Results {
+			if len(r.Suppressions) > 0 {
+				suppressedCount++
+				continue
+			}
 			if decision == "reject" && r.Level == "error" {
 				relevant = append(relevant, r)
 			} else if decision == "review" && (r.Level == "warning" || r.Level == "error") {
@@ -110,16 +115,23 @@ func (e *Evaluator) Evaluate(ctx context.Context, log *sarif.Log) (*store.Verdic
 	if len(log.Runs) > 0 {
 		resultCount = len(log.Runs[0].Results)
 	}
+	unsuppressedCount := resultCount - suppressedCount
 
 	span.SetAttributes(
 		attribute.String("gavel.decision", decision),
 		attribute.Int("gavel.finding_count", resultCount),
 		attribute.Int("gavel.relevant_count", len(relevant)),
+		attribute.Int("gavel.suppressed_count", suppressedCount),
 	)
+
+	reason := fmt.Sprintf("Decision: %s based on %d findings", decision, unsuppressedCount)
+	if suppressedCount > 0 {
+		reason += fmt.Sprintf(", %d suppressed", suppressedCount)
+	}
 
 	return &store.Verdict{
 		Decision:         decision,
-		Reason:           fmt.Sprintf("Decision: %s based on %d findings", decision, resultCount),
+		Reason:           reason,
 		RelevantFindings: relevant,
 	}, nil
 }
