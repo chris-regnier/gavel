@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/chris-regnier/gavel/internal/sarif"
 	"gopkg.in/yaml.v3"
 )
 
@@ -77,6 +78,39 @@ func NormalizePath(p string) string {
 	p = filepath.ToSlash(filepath.Clean(p))
 	p = strings.TrimPrefix(p, "./")
 	return p
+}
+
+// Apply clears existing suppression annotations on all results, then stamps
+// matching results with SARIF-native suppression entries. This clear-then-apply
+// approach ensures removed suppressions take effect correctly.
+func Apply(suppressions []Suppression, log *sarif.Log) {
+	for i := range log.Runs {
+		for j := range log.Runs[i].Results {
+			r := &log.Runs[i].Results[j]
+			r.Suppressions = nil
+
+			filePath := ""
+			if len(r.Locations) > 0 {
+				filePath = r.Locations[0].PhysicalLocation.ArtifactLocation.URI
+			}
+
+			s := Match(suppressions, r.RuleID, filePath)
+			if s == nil {
+				continue
+			}
+
+			r.Suppressions = []sarif.SARIFSuppression{
+				{
+					Kind:          "external",
+					Justification: s.Reason,
+					Properties: map[string]interface{}{
+						"gavel/source":  s.Source,
+						"gavel/created": s.Created.Format(time.RFC3339),
+					},
+				},
+			}
+		}
+	}
 }
 
 // Match returns the first suppression that matches the given ruleID and filePath,
