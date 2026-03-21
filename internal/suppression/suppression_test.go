@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/chris-regnier/gavel/internal/sarif"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -79,4 +80,81 @@ func TestMatchPerFile(t *testing.T) {
 func TestMatchNormalizesPath(t *testing.T) {
 	supps := []Suppression{{RuleID: "G101", File: "internal/auth/tokens.go", Reason: "fp"}}
 	assert.NotNil(t, Match(supps, "G101", "./internal/auth/tokens.go"))
+}
+
+func TestApplyStampsMatchingResults(t *testing.T) {
+	supps := []Suppression{
+		{RuleID: "S1001", Reason: "noisy", Source: "cli:user:test", Created: time.Now().UTC()},
+	}
+	log := &sarif.Log{
+		Runs: []sarif.Run{{
+			Results: []sarif.Result{
+				{RuleID: "S1001", Level: "warning", Message: sarif.Message{Text: "found"}},
+				{RuleID: "G101", Level: "error", Message: sarif.Message{Text: "other"}},
+			},
+		}},
+	}
+
+	Apply(supps, log)
+
+	assert.Len(t, log.Runs[0].Results[0].Suppressions, 1)
+	assert.Equal(t, "external", log.Runs[0].Results[0].Suppressions[0].Kind)
+	assert.Contains(t, log.Runs[0].Results[0].Suppressions[0].Justification, "noisy")
+	assert.Empty(t, log.Runs[0].Results[1].Suppressions)
+}
+
+func TestApplyClearsStaleSuppressions(t *testing.T) {
+	log := &sarif.Log{
+		Runs: []sarif.Run{{
+			Results: []sarif.Result{
+				{
+					RuleID:  "S1001",
+					Level:   "warning",
+					Message: sarif.Message{Text: "found"},
+					Suppressions: []sarif.SARIFSuppression{
+						{Kind: "external", Justification: "old reason"},
+					},
+				},
+			},
+		}},
+	}
+
+	Apply(nil, log)
+	assert.Empty(t, log.Runs[0].Results[0].Suppressions)
+}
+
+func TestApplyPerFile(t *testing.T) {
+	supps := []Suppression{
+		{RuleID: "G101", File: "auth/tokens.go", Reason: "fp", Source: "mcp:agent:test", Created: time.Now().UTC()},
+	}
+	log := &sarif.Log{
+		Runs: []sarif.Run{{
+			Results: []sarif.Result{
+				{
+					RuleID:  "G101",
+					Level:   "warning",
+					Message: sarif.Message{Text: "cred"},
+					Locations: []sarif.Location{{
+						PhysicalLocation: sarif.PhysicalLocation{
+							ArtifactLocation: sarif.ArtifactLocation{URI: "auth/tokens.go"},
+						},
+					}},
+				},
+				{
+					RuleID:  "G101",
+					Level:   "warning",
+					Message: sarif.Message{Text: "cred2"},
+					Locations: []sarif.Location{{
+						PhysicalLocation: sarif.PhysicalLocation{
+							ArtifactLocation: sarif.ArtifactLocation{URI: "other/file.go"},
+						},
+					}},
+				},
+			},
+		}},
+	}
+
+	Apply(supps, log)
+	assert.Len(t, log.Runs[0].Results[0].Suppressions, 1)
+	assert.Empty(t, log.Runs[0].Results[1].Suppressions)
 }
