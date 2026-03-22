@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -20,6 +21,7 @@ import (
 	"github.com/chris-regnier/gavel/internal/input"
 	"github.com/chris-regnier/gavel/internal/sarif"
 	"github.com/chris-regnier/gavel/internal/store"
+	"github.com/chris-regnier/gavel/internal/suppression"
 )
 
 const version = "0.2.0"
@@ -53,6 +55,9 @@ func NewMCPServer(cfg ServerConfig) *server.MCPServer {
 	s.AddTool(judgeTool(), h.handleJudge)
 	s.AddTool(listResultsTool(), h.handleListResults)
 	s.AddTool(getResultTool(), h.handleGetResult)
+	s.AddTool(suppressFindingTool(), h.handleSuppressFinding)
+	s.AddTool(listSuppressionsTool(), h.handleListSuppressions)
+	s.AddTool(unsuppressFindingTool(), h.handleUnsuppressFinding)
 
 	// Register resources
 	s.AddResource(policiesResource(), h.handlePoliciesResource)
@@ -121,6 +126,42 @@ func getResultTool() mcp.Tool {
 		mcp.WithString("result_id",
 			mcp.Description("ID of the analysis result to retrieve"),
 			mcp.Required(),
+		),
+	)
+}
+
+func suppressFindingTool() mcp.Tool {
+	return mcp.NewTool("suppress_finding",
+		mcp.WithDescription("Suppress a finding rule. Adds an entry to .gavel/suppressions.yaml so matching findings are excluded from evaluation."),
+		mcp.WithString("rule_id",
+			mcp.Description("Rule ID to suppress (e.g., S1001)"),
+			mcp.Required(),
+		),
+		mcp.WithString("file",
+			mcp.Description("Restrict suppression to this file path (omit for global)"),
+		),
+		mcp.WithString("reason",
+			mcp.Description("Justification for suppression"),
+			mcp.Required(),
+		),
+	)
+}
+
+func listSuppressionsTool() mcp.Tool {
+	return mcp.NewTool("list_suppressions",
+		mcp.WithDescription("List all active finding suppressions from .gavel/suppressions.yaml."),
+	)
+}
+
+func unsuppressFindingTool() mcp.Tool {
+	return mcp.NewTool("unsuppress_finding",
+		mcp.WithDescription("Remove a finding suppression entry."),
+		mcp.WithString("rule_id",
+			mcp.Description("Rule ID to unsuppress"),
+			mcp.Required(),
+		),
+		mcp.WithString("file",
+			mcp.Description("Remove file-specific suppression only (omit for global)"),
 		),
 	)
 }
@@ -207,6 +248,12 @@ func (h *handlers) handleAnalyzeFile(ctx context.Context, request mcp.CallToolRe
 	rules := buildRules(h.cfg.Config.Policies)
 	sarifLog := sarif.Assemble(results, rules, "file", persona)
 
+	supps, loadErr := suppression.Load(h.rootDir())
+	if loadErr != nil {
+		slog.Warn("failed to load suppressions", "err", loadErr)
+	}
+	suppression.Apply(supps, sarifLog)
+
 	id, err := h.cfg.Store.WriteSARIF(ctx, sarifLog)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("storing results: %v", err)), nil
@@ -263,6 +310,12 @@ func (h *handlers) handleAnalyzeDirectory(ctx context.Context, request mcp.CallT
 	rules := buildRules(h.cfg.Config.Policies)
 	sarifLog := sarif.Assemble(results, rules, "directory", persona)
 
+	supps, loadErr := suppression.Load(h.rootDir())
+	if loadErr != nil {
+		slog.Warn("failed to load suppressions", "err", loadErr)
+	}
+	suppression.Apply(supps, sarifLog)
+
 	id, err := h.cfg.Store.WriteSARIF(ctx, sarifLog)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("storing results: %v", err)), nil
@@ -302,6 +355,13 @@ func (h *handlers) handleJudge(ctx context.Context, request mcp.CallToolRequest)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("reading SARIF for %s: %v", resultID, err)), nil
 	}
+
+	// Re-apply suppressions before evaluation
+	supps, loadErr := suppression.Load(h.rootDir())
+	if loadErr != nil {
+		slog.Warn("failed to load suppressions", "err", loadErr)
+	}
+	suppression.Apply(supps, sarifLog)
 
 	// Evaluate with Rego
 	eval, err := evaluator.NewEvaluator(ctx, h.cfg.RegoDir)
@@ -367,6 +427,136 @@ func (h *handlers) handleGetResult(ctx context.Context, request mcp.CallToolRequ
 	out, err := json.MarshalIndent(sarifLog, "", "  ")
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("marshaling SARIF: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(out)), nil
+}
+
+// --- Suppression handlers ---
+
+func (h *handlers) rootDir() string {
+	if h.cfg.RootDir != "" {
+		return h.cfg.RootDir
+	}
+	dir, err := os.Getwd()
+	if err != nil {
+		return "."
+	}
+	return dir
+}
+
+func (h *handlers) handleSuppressFinding(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	ruleID := request.GetString("rule_id", "")
+	if ruleID == "" {
+		return mcp.NewToolResultError("rule_id is required"), nil
+	}
+
+	reason := request.GetString("reason", "")
+	if reason == "" {
+		return mcp.NewToolResultError("reason is required"), nil
+	}
+
+	file := request.GetString("file", "")
+	if file != "" {
+		file = suppression.NormalizePath(file)
+	}
+
+	rootDir := h.rootDir()
+
+	supps, err := suppression.Load(rootDir)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("loading suppressions: %v", err)), nil
+	}
+
+	entry := suppression.Suppression{
+		RuleID:  ruleID,
+		File:    file,
+		Reason:  reason,
+		Created: time.Now().UTC(),
+		Source:  "mcp:agent:gavel-mcp",
+	}
+
+	supps = append(supps, entry)
+	if err := suppression.Save(rootDir, supps); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("saving suppressions: %v", err)), nil
+	}
+
+	out, err := json.MarshalIndent(map[string]interface{}{
+		"status":  "suppressed",
+		"rule_id": ruleID,
+		"file":    file,
+		"reason":  reason,
+	}, "", "  ")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("marshaling response: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(out)), nil
+}
+
+func (h *handlers) handleListSuppressions(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	rootDir := h.rootDir()
+
+	supps, err := suppression.Load(rootDir)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("loading suppressions: %v", err)), nil
+	}
+
+	out, err := json.MarshalIndent(map[string]interface{}{
+		"suppressions": supps,
+		"count":        len(supps),
+	}, "", "  ")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("marshaling suppressions: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(out)), nil
+}
+
+func (h *handlers) handleUnsuppressFinding(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	ruleID := request.GetString("rule_id", "")
+	if ruleID == "" {
+		return mcp.NewToolResultError("rule_id is required"), nil
+	}
+
+	file := request.GetString("file", "")
+	if file != "" {
+		file = suppression.NormalizePath(file)
+	}
+
+	rootDir := h.rootDir()
+
+	supps, err := suppression.Load(rootDir)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("loading suppressions: %v", err)), nil
+	}
+
+	var remaining []suppression.Suppression
+	removed := 0
+	for _, s := range supps {
+		if s.RuleID == ruleID && s.File == file {
+			removed++
+			continue
+		}
+		remaining = append(remaining, s)
+	}
+
+	if removed == 0 {
+		return mcp.NewToolResultError(fmt.Sprintf("no suppression found for rule_id=%s file=%q", ruleID, file)), nil
+	}
+
+	if err := suppression.Save(rootDir, remaining); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("saving suppressions: %v", err)), nil
+	}
+
+	out, err := json.MarshalIndent(map[string]interface{}{
+		"status":  "unsuppressed",
+		"rule_id": ruleID,
+		"file":    file,
+		"removed": removed,
+	}, "", "  ")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("marshaling response: %v", err)), nil
 	}
 
 	return mcp.NewToolResultText(string(out)), nil
