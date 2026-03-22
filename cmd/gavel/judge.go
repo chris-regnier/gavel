@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -14,6 +16,7 @@ import (
 	"github.com/chris-regnier/gavel/internal/config"
 	"github.com/chris-regnier/gavel/internal/evaluator"
 	"github.com/chris-regnier/gavel/internal/store"
+	"github.com/chris-regnier/gavel/internal/suppression"
 	"github.com/chris-regnier/gavel/internal/telemetry"
 
 	"go.opentelemetry.io/otel"
@@ -101,6 +104,14 @@ func runJudge(cmd *cobra.Command, args []string) error {
 		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("reading SARIF for %s: %w", resultID, err)
 	}
+
+	// Re-apply current suppressions (clears stale, applies new)
+	suppressionRoot := filepath.Dir(flagJudgePolicyDir)
+	supps, err := suppression.Load(suppressionRoot)
+	if err != nil {
+		slog.Warn("failed to load suppressions", "err", err)
+	}
+	suppression.Apply(supps, sarifLog)
 
 	// Evaluate with Rego
 	eval, err := evaluator.NewEvaluator(ctx, flagJudgeRegoDir)
