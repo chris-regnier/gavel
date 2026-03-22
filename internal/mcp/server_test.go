@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	mcpgo "github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/mcptest"
@@ -15,6 +16,9 @@ import (
 	"github.com/chris-regnier/gavel/internal/config"
 	"github.com/chris-regnier/gavel/internal/sarif"
 	"github.com/chris-regnier/gavel/internal/store"
+	"github.com/chris-regnier/gavel/internal/suppression"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func testConfig() *config.Config {
@@ -78,6 +82,9 @@ func registerAll(ts *mcptest.Server, h *handlers) {
 	ts.AddTool(judgeTool(), h.handleJudge)
 	ts.AddTool(listResultsTool(), h.handleListResults)
 	ts.AddTool(getResultTool(), h.handleGetResult)
+	ts.AddTool(suppressFindingTool(), h.handleSuppressFinding)
+	ts.AddTool(listSuppressionsTool(), h.handleListSuppressions)
+	ts.AddTool(unsuppressFindingTool(), h.handleUnsuppressFinding)
 	ts.AddResource(policiesResource(), h.handlePoliciesResource)
 	ts.AddResourceTemplate(resultTemplate(), h.handleResultTemplate)
 	ts.AddPrompt(codeReviewPrompt(), h.handleCodeReviewPrompt)
@@ -826,4 +833,80 @@ func main() {
 			t.Errorf("path validation rejected a valid path: %s", text)
 		}
 	}
+}
+
+func setupTestServerWithDir(t *testing.T, rootDir string) *mcptest.Server {
+	t.Helper()
+	cfg := testConfig()
+	fs := store.NewFileStore(filepath.Join(rootDir, ".gavel", "results"))
+	h := newTestHandlers(t, cfg, fs, rootDir)
+	testServer := mcptest.NewUnstartedServer(t)
+	registerAll(testServer, h)
+	if err := testServer.Start(context.Background()); err != nil {
+		t.Fatalf("starting test server: %v", err)
+	}
+	t.Cleanup(testServer.Close)
+	return testServer
+}
+
+func TestSuppressFindingTool(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".gavel"), 0o755))
+
+	ts := setupTestServerWithDir(t, dir)
+	client := ts.Client()
+	ctx := context.Background()
+
+	result, err := callTool(ctx, client, "suppress_finding", map[string]any{
+		"rule_id": "S1001",
+		"reason":  "too noisy",
+	})
+	require.NoError(t, err)
+	assert.False(t, result.IsError)
+
+	supps, err := suppression.Load(dir)
+	require.NoError(t, err)
+	require.Len(t, supps, 1)
+	assert.Equal(t, "S1001", supps[0].RuleID)
+	assert.Contains(t, supps[0].Source, "mcp:agent:")
+}
+
+func TestListSuppressionsTool(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".gavel"), 0o755))
+
+	require.NoError(t, suppression.Save(dir, []suppression.Suppression{
+		{RuleID: "S1001", Reason: "test", Source: "cli:user:test", Created: time.Now().UTC()},
+	}))
+
+	ts := setupTestServerWithDir(t, dir)
+	client := ts.Client()
+	ctx := context.Background()
+
+	result, err := callTool(ctx, client, "list_suppressions", nil)
+	require.NoError(t, err)
+	assert.False(t, result.IsError)
+}
+
+func TestUnsuppressFindingTool(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".gavel"), 0o755))
+
+	require.NoError(t, suppression.Save(dir, []suppression.Suppression{
+		{RuleID: "S1001", Reason: "test", Source: "cli:user:test", Created: time.Now().UTC()},
+	}))
+
+	ts := setupTestServerWithDir(t, dir)
+	client := ts.Client()
+	ctx := context.Background()
+
+	result, err := callTool(ctx, client, "unsuppress_finding", map[string]any{
+		"rule_id": "S1001",
+	})
+	require.NoError(t, err)
+	assert.False(t, result.IsError)
+
+	supps, err := suppression.Load(dir)
+	require.NoError(t, err)
+	assert.Empty(t, supps)
 }
