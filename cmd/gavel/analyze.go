@@ -23,6 +23,7 @@ import (
 	"github.com/chris-regnier/gavel/internal/rules"
 	"github.com/chris-regnier/gavel/internal/sarif"
 	"github.com/chris-regnier/gavel/internal/store"
+	"github.com/chris-regnier/gavel/internal/suppression"
 	"github.com/chris-regnier/gavel/internal/telemetry"
 
 	"go.opentelemetry.io/otel"
@@ -254,6 +255,23 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Apply suppressions
+	suppressionRoot := filepath.Dir(flagPolicyDir)
+	supps, err := suppression.Load(suppressionRoot)
+	if err != nil {
+		slog.Warn("failed to load suppressions", "err", err)
+	}
+	suppression.Apply(supps, sarifLog)
+
+	suppressedCount := 0
+	for _, run := range sarifLog.Runs {
+		for _, r := range run.Results {
+			if len(r.Suppressions) > 0 {
+				suppressedCount++
+			}
+		}
+	}
+
 	// Store results
 	fs := store.NewFileStore(flagOutput)
 	id, err := fs.WriteSARIF(ctx, sarifLog)
@@ -304,7 +322,8 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 		"id":       id,
 		"findings": findingCount,
 		"scope":    inputScope,
-		"persona":  cfg.Persona,
+		"persona":    cfg.Persona,
+		"suppressed": suppressedCount,
 	}
 	out, _ := json.MarshalIndent(summary, "", "  ")
 	fmt.Println(string(out))
