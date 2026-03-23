@@ -80,7 +80,15 @@ func (a *Analyzer) Analyze(ctx context.Context, artifacts []input.Artifact, poli
 	var allResults []sarif.Result
 
 	for _, art := range artifacts {
-		findings, err := a.client.AnalyzeCode(ctx, art.Content, policyText, personaPrompt, a.additionalContext)
+		// Prepend the filename so the LLM knows which file it's analyzing.
+		// Without this, models hallucinate conventional filenames (e.g. "handlers.go"
+		// instead of the actual "server.go"), causing ~50% of findings to reference
+		// nonexistent paths. See https://github.com/chris-regnier/gavel/issues/34.
+		code := art.Content
+		if art.Path != "" {
+			code = fmt.Sprintf("// File: %s\n%s", art.Path, art.Content)
+		}
+		findings, err := a.client.AnalyzeCode(ctx, code, policyText, personaPrompt, a.additionalContext)
 		if err != nil {
 			return nil, fmt.Errorf("analyzing %s: %w", art.Path, err)
 		}
