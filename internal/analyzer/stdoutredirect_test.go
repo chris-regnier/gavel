@@ -14,7 +14,14 @@ func TestRedirectStdoutToStderr(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to dup stdout: %v", err)
 	}
-	defer syscall.Close(origStdoutFd)
+	origStderrFd2, _ := syscall.Dup(2)
+	t.Cleanup(func() {
+		// Unconditionally restore real fds to protect the test binary
+		syscall.Dup2(origStdoutFd, 1)
+		syscall.Dup2(origStderrFd2, 2)
+		syscall.Close(origStdoutFd)
+		syscall.Close(origStderrFd2)
+	})
 
 	// Create a pipe to act as our "stdout" sink
 	stdoutR, stdoutW, err := os.Pipe()
