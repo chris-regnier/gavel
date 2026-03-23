@@ -1,0 +1,40 @@
+# Evaluate whether explicitly telling the LLM that reviews are partial
+# and zero findings is acceptable reduces false-positive hallucination.
+#
+# Hypothesis: LLMs have an implicit bias toward producing findings because
+# the prompt structure implies something should be found. Explicitly stating
+# that the code may be a partial snippet and returning zero findings is
+# perfectly acceptable should reduce hallucinated false-positives without
+# suppressing genuine issues.
+
+runs: 3
+baseline: baseline
+
+targets:
+  - path: internal/store
+  - path: internal/evaluator
+  - path: internal/config
+  - path: internal/cache
+
+variants:
+  - name: baseline
+    description: "Current prompts, no partial-review guidance"
+    persona: code-reviewer
+    strict_filter: true
+
+  - name: partial-aware
+    description: "Adds explicit partial-review and zero-findings-ok guidance"
+    persona: code-reviewer
+    strict_filter: true
+    prompt_add: |
+      IMPORTANT — PARTIAL REVIEW CONTEXT:
+      You may be reviewing only a partial snippet of a larger codebase. You will
+      not have full context on all dependencies, callers, or surrounding code.
+      This is expected and normal.
+
+      It is perfectly acceptable — and often correct — to return ZERO findings.
+      Not every piece of code has issues. Do not manufacture or stretch findings
+      to fill a quota. If the code is clean, say so by returning an empty list.
+
+      A review with no findings is a valid, valuable outcome. Only report issues
+      you are genuinely confident about given the code you can see.
