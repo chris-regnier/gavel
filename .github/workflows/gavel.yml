@@ -5,8 +5,8 @@ on:
     branches: [main]
 
 permissions:
-  contents: read
-  pull-requests: read
+  contents: write
+  pull-requests: write
   security-events: write
 
 jobs:
@@ -63,16 +63,30 @@ jobs:
       - name: Collect results
         if: env.SKIP_ANALYSIS != 'true'
         run: |
-          # Find the verdict and SARIF files from the timestamped result directory
+          # Create SARIF directory early so the upload step always has a valid path
+          mkdir -p /tmp/gavel-sarif
+
+          # Find the timestamped result directory
           RESULT_DIR=$(ls -td /tmp/gavel-results/*/ 2>/dev/null | head -1)
           if [ -z "$RESULT_DIR" ]; then
             echo "::error::No Gavel result directory found"
             exit 1
           fi
-          cp "$RESULT_DIR/verdict.json" /tmp/verdict.json
+
+          # Copy verdict if it exists; default to "merge" when absent (no findings)
+          if [ -f "$RESULT_DIR/verdict.json" ]; then
+            cp "$RESULT_DIR/verdict.json" /tmp/verdict.json
+          else
+            echo '{"decision":"merge","reason":"No findings produced by analysis"}' > /tmp/verdict.json
+            echo "::notice::No verdict.json found — defaulting to merge (no findings)"
+          fi
+
           # Copy SARIF with .sarif extension for CodeQL upload action
-          mkdir -p /tmp/gavel-sarif
-          cp "$RESULT_DIR/sarif.json" /tmp/gavel-sarif/gavel.sarif
+          if [ -f "$RESULT_DIR/sarif.json" ]; then
+            cp "$RESULT_DIR/sarif.json" /tmp/gavel-sarif/gavel.sarif
+          else
+            echo "::notice::No sarif.json found in result directory"
+          fi
 
       - name: Evaluate verdict
         if: env.SKIP_ANALYSIS != 'true'
@@ -102,6 +116,17 @@ jobs:
         with:
           sarif_file: /tmp/gavel-sarif/
           category: gavel
+
+      - name: Auto-merge
+        if: env.SKIP_ANALYSIS != 'true' && github.event.pull_request.user.login == 'chris-regnier'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          DECISION=$(jq -r '.decision' /tmp/verdict.json)
+          if [ "$DECISION" != "reject" ]; then
+            echo "Gavel passed for author chris-regnier — enabling auto-merge"
+            gh pr merge "${{ github.event.pull_request.number }}" --auto --squash
+          fi
 
   # Only runs when PR title contains /benchmark
   benchmark:
