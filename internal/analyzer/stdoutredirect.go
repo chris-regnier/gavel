@@ -24,6 +24,7 @@ func redirectStdoutToStderr() (restore func(), err error) {
 		slog.Warn("failed to dup stdout for BAML redirect", "error", err)
 		return noop, err
 	}
+	syscall.CloseOnExec(savedFd)
 
 	if err := syscall.Dup2(2, 1); err != nil {
 		syscall.Close(savedFd)
