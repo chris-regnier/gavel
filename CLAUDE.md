@@ -144,7 +144,8 @@ specialized expert perspectives: code quality, architecture, or security.
 4. Update documentation
 
 **Current personas:**
-- `code-reviewer` (default): Code quality, error handling, testability
+- `code-reviewer` (default): Minimal ~50 word prompt optimized for small models. Focuses on bugs, error handling, security. See issue #35 for A/B evidence.
+- `code-reviewer-verbose`: Original ~250 word detailed prompt. Better for large models (Sonnet, GPT-4) that follow complex instructions well.
 - `architect`: Scalability, API design, service boundaries
 - `security`: OWASP Top 10, auth/authz, injection vulnerabilities
 

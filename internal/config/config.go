@@ -213,12 +213,13 @@ func (c *Config) Validate() error {
 
 	// Validate persona field
 	validPersonas := map[string]bool{
-		"code-reviewer": true,
-		"architect":     true,
-		"security":      true,
+		"code-reviewer":         true,
+		"code-reviewer-verbose": true,
+		"architect":             true,
+		"security":              true,
 	}
 	if c.Persona != "" && !validPersonas[c.Persona] {
-		return fmt.Errorf("unknown persona: %s (valid: code-reviewer, architect, security)", c.Persona)
+		return fmt.Errorf("unknown persona: %s (valid: code-reviewer, code-reviewer-verbose, architect, security)", c.Persona)
 	}
 
 	return nil
