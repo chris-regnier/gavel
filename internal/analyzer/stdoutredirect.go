@@ -10,10 +10,14 @@ import (
 
 var stdoutMu sync.Mutex
 
-// redirectStdoutToStderr swaps fd 1 to point at fd 2 (stderr).
-// Returns a restore function and any error.
+// redirectStdoutToStderr swaps fd 1 to point at fd 2 (stderr) at the OS level.
+// This is needed because BAML's Rust FFI runtime writes log lines directly to fd 1,
+// bypassing Go's os.Stdout — so Go-level redirection is insufficient.
+// The caller must call the returned restore function exactly once, typically via defer.
+// The mutex is held for the caller's entire critical section (between redirect and restore)
+// to serialize concurrent access to the process-global fd table.
 // On error, returns a no-op restore — the caller should proceed without redirect.
-func redirectStdoutToStderr() (restore func(), err error) {
+func redirectStdoutToStderr() (func(), error) {
 	noop := func() {}
 
 	stdoutMu.Lock()
@@ -37,7 +41,9 @@ func redirectStdoutToStderr() (restore func(), err error) {
 		if err := syscall.Dup2(savedFd, 1); err != nil {
 			slog.Warn("failed to restore stdout after BAML redirect", "error", err)
 		}
-		syscall.Close(savedFd)
+		if err := syscall.Close(savedFd); err != nil {
+			slog.Warn("failed to close saved stdout fd", "error", err)
+		}
 		stdoutMu.Unlock()
 	}, nil
 }

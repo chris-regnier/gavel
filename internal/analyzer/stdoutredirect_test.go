@@ -3,18 +3,23 @@
 package analyzer
 
 import (
+	"io"
 	"os"
 	"syscall"
 	"testing"
 )
 
 func TestRedirectStdoutToStderr(t *testing.T) {
-	// Create a pipe to capture what goes to stdout's fd
+	// Save original fds for unconditional cleanup
 	origStdoutFd, err := syscall.Dup(1)
 	if err != nil {
 		t.Fatalf("failed to dup stdout: %v", err)
 	}
-	origStderrFd2, _ := syscall.Dup(2)
+	origStderrFd2, err := syscall.Dup(2)
+	if err != nil {
+		syscall.Close(origStdoutFd)
+		t.Fatalf("failed to dup stderr for cleanup: %v", err)
+	}
 	t.Cleanup(func() {
 		// Unconditionally restore real fds to protect the test binary
 		syscall.Dup2(origStdoutFd, 1)
@@ -61,8 +66,6 @@ func TestRedirectStdoutToStderr(t *testing.T) {
 	// Phase 2: Activate redirect
 	restore, redirectErr := redirectStdoutToStderr()
 	if redirectErr != nil {
-		syscall.Dup2(origStdoutFd, 1)
-		syscall.Dup2(origStderrFd, 2)
 		t.Fatalf("redirectStdoutToStderr failed: %v", redirectErr)
 	}
 
@@ -75,23 +78,25 @@ func TestRedirectStdoutToStderr(t *testing.T) {
 	// Write to fd 1 — should go to stdout pipe after restore
 	syscall.Write(1, []byte("after-restore"))
 
-	// Restore real fds before reading pipes
+	// Restore real fds before reading pipes — close write-ends by restoring originals
 	syscall.Dup2(origStdoutFd, 1)
 	syscall.Dup2(origStderrFd, 2)
 
-	// Read from pipes
-	stdoutBuf := make([]byte, 256)
-	n, _ := stdoutR.Read(stdoutBuf)
-	stdoutOut := string(stdoutBuf[:n])
-
-	stderrBuf := make([]byte, 256)
-	n, _ = stderrR.Read(stderrBuf)
-	stderrOut := string(stderrBuf[:n])
-
-	if stdoutOut != "before-redirect|after-restore" {
-		t.Errorf("expected stdout to contain 'before-redirect|after-restore', got %q", stdoutOut)
+	// Read all data from pipes
+	stdoutData, err := io.ReadAll(stdoutR)
+	if err != nil {
+		t.Fatalf("failed to read stdout pipe: %v", err)
 	}
-	if stderrOut != "during-redirect" {
-		t.Errorf("expected stderr to contain 'during-redirect', got %q", stderrOut)
+
+	stderrData, err := io.ReadAll(stderrR)
+	if err != nil {
+		t.Fatalf("failed to read stderr pipe: %v", err)
+	}
+
+	if string(stdoutData) != "before-redirect|after-restore" {
+		t.Errorf("expected stdout to contain 'before-redirect|after-restore', got %q", string(stdoutData))
+	}
+	if string(stderrData) != "during-redirect" {
+		t.Errorf("expected stderr to contain 'during-redirect', got %q", string(stderrData))
 	}
 }
