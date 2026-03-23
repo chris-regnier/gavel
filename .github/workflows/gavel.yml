@@ -60,6 +60,11 @@ jobs:
             --policies .github \
             --output /tmp/gavel-results
 
+      - name: Run Gavel judge
+        if: env.SKIP_ANALYSIS != 'true'
+        run: |
+          /tmp/gavel-released judge --output /tmp/gavel-results
+
       - name: Collect results
         if: env.SKIP_ANALYSIS != 'true'
         run: |
@@ -73,7 +78,7 @@ jobs:
             exit 1
           fi
 
-          # Copy verdict if it exists; default to "merge" when absent (no findings)
+          # Copy verdict (judge produces this); default to "merge" if absent
           if [ -f "$RESULT_DIR/verdict.json" ]; then
             cp "$RESULT_DIR/verdict.json" /tmp/verdict.json
           else

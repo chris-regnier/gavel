@@ -16,8 +16,19 @@ func TestGetPersonaPrompt(t *testing.T) {
 		wantContains  []string
 	}{
 		{
-			name:    "code-reviewer persona",
+			name:    "code-reviewer persona (minimal)",
 			persona: "code-reviewer",
+			wantErr: false,
+			wantContains: []string{
+				"code reviewer",
+				"bugs",
+				"high confidence",
+				"line numbers",
+			},
+		},
+		{
+			name:    "code-reviewer-verbose persona",
+			persona: "code-reviewer-verbose",
 			wantErr: false,
 			wantContains: []string{
 				"senior code reviewer",
@@ -121,7 +132,7 @@ func TestApplicabilityFilterPrompt_ContainsKeyPhrases(t *testing.T) {
 }
 
 func TestGetPersonaPrompt_WithFilter(t *testing.T) {
-	personas := []string{"code-reviewer", "architect", "security"}
+	personas := []string{"code-reviewer", "code-reviewer-verbose", "architect", "security"}
 	for _, persona := range personas {
 		t.Run(persona, func(t *testing.T) {
 			prompt, err := GetPersonaPrompt(context.Background(), persona)
@@ -135,8 +146,9 @@ func TestGetPersonaPrompt_WithFilter(t *testing.T) {
 			if !strings.Contains(filtered, "APPLICABILITY FILTER") {
 				t.Errorf("filtered %s prompt missing filter block", persona)
 			}
-			if !strings.Contains(filtered, "CONFIDENCE GUIDANCE") {
-				t.Errorf("filtered %s prompt lost original confidence guidance", persona)
+			// All personas mention confidence thresholds (0.8)
+			if !strings.Contains(filtered, "0.8") {
+				t.Errorf("filtered %s prompt lost confidence guidance", persona)
 			}
 		})
 	}

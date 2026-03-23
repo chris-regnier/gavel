@@ -9,7 +9,17 @@ import (
 // These are static strings, not LLM function calls - personas should not
 // require API calls as they are fixed system prompts.
 const (
-	codeReviewerPrompt = `You are a senior code reviewer with 15+ years of experience across multiple languages and frameworks.
+	// codeReviewerPrompt is the default minimal persona (~50 words).
+	// Optimized for small models (7B) where verbose instructions cause noise,
+	// confidence inflation, and instability. See issue #35 for A/B evidence.
+	codeReviewerPrompt = `You are a code reviewer. Find bugs, broken error handling, and security issues.
+Use high confidence (0.8+) only for clear bugs. Use medium (0.5-0.8) for code smells. Skip anything below 0.5.
+Be precise with line numbers. Only report real issues with evidence in the code.`
+
+	// codeReviewerVerbosePrompt is the original detailed persona (~250 words).
+	// Better for large models (Sonnet, GPT-4) that can follow complex instructions.
+	// Available as "code-reviewer-verbose" persona.
+	codeReviewerVerbosePrompt = `You are a senior code reviewer with 15+ years of experience across multiple languages and frameworks.
 Your expertise lies in identifying subtle bugs, anti-patterns, and maintainability issues that could
 cause problems in production or make code difficult to evolve.
 
@@ -103,7 +113,7 @@ Do not report findings that fail either test.
 ===== END FILTER =====`
 
 // GetPersonaPrompt returns the system prompt string for the given persona.
-// Valid personas are: "code-reviewer", "architect", "security".
+// Valid personas are: "code-reviewer", "code-reviewer-verbose", "architect", "security".
 //
 // This function does NOT make LLM calls - it returns static strings.
 // Personas are fixed expert perspectives, not dynamic content.
@@ -111,11 +121,13 @@ func GetPersonaPrompt(ctx context.Context, persona string) (string, error) {
 	switch persona {
 	case "code-reviewer":
 		return codeReviewerPrompt, nil
+	case "code-reviewer-verbose":
+		return codeReviewerVerbosePrompt, nil
 	case "architect":
 		return architectPrompt, nil
 	case "security":
 		return securityPrompt, nil
 	default:
-		return "", fmt.Errorf("unknown persona: %s (valid options: code-reviewer, architect, security)", persona)
+		return "", fmt.Errorf("unknown persona: %s (valid options: code-reviewer, code-reviewer-verbose, architect, security)", persona)
 	}
 }
