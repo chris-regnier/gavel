@@ -468,15 +468,33 @@ func (h *handlers) handleSuppressFinding(ctx context.Context, request mcp.CallTo
 		return mcp.NewToolResultError(fmt.Sprintf("loading suppressions: %v", err)), nil
 	}
 
-	entry := suppression.Suppression{
-		RuleID:  ruleID,
-		File:    file,
-		Reason:  reason,
-		Created: time.Now().UTC(),
-		Source:  "mcp:agent:gavel-mcp",
+	// Deduplicate: update existing entry if rule_id + file match
+	source := "mcp:agent:gavel-mcp"
+	now := time.Now().UTC()
+	found := false
+	for i := range supps {
+		storedFile := supps[i].File
+		if storedFile != "" {
+			storedFile = suppression.NormalizePath(storedFile)
+		}
+		if supps[i].RuleID == ruleID && storedFile == file {
+			supps[i].Reason = reason
+			supps[i].Created = now
+			supps[i].Source = source
+			found = true
+			break
+		}
+	}
+	if !found {
+		supps = append(supps, suppression.Suppression{
+			RuleID:  ruleID,
+			File:    file,
+			Reason:  reason,
+			Created: now,
+			Source:  source,
+		})
 	}
 
-	supps = append(supps, entry)
 	if err := suppression.Save(rootDir, supps); err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("saving suppressions: %v", err)), nil
 	}
@@ -534,7 +552,11 @@ func (h *handlers) handleUnsuppressFinding(ctx context.Context, request mcp.Call
 	var remaining []suppression.Suppression
 	removed := 0
 	for _, s := range supps {
-		if s.RuleID == ruleID && s.File == file {
+		storedFile := s.File
+		if storedFile != "" {
+			storedFile = suppression.NormalizePath(storedFile)
+		}
+		if s.RuleID == ruleID && storedFile == file {
 			removed++
 			continue
 		}
