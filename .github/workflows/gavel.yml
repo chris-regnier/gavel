@@ -5,8 +5,8 @@ on:
     branches: [main]
 
 permissions:
-  contents: read
-  pull-requests: read
+  contents: write
+  pull-requests: write
   security-events: write
 
 jobs:
@@ -116,6 +116,17 @@ jobs:
         with:
           sarif_file: /tmp/gavel-sarif/
           category: gavel
+
+      - name: Auto-merge
+        if: env.SKIP_ANALYSIS != 'true' && github.event.pull_request.user.login == 'chris-regnier'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          DECISION=$(jq -r '.decision' /tmp/verdict.json)
+          if [ "$DECISION" != "reject" ]; then
+            echo "Gavel passed for author chris-regnier — enabling auto-merge"
+            gh pr merge "${{ github.event.pull_request.number }}" --auto --squash
+          fi
 
   # Only runs when PR title contains /benchmark
   benchmark:
