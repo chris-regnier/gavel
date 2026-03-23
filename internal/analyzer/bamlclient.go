@@ -62,6 +62,11 @@ func (c *BAMLLiveClient) AnalyzeCode(ctx context.Context, code string, policies 
 	var results []types.Finding
 	var err error
 
+	// Redirect stdout to stderr to capture BAML's Rust FFI log output.
+	// BAML writes [BAML INFO] lines to fd 1 which pollutes JSON output.
+	restore, _ := redirectStdoutToStderr()
+	defer restore()
+
 	switch c.providerConfig.Name {
 	case "ollama":
 		results, err = c.analyzeWithOllama(ctx, code, policies, personaPrompt, additionalContext)
