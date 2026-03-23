@@ -10,11 +10,13 @@ import (
 )
 
 type mockBAMLClient struct {
-	findings []Finding
-	err      error
+	findings   []Finding
+	err        error
+	lastCode   string // captures the code arg from the most recent call
 }
 
 func (m *mockBAMLClient) AnalyzeCode(ctx context.Context, code string, policies string, personaPrompt string, additionalContext string) ([]Finding, error) {
+	m.lastCode = code
 	return m.findings, m.err
 }
 
@@ -83,6 +85,51 @@ func TestAnalyzer_SkipsDisabledPolicies(t *testing.T) {
 	}
 	if results != nil {
 		t.Errorf("expected nil results for all-disabled policies, got %v", results)
+	}
+}
+
+func TestAnalyzer_PrependsFilePathToCode(t *testing.T) {
+	mock := &mockBAMLClient{findings: nil}
+	a := NewAnalyzer(mock)
+
+	artifacts := []input.Artifact{
+		{Path: "pkg/foo.go", Content: "package pkg\n", Kind: input.KindFile},
+	}
+	policies := map[string]config.Policy{
+		"rule": {Severity: "warning", Instruction: "check", Enabled: true},
+	}
+
+	_, err := a.Analyze(context.Background(), artifacts, policies, "persona")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.HasPrefix(mock.lastCode, "// File: pkg/foo.go\n") {
+		t.Errorf("expected code to start with file path header, got %q", mock.lastCode[:min(len(mock.lastCode), 60)])
+	}
+	if !strings.Contains(mock.lastCode, "package pkg") {
+		t.Error("expected original content to be preserved after the header")
+	}
+}
+
+func TestAnalyzer_EmptyPathSkipsHeader(t *testing.T) {
+	mock := &mockBAMLClient{findings: nil}
+	a := NewAnalyzer(mock)
+
+	artifacts := []input.Artifact{
+		{Path: "", Content: "package pkg\n", Kind: input.KindFile},
+	}
+	policies := map[string]config.Policy{
+		"rule": {Severity: "warning", Instruction: "check", Enabled: true},
+	}
+
+	_, err := a.Analyze(context.Background(), artifacts, policies, "persona")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if strings.HasPrefix(mock.lastCode, "// File:") {
+		t.Error("expected no file path header for empty path")
 	}
 }
 
