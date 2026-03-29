@@ -264,7 +264,7 @@ Run analysis with a security-focused reviewer by adding the `--persona` flag to 
             --persona security
 ```
 
-Available personas: `code-reviewer` (default), `code-reviewer-verbose`, `architect`, `security`.
+Available personas: `code-reviewer` (default), `code-reviewer-verbose`, `architect`, `security`, `research-assistant`, `sharp-editor`.
 
 ### Add custom rules
 
