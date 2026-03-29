@@ -8,3 +8,4 @@ dist/
 *.zip
 calibration-server
 gavel-bench
+.gavel/cache/
