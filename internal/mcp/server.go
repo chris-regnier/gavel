@@ -689,9 +689,14 @@ func (h *handlers) runAnalysis(ctx context.Context, artifacts []input.Artifact, 
 		return nil, fmt.Errorf("loading persona %s: %w", persona, err)
 	}
 
-	// Append applicability filter if enabled (default)
+	// Append applicability filter if enabled (default).
+	// Prose personas get a writing-appropriate filter; code personas get the original.
 	if h.cfg.Config.StrictFilter {
-		personaPrompt += analyzer.ApplicabilityFilterPrompt
+		if analyzer.IsProsePersona(persona) {
+			personaPrompt += analyzer.ProseApplicabilityFilterPrompt
+		} else {
+			personaPrompt += analyzer.ApplicabilityFilterPrompt
+		}
 	}
 
 	a := analyzer.NewAnalyzer(h.client)
