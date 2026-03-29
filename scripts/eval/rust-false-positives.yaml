@@ -1,0 +1,48 @@
+# Rust False Positive Evaluation Harness
+#
+# Tests the language-aware applicability filter against a real Rust workspace
+# to measure reduction in false positives on idiomatic Rust patterns.
+#
+# Issue: https://github.com/chris-regnier/gavel/issues/41
+#
+# Usage (code change workflow):
+#   GAVEL_BINARY=/tmp/gavel-baseline gavel harness run scripts/eval/rust-false-positives.yaml -o baseline.jsonl
+#   GAVEL_BINARY=/tmp/gavel-variant gavel harness run scripts/eval/rust-false-positives.yaml -o variant.jsonl
+#   gavel harness summarize baseline.jsonl
+#   gavel harness summarize variant.jsonl
+
+runs: 3
+baseline: security_baseline
+
+repos:
+  - name: veil
+    url: https://github.com/chris-regnier/veil
+    branch: main
+    depth: 1
+
+targets:
+  # canvas-store: sqlx parameterized queries (SQL injection FPs)
+  - repo: veil
+    paths:
+      - canvas/crates/canvas-store/src
+  # canvas-types: derive macros, HashMap::new() (memory/type FPs)
+  - repo: veil
+    paths:
+      - canvas/crates/canvas-types/src
+  # canvas-bus: RwLock::read() vs write() (lock FPs)
+  - repo: veil
+    paths:
+      - canvas/crates/canvas-bus/src
+
+variants:
+  # Security persona - had sqlx injection FPs
+  - name: security_baseline
+    description: "Security persona (tests sqlx injection FPs)"
+    persona: security
+    strict_filter: true
+
+  # Code reviewer persona - had derive macro, memory, lock FPs
+  - name: reviewer_baseline
+    description: "Code reviewer persona (tests derive/memory/lock FPs)"
+    persona: code-reviewer
+    strict_filter: true
