@@ -5,14 +5,29 @@
 ```
 cmd/gavel/           CLI entry point (Cobra)
 internal/
-  input/             Reads files, diffs, directories into artifacts
-  config/            Tiered YAML policy configuration
-  rules/             Vendable rule packs (YAML schema, loader, embedded defaults)
   analyzer/          Orchestrates LLM analysis via BAML client
-  astcheck/          Tree-sitter-based structural analysis
-  sarif/             SARIF 2.1.0 assembly and deduplication
+  astcheck/          Tree-sitter-based structural analysis (function-length, nesting-depth, etc.)
+  bench/             Benchmarking utilities
+  cache/             Local caching layer for analysis results
+  calibration/       Online calibration server integration
+  config/            Tiered YAML policy configuration
+  context/           Additional context file selection
+  diffcontext/       Diff-aware context extraction
   evaluator/         Rego policy evaluation (OPA)
+  feedback/          Finding feedback storage (useful/noise/wrong)
+  harness/           A/B experiment runner and summarizer
+  input/             Reads files, diffs, directories into artifacts
+  lsp/               Language Server Protocol server
+  mcp/               Model Context Protocol server for AI agents
+  metrics/           Analysis metrics collection
+  output/            Output formatting (JSON, text)
+  review/            Interactive TUI review logic
+  rules/             Vendable rule packs (YAML schema, loader, embedded defaults)
+  sarif/             SARIF 2.1.0 assembly and deduplication
   store/             Filesystem persistence for results
+  suppression/       Finding suppression management
+  telemetry/         OpenTelemetry tracing integration
+  tui/               Terminal UI components
 baml_src/            BAML prompt templates (source of truth)
 baml_client/         Generated Go client (do not edit)
 ```
