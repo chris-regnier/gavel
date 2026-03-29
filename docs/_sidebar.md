@@ -7,6 +7,8 @@
   - [Try on Open Source](guides/try-on-open-source.md)
   - [Gate PRs with CI](guides/ci-pr-gating.md)
   - [Editor Integration](guides/editor-integration.md)
+  - [LSP Setup](lsp-setup.md)
+  - [Suppressing Findings](guides/suppressions.md)
   - [Generating Configuration](guides/generating-config.md)
 
 - **Configuration**
@@ -19,6 +21,7 @@
   - [CLI Usage](reference/cli.md)
   - [SARIF Extensions](reference/sarif.md)
   - [Architecture](reference/architecture.md)
+  - [A/B Harness](harness.md)
 
 - **Development**
   - [Contributing](development/contributing.md)
