@@ -131,6 +131,47 @@ func TestApplicabilityFilterPrompt_ContainsKeyPhrases(t *testing.T) {
 	}
 }
 
+func TestIsProsePersona(t *testing.T) {
+	tests := []struct {
+		persona string
+		want    bool
+	}{
+		{"research-assistant", true},
+		{"sharp-editor", true},
+		{"code-reviewer", false},
+		{"code-reviewer-verbose", false},
+		{"architect", false},
+		{"security", false},
+		{"unknown", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.persona, func(t *testing.T) {
+			if got := IsProsePersona(tt.persona); got != tt.want {
+				t.Errorf("IsProsePersona(%q) = %v, want %v", tt.persona, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestProseApplicabilityFilterPrompt_NotEmpty(t *testing.T) {
+	if ProseApplicabilityFilterPrompt == "" {
+		t.Error("ProseApplicabilityFilterPrompt should not be empty")
+	}
+}
+
+func TestProseApplicabilityFilterPrompt_ContainsKeyPhrases(t *testing.T) {
+	phrases := []string{
+		"ACTIONABLE",
+		"EVIDENCED",
+		"Do not report",
+	}
+	for _, phrase := range phrases {
+		if !strings.Contains(ProseApplicabilityFilterPrompt, phrase) {
+			t.Errorf("ProseApplicabilityFilterPrompt missing phrase: %q", phrase)
+		}
+	}
+}
+
 func TestGetPersonaPrompt_WithFilter(t *testing.T) {
 	personas := []string{"code-reviewer", "code-reviewer-verbose", "architect", "security"}
 	for _, persona := range personas {

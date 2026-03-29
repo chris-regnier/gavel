@@ -116,6 +116,41 @@ Before reporting any finding, apply this applicability test:
 Do not report findings that fail any of these tests.
 ===== END FILTER =====`
 
+// ProseApplicabilityFilterPrompt is the applicability filter for prose-focused
+// personas (research-assistant, sharp-editor). It replaces the code-oriented
+// filter with gates appropriate for writing analysis.
+const ProseApplicabilityFilterPrompt = `
+
+===== APPLICABILITY FILTER =====
+Before reporting any finding, apply this applicability test:
+
+1. ACTIONABLE: Is this feedback specific enough that the writer can act on
+   it? If it is a vague impression ("this could be better", "consider
+   revising"), do not report it.
+
+2. EVIDENCED: Can you point to the specific sentence, paragraph, or passage
+   that has the issue? If you cannot identify a concrete location, do not
+   report it.
+
+Do not report findings that fail either of these tests.
+===== END FILTER =====`
+
+// IsProsePersona returns true if the given persona is designed for prose/writing
+// analysis rather than code analysis. This determines which applicability filter
+// to use.
+//
+// Future direction: if more persona categories emerge, this should evolve into
+// a persona category/type system with explicit "code" vs "prose" categories
+// that select template phrasings and filter variants.
+func IsProsePersona(persona string) bool {
+	switch persona {
+	case "research-assistant", "sharp-editor":
+		return true
+	default:
+		return false
+	}
+}
+
 // GetPersonaPrompt returns the system prompt string for the given persona.
 // Valid personas are: "code-reviewer", "code-reviewer-verbose", "architect", "security".
 //
