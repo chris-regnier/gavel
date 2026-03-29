@@ -252,9 +252,9 @@ gavel review
 
 The TUI shows findings in a navigable list with full explanations, recommendations, and confidence scores. Use it as a companion to your editor -- review findings in the TUI, then switch to Neovim to make fixes.
 
-### Future: Native LSP integration
+### Option C: Native LSP integration
 
-A Gavel LSP server is planned that will deliver findings as native diagnostics in any LSP-capable editor, with no manual SARIF file handling. See the [LSP Integration Design](../plans/2026-02-05-lsp-integration-design.md) for details.
+Gavel includes a built-in LSP server that delivers findings as native editor diagnostics — no manual SARIF file handling needed. See the [LSP Setup](../lsp-setup.md) guide for configuration instructions for VS Code, Neovim, and other editors.
 
 ## Step 4: Iterate
 
