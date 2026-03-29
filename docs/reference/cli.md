@@ -76,6 +76,55 @@ gavel judge --result 2026-02-18T15-30-31Z-e3980f
 }
 ```
 
+## `create`
+
+Generate configuration components from natural language descriptions using an LLM. Requires `OPENROUTER_API_KEY`.
+
+See the [Generating Configuration](guides/generating-config.md) guide for detailed usage and workflows.
+
+### Subcommands
+
+| Subcommand | Description |
+|------------|-------------|
+| `create policy [description]` | Generate a policy from a description |
+| `create rule [description]` | Generate a regex-based rule |
+| `create persona [description]` | Generate a custom analysis persona |
+| `create config [requirements]` | Generate a complete configuration |
+| `create wizard` | Launch interactive TUI wizard |
+
+### Examples
+
+```bash
+gavel create policy "Check that all public functions have doc comments"
+gavel create rule --category=security "Detect hardcoded JWT secrets"
+gavel create persona "A React hooks and performance expert"
+gavel create config --provider=ollama "Go microservices with security focus"
+gavel create wizard
+```
+
+### Flags
+
+**`create policy`**, **`create persona`**:
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `-o`, `--output` | Write to file instead of stdout | stdout |
+
+**`create rule`**:
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `-o`, `--output` | Write to file instead of stdout | stdout |
+| `-c`, `--category` | `security`, `reliability`, or `maintainability` | `maintainability` |
+| `-l`, `--languages` | Target languages (comma-separated) | `any` |
+
+**`create config`**:
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `-o`, `--output` | Output file path | `.gavel/policies.yaml` |
+| `-p`, `--provider` | Preferred provider | auto-selected |
+
 ## Global Flags
 
 | Flag | Description | Default |

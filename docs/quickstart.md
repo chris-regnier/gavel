@@ -26,6 +26,12 @@ provider:
     base_url: http://localhost:11434/v1
 ```
 
+Or generate one with AI — see [Generating Configuration](guides/generating-config.md):
+
+```bash
+gavel create config "Go REST API with security focus" -o .gavel/policies.yaml
+```
+
 ## 3. Analyze Your Code
 
 ```bash
@@ -59,4 +65,5 @@ The judge command evaluates findings against Rego policies and returns a verdict
 - **[Providers](PROVIDERS.md)** — Configure cloud providers for higher quality or faster analysis
 - **[Policies & Rules](configuration/policies.md)** — Customize what Gavel checks for
 - **[Personas](configuration/personas.md)** — Switch between code review, architecture, and security perspectives
+- **[Generating Configuration](guides/generating-config.md)** — Create policies, rules, and personas with AI
 - **[Gate PRs with CI](guides/ci-pr-gating.md)** — Automate analysis on every pull request

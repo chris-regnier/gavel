@@ -37,3 +37,4 @@ judge:   FileStore → Rego Evaluator → Verdict
 - **[Try on Open Source](guides/try-on-open-source.md)** — Run Gavel on real repositories
 - **[Gate PRs with CI](guides/ci-pr-gating.md)** — Automate code review on every PR
 - **[Editor Integration](guides/editor-integration.md)** — See findings inline in VS Code or Neovim
+- **[Generating Configuration](guides/generating-config.md)** — Create policies, rules, and personas with AI
