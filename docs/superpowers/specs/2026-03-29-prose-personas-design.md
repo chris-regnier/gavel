@@ -68,6 +68,7 @@ All existing code personas work identically after these changes.
 | `internal/config/config.go` | Add to `validPersonas` map |
 | `baml_src/analyze.baml` | Neutralize code-specific wording |
 | `cmd/gavel/analyze.go` | Conditional filter selection based on persona type |
+| `internal/mcp/server.go` | Conditional filter selection (same logic as analyze.go) |
 
 ## Out of Scope
 
