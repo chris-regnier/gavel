@@ -90,3 +90,87 @@ rules:
     references:
       - "https://cwe.mitre.org/data/definitions/798.html"
 ```
+
+## Advanced Configuration
+
+### Strict Filter
+
+When `strict_filter` is enabled (the default), Gavel appends an applicability filter to the persona prompt that tells the LLM to only report findings directly relevant to the analyzed artifact. Set to `false` to allow broader observations:
+
+```yaml
+strict_filter: false  # default: true
+```
+
+### Additional Contexts
+
+Policies can pull in additional context files during analysis using `additional_contexts`. This is useful when a policy needs to reference related files (e.g., interface definitions, configuration schemas):
+
+```yaml
+policies:
+  api-consistency:
+    description: "API responses should follow the shared schema"
+    severity: warning
+    instruction: "Check that responses match the OpenAPI spec"
+    enabled: true
+    additional_contexts:
+      - pattern: "api/openapi.yaml"        # file to include as context
+        only_for: ["api/**/*.go"]           # only when analyzing these files
+```
+
+### Remote Cache
+
+Share analysis results across CI and local environments:
+
+```yaml
+remote_cache:
+  enabled: true
+  url: "https://gavel-cache.company.com"
+  auth:
+    type: bearer                # "bearer", "api_key", or empty for none
+    token_file: /path/to/token  # or use `token:` for inline value
+  strategy:
+    write_to_remote: true       # upload results after analysis
+    read_from_remote: true      # check remote before analyzing
+    prefer_local: true          # prefer local cache over remote
+    warm_local_on_remote_hit: true  # save remote hits to local cache
+```
+
+Cache keys are deterministic hashes of file content + policies + model + BAML templates, so results are shared when analysis inputs match regardless of environment.
+
+### Telemetry
+
+Gavel supports OpenTelemetry for distributed tracing:
+
+```yaml
+telemetry:
+  enabled: true
+  endpoint: "https://otel-collector.company.com:4317"
+  protocol: grpc          # "grpc" or "http"
+  insecure: false
+  service_name: gavel
+  service_version: "0.2.0"
+  sample_rate: 1.0         # 0.0 to 1.0
+  headers:
+    Authorization: "Bearer <token>"
+```
+
+### Calibration
+
+Online calibration adjusts analysis based on community feedback:
+
+```yaml
+calibration:
+  enabled: true
+  server_url: "https://calibration.gavel.dev"
+  api_key_env: GAVEL_CALIBRATION_KEY  # env var containing API key
+  share_code: false                    # whether to share code snippets
+  retrieve:
+    enabled: true
+    include_examples: true
+    top_k: 5
+    timeout_ms: 2000
+  upload:
+    enabled: true
+    include_implicit: false
+    batch_size: 10
+```
