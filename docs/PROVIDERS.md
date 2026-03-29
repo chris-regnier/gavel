@@ -68,7 +68,7 @@ provider:
 - `google/gemini-2.0-flash-exp` - Very fast, excellent value (~$0.10/$0.30 per 1M tokens)
 - `anthropic/claude-haiku-4-5` - Fast Claude Haiku 4.5, good quality (~$0.80/$4.00 per 1M tokens)
 - `deepseek/deepseek-chat` - Very cheap, surprisingly good (~$0.14/$0.28 per 1M tokens)
-- `anthropic/claude-3-5-sonnet-20241022` - High quality Sonnet (~$3.00/$15.00 per 1M tokens)
+- `anthropic/claude-sonnet-4-20250514` - High quality Sonnet (~$3.00/$15.00 per 1M tokens)
 
 ### Anthropic (Direct API)
 
@@ -88,7 +88,7 @@ provider:
 
 **Available models:**
 - `claude-haiku-4-5` - Fast Haiku 4.5, cost-effective (~$0.80/$4.00 per 1M tokens) **(recommended)**
-- `claude-3-5-sonnet-20241022` - High quality Sonnet 3.5 (~$3.00/$15.00 per 1M tokens)
+- `claude-sonnet-4-20250514` - High quality Sonnet 4 (~$3.00/$15.00 per 1M tokens)
 - `claude-opus-4-6-20260205` - Highest quality Opus 4.6, released Feb 5, 2026 (~$15.00/$75.00 per 1M tokens)
 
 ### AWS Bedrock (Enterprise)
@@ -162,10 +162,10 @@ Approximate costs for analyzing 100 files (~50KB each, ~500K tokens total):
 | OpenRouter | deepseek/deepseek-chat | $0.07 | $0.14 | **$0.21** |
 | OpenRouter | google/gemini-flash-exp | $0.05 | $0.15 | **$0.20** |
 | OpenAI | o3-mini | $0.08 | $0.30 | **$0.38** |
-| Anthropic | claude-3-5-haiku | $0.40 | $2.00 | **$2.40** |
+| Anthropic | claude-haiku-4-5 | $0.40 | $2.00 | **$2.40** |
 | OpenAI | gpt-5.2 | $1.25 | $5.00 | **$6.25** |
 | OpenAI | gpt-5.3-codex | $1.25 | $5.00 | **$6.25** |
-| Anthropic | claude-3-5-sonnet | $1.50 | $7.50 | **$9.00** |
+| Anthropic | claude-sonnet-4 | $1.50 | $7.50 | **$9.00** |
 | Anthropic | claude-opus-4-6 | $7.50 | $37.50 | **$45.00** |
 
 ## Quality vs Speed vs Cost
