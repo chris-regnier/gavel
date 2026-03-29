@@ -80,7 +80,7 @@ gavel judge --result 2026-02-18T15-30-31Z-e3980f
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `--persona` | Persona for analysis (`code-reviewer`, `architect`, `security`) | `code-reviewer` |
+| `--persona` | Persona for analysis (`code-reviewer`, `architect`, `security`, `research-assistant`, `sharp-editor`) | `code-reviewer` |
 | `-q`, `--quiet` | Suppress all log output | `false` |
 | `-v`, `--verbose` | Enable verbose (info-level) logging | `false` |
 | `--debug` | Enable debug-level logging | `false` |

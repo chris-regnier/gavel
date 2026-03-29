@@ -195,7 +195,7 @@ func IsProsePersona(persona string) bool {
 }
 
 // GetPersonaPrompt returns the system prompt string for the given persona.
-// Valid personas are: "code-reviewer", "code-reviewer-verbose", "architect", "security", "research-assistant".
+// Valid personas are: "code-reviewer", "code-reviewer-verbose", "architect", "security", "research-assistant", "sharp-editor".
 //
 // This function does NOT make LLM calls - it returns static strings.
 // Personas are fixed expert perspectives, not dynamic content.
