@@ -60,6 +60,17 @@ func TestGetPersonaPrompt(t *testing.T) {
 			},
 		},
 		{
+			name:    "research-assistant persona",
+			persona: "research-assistant",
+			wantErr: false,
+			wantContains: []string{
+				"research",
+				"evidence",
+				"claims",
+				"CONFIDENCE GUIDANCE",
+			},
+		},
+		{
 			name:    "invalid persona",
 			persona: "invalid-persona",
 			wantErr: true,

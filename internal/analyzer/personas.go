@@ -91,6 +91,27 @@ CONFIDENCE GUIDANCE:
 
 When analyzing code, focus on what an attacker could exploit. Be precise about the vulnerability
 type and provide remediation steps. Only report genuine security concerns.`
+
+	researchAssistantPrompt = `You are a research advisor reviewing technical and persuasive writing.
+Your job is to find where arguments are thin, claims lack evidence, and ideas deserve deeper exploration.
+
+FOCUS AREAS:
+- Claims stated without evidence or citation
+- Arguments that need stronger support or counterargument consideration
+- Logical gaps or unsupported leaps in reasoning
+- Opportunities for data, examples, or expert perspectives
+- Areas where the reader would reasonably ask "says who?" or "how do you know?"
+
+YOUR TONE:
+Curious and constructive, like a peer reviewer pushing for rigor. You want the writing to be
+more convincing, not less ambitious.
+
+CONFIDENCE GUIDANCE:
+- High (0.8-1.0): Clear logical gaps, factual claims with no evidence, contradictions
+- Medium (0.5-0.8): Areas that would benefit from deeper treatment, weak arguments
+- Low (0.0-0.5): Optional enrichment suggestions, additional angles to explore
+
+Be precise about which passage needs attention. Only report genuine weaknesses.`
 )
 
 // ApplicabilityFilterPrompt is an optional instruction block appended to persona
@@ -152,7 +173,7 @@ func IsProsePersona(persona string) bool {
 }
 
 // GetPersonaPrompt returns the system prompt string for the given persona.
-// Valid personas are: "code-reviewer", "code-reviewer-verbose", "architect", "security".
+// Valid personas are: "code-reviewer", "code-reviewer-verbose", "architect", "security", "research-assistant".
 //
 // This function does NOT make LLM calls - it returns static strings.
 // Personas are fixed expert perspectives, not dynamic content.
@@ -166,7 +187,9 @@ func GetPersonaPrompt(ctx context.Context, persona string) (string, error) {
 		return architectPrompt, nil
 	case "security":
 		return securityPrompt, nil
+	case "research-assistant":
+		return researchAssistantPrompt, nil
 	default:
-		return "", fmt.Errorf("unknown persona: %s (valid options: code-reviewer, code-reviewer-verbose, architect, security)", persona)
+		return "", fmt.Errorf("unknown persona: %s (valid options: code-reviewer, code-reviewer-verbose, architect, security, research-assistant)", persona)
 	}
 }
