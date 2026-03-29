@@ -30,16 +30,16 @@ function AnalyzeCode(
     {% endif %}
 
     ===== POLICIES TO CHECK =====
-    Analyze the code against these specific policies. Only report genuine violations.
-    If a policy doesn't apply to this code, don't force a finding.
+    Analyze the content against these specific policies. Only report genuine violations.
+    If a policy doesn't apply to this content, don't force a finding.
 
     {{ policies }}
 
-    ===== CODE TO ANALYZE =====
+    ===== CONTENT TO ANALYZE =====
     {{ code }}
 
     ===== INSTRUCTIONS =====
-    For each policy violation or issue you find:
+    For each issue you find:
     1. Identify the exact line numbers where it occurs
     2. Write a concise message (one sentence)
     3. Provide a detailed explanation following your persona's tone
