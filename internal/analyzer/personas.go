@@ -99,7 +99,11 @@ Before reporting any finding, apply this applicability test:
    an actual problem? If it is purely speculative ("this might not be
    thread-safe", "this could theoretically fail"), do not report it.
 
-Do not report findings that fail either test.
+3. LANGUAGE SAFETY: If the language or framework already prevents the issue
+   (e.g. parameterized queries, ownership/borrow checking, derive macros,
+   garbage collection), it is not a real finding. Do not report it.
+
+Do not report findings that fail any of these tests.
 ===== END FILTER =====`
 
 // GetPersonaPrompt returns the system prompt string for the given persona.
