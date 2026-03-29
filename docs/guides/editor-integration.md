@@ -4,7 +4,7 @@ Run Gavel locally and see AI findings as inline diagnostics, just like a built-i
 
 ## Prerequisites
 
-- **Gavel installed** -- see the [README installation instructions](../../README.md#installation)
+- **Gavel installed** -- see the [installation instructions](installation.md)
 - **LLM provider configured** -- Ollama (recommended for local dev) or a cloud provider API key
 - **VS Code** or **Neovim**
 
@@ -286,5 +286,5 @@ Each run creates a new timestamped directory under `.gavel/results/`. Old result
 ## Next Steps
 
 - [CI/PR Gating Guide](./ci-pr-gating.md) -- automate Gavel in your GitHub Actions workflow
-- [README Configuration Reference](../../README.md#configuration) -- full policy format, provider options, and config merging
-- [Custom Rules](../../README.md#custom-rules) -- write your own analysis rules with CWE/OWASP references
+- [Policies & Rules](configuration/policies.md) -- full policy format, custom rules, and config merging
+- [Providers](PROVIDERS.md) -- all provider options and configuration
