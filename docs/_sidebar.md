@@ -7,6 +7,7 @@
   - [Try on Open Source](guides/try-on-open-source.md)
   - [Gate PRs with CI](guides/ci-pr-gating.md)
   - [Editor Integration](guides/editor-integration.md)
+  - [Generating Configuration](guides/generating-config.md)
 
 - **Configuration**
   - [Providers](PROVIDERS.md)
