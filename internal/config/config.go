@@ -217,9 +217,11 @@ func (c *Config) Validate() error {
 		"code-reviewer-verbose": true,
 		"architect":             true,
 		"security":              true,
+		"research-assistant":    true,
+		"sharp-editor":          true,
 	}
 	if c.Persona != "" && !validPersonas[c.Persona] {
-		return fmt.Errorf("unknown persona: %s (valid: code-reviewer, code-reviewer-verbose, architect, security)", c.Persona)
+		return fmt.Errorf("unknown persona: %s (valid: code-reviewer, code-reviewer-verbose, architect, security, research-assistant, sharp-editor)", c.Persona)
 	}
 
 	return nil

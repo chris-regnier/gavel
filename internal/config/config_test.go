@@ -332,6 +332,8 @@ func TestConfigValidation_Persona(t *testing.T) {
 		{"valid code-reviewer", "code-reviewer", false},
 		{"valid architect", "architect", false},
 		{"valid security", "security", false},
+		{"valid research-assistant", "research-assistant", false},
+		{"valid sharp-editor", "sharp-editor", false},
 		{"invalid persona", "invalid", true},
 		{"empty uses default", "", false},
 	}

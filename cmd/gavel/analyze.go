@@ -114,9 +114,14 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("loading persona %s: %w", cfg.Persona, err)
 	}
 
-	// Append applicability filter if enabled (default)
+	// Append applicability filter if enabled (default).
+	// Prose personas get a writing-appropriate filter; code personas get the original.
 	if cfg.StrictFilter {
-		personaPrompt += analyzer.ApplicabilityFilterPrompt
+		if analyzer.IsProsePersona(cfg.Persona) {
+			personaPrompt += analyzer.ProseApplicabilityFilterPrompt
+		} else {
+			personaPrompt += analyzer.ApplicabilityFilterPrompt
+		}
 	}
 
 	// Calibration: retrieve thresholds + few-shot examples
