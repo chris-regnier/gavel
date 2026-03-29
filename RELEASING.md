@@ -1,12 +1,11 @@
 # Releasing Gavel
 
-This document describes the release process for Gavel using GoReleaser.
+This document describes the release process for Gavel.
 
 ## Prerequisites
 
 - Git repository with GitHub remote configured
 - GitHub Personal Access Token with `repo` scope (automatically provided in GitHub Actions)
-- GoReleaser installed (for local testing): `go install github.com/goreleaser/goreleaser/v2@latest`
 
 ## Automated Release Process
 
@@ -15,7 +14,7 @@ Releases are fully automated via GitHub Actions when you push a git tag.
 **Recommended method** (using Task):
 
 ```bash
-task release VERSION=v0.1.0
+task release VERSION=v0.2.0
 ```
 
 This command will:
@@ -29,45 +28,40 @@ This command will:
 
 ```bash
 # Create and push a new version tag
-git tag -a v0.1.0 -m "Release v0.1.0"
-git push origin v0.1.0
+git tag -a v0.2.0 -m "Release v0.2.0"
+git push origin v0.2.0
 ```
 
 The GitHub Actions workflow (`.github/workflows/release.yml`) will:
 
-1. Checkout the code
-2. Set up Go 1.25
-3. Install BAML CLI
-4. Run GoReleaser, which will:
-   - Run `baml-cli generate` (pre-build hook)
-   - Run tests (`go test ./...`)
-   - Run linter (`go vet ./...`)
-   - Build binaries for multiple platforms (Linux, macOS, Windows; amd64 and arm64)
-   - Create archives (.tar.gz for Unix, .zip for Windows)
-   - Generate checksums
-   - Create a GitHub release with auto-generated changelog
-   - Upload all artifacts to the release
+1. Build Linux binaries natively on `ubuntu-latest` (amd64 + arm64 via cross-compilation)
+2. Build macOS binaries natively on `macos-latest` (amd64 + arm64)
+3. Run tests on both platforms
+4. Merge checksums from both builds
+5. Generate a changelog from `git log` (commits since the previous tag)
+6. Create a GitHub release with `gh release create`, uploading all `.tar.gz` archives and `checksums.txt`
 
 ## Platforms
 
-GoReleaser builds for the following platforms:
+Builds are produced for:
 
-| OS      | Architecture | Binary Format |
-|---------|-------------|---------------|
-| Linux   | amd64       | .tar.gz       |
-| Linux   | arm64       | .tar.gz       |
-| macOS   | amd64       | .tar.gz       |
-| macOS   | arm64       | .tar.gz       |
-| Windows | amd64       | .zip          |
+| OS      | Architecture | Archive Format |
+|---------|-------------|----------------|
+| Linux   | amd64       | .tar.gz        |
+| Linux   | arm64       | .tar.gz        |
+| macOS   | amd64       | .tar.gz        |
+| macOS   | arm64       | .tar.gz        |
+
+> **Note:** Windows is not currently supported (CGO + tree-sitter dependency requires native compilation).
 
 ## Version Information
 
-GoReleaser injects version information into the binary via ldflags:
+Version information is injected via ldflags at build time:
 
 ```go
 var (
-    version = "dev"  // Set to git tag
-    commit  = "none" // Set to git commit SHA
+    version = "dev"     // Set to git tag
+    commit  = "none"    // Set to git commit SHA
     date    = "unknown" // Set to build timestamp
 )
 ```
@@ -75,50 +69,44 @@ var (
 Users can view this with:
 
 ```bash
-./gavel version
+gavel version
 # Output:
-# gavel v0.1.0
+# gavel v0.2.0
 #   commit: abc1234
-#   built at: 2024-01-15T10:30:00Z
+#   built at: 2026-03-15T10:30:00Z
 ```
 
 ## Testing Locally
 
-Test the release process without publishing:
+Build release binaries for your current platform without publishing:
 
 ```bash
-# Validate configuration
-goreleaser check
-
-# Build a snapshot (no tag required, won't publish)
-goreleaser release --snapshot --clean
+# Build amd64 + arm64 for your OS
+task build:release
 
 # Inspect artifacts
 ls -la dist/
 ```
 
-This creates binaries in `dist/` but doesn't create a GitHub release.
+This creates binaries and `.tar.gz` archives in `dist/` but doesn't create a GitHub release.
 
 ## Changelog
 
-GoReleaser auto-generates a changelog from commit messages using conventional commit prefixes:
+The release workflow auto-generates a changelog from `git log` using all non-merge commits between the previous tag and HEAD:
 
-| Prefix | Changelog Section |
-|--------|------------------|
-| `feat:` or `feat(scope):` | New Features |
-| `fix:` or `fix(scope):` | Bug Fixes |
-| `perf:` or `perf(scope):` | Performance Improvements |
-| `refactor:` or `refactor(scope):` | Refactors |
-| `docs:` or `docs(scope):` | Documentation |
+```
+## Changes since v0.1.0
 
-Commits with `docs:`, `test:`, `chore:`, or merge commits are excluded from the changelog.
+- feat: add finding suppression (abc1234)
+- fix: handle empty diff input (def5678)
+```
 
 ## Release Assets
 
 Each release includes:
 
-1. **Binary archives**: `gavel_<version>_<OS>_<arch>.tar.gz` (or .zip)
-   - Contains: `gavel` binary, `README.md`, `LICENSE*`
+1. **Binary archives**: `gavel_<version>_<OS>_<arch>.tar.gz`
+   - Contains: the `gavel_<OS>_<arch>` binary (e.g., `gavel_Darwin_arm64`)
 2. **Checksums**: `checksums.txt`
    - SHA256 hashes for all archives
 3. **Source code**: Auto-generated by GitHub (`.tar.gz` and `.zip`)
@@ -148,30 +136,22 @@ Ensure the workflow has `contents: write` permission (already configured in `.gi
 
 ### Tests fail during release
 
-GoReleaser runs tests before building. Fix failing tests before tagging:
+Tests run on both Linux and macOS before the release job. Fix failing tests before tagging:
 
 ```bash
-go test ./...
+task test
 ```
 
 ### Want to delete a failed release
 
 ```bash
 # Delete remote tag
-git push --delete origin v0.1.0
+git push --delete origin v0.2.0
 
 # Delete local tag
-git tag -d v0.1.0
+git tag -d v0.2.0
 
 # Delete the GitHub release manually via the web UI
 ```
 
 Then fix the issue and create a new tag.
-
-## Future Enhancements
-
-Consider adding (commented out in `.goreleaser.yml`):
-
-1. **Homebrew Tap**: Auto-publish to a Homebrew tap for easy installation on macOS
-2. **Docker Images**: Build and push multi-arch Docker images to GHCR
-3. **APT/RPM Repositories**: Package for Linux distributions
