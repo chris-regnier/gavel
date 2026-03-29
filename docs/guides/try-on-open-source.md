@@ -6,7 +6,7 @@ Each example uses a deliberately vulnerable or well-known project so that Gavel 
 
 ## Prerequisites
 
-- **Gavel binary installed** -- download from the [releases page](https://github.com/chris-regnier/gavel/releases) or follow the [README installation instructions](../../README.md#installation)
+- **Gavel binary installed** -- download from the [releases page](https://github.com/chris-regnier/gavel/releases) or follow the [installation instructions](installation.md)
 - **An LLM provider** -- pick the one that fits your situation:
 
 | Priority | Provider | Model | Setup |
@@ -442,5 +442,5 @@ Each mode produces the same SARIF output and verdict format. The only difference
 
 - **[Gate PRs with AI Code Review](ci-pr-gating.md)** -- automate Gavel in your CI pipeline with GitHub Actions
 - **[See Findings in Your Editor](editor-integration.md)** -- view findings inline in VS Code or Neovim
-- **[Custom Rules](../../README.md#custom-rules)** -- write your own analysis rules
-- **[Personas](../../README.md#personas)** -- switch between code-reviewer, architect, and security perspectives
+- **[Custom Rules](configuration/policies.md#custom-rules)** -- write your own analysis rules
+- **[Personas](configuration/personas.md)** -- switch between code-reviewer, architect, and security perspectives

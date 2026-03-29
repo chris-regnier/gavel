@@ -268,7 +268,7 @@ Available personas: `code-reviewer` (default), `code-reviewer-verbose`, `archite
 
 ### Add custom rules
 
-Place custom rule YAML files in `.gavel/rules/` in your repository. Gavel ships with 19 built-in rules (CWE, OWASP, SonarQube) and merges your custom rules on top. See the [custom rules section of the README](../../README.md#custom-rules) for the rule format.
+Place custom rule YAML files in `.gavel/rules/` in your repository. Gavel ships with 19 built-in rules (CWE, OWASP, SonarQube) and merges your custom rules on top. See the [custom rules documentation](configuration/policies.md#custom-rules) for the rule format.
 
 ### Adjust the gate threshold
 
@@ -360,6 +360,6 @@ This uses GitHub's auto-merge feature, which waits for all other required status
 ## Next Steps
 
 - [Editor Integration Guide](./editor-integration.md) -- run Gavel from your editor for instant feedback before pushing
-- [README Configuration Reference](../../README.md#configuration) -- full policy format, merging rules, and provider options
-- [Custom Rules](../../README.md#custom-rules) -- write your own analysis rules with CWE/OWASP references
-- [Custom Rego Policies](../../README.md#custom-rego-policies) -- fine-tune the gate logic beyond the default threshold
+- [Policies & Rules](configuration/policies.md) -- full policy format, merging rules, and custom analysis rules
+- [Custom Rego Policies](configuration/rego.md) -- fine-tune the gate logic beyond the default threshold
+- [Providers](PROVIDERS.md) -- all provider options and configuration
