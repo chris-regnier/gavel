@@ -194,6 +194,39 @@ func TestProseApplicabilityFilterPrompt_ContainsKeyPhrases(t *testing.T) {
 	}
 }
 
+func TestGetPersonaPrompt_WithProseFilter(t *testing.T) {
+	prosePersonas := []string{"research-assistant", "sharp-editor"}
+	for _, persona := range prosePersonas {
+		t.Run(persona, func(t *testing.T) {
+			prompt, err := GetPersonaPrompt(context.Background(), persona)
+			if err != nil {
+				t.Fatalf("GetPersonaPrompt(%s): %v", persona, err)
+			}
+
+			if !IsProsePersona(persona) {
+				t.Errorf("IsProsePersona(%s) should be true", persona)
+			}
+
+			// Simulate what the caller does when StrictFilter is true for prose
+			filtered := prompt + ProseApplicabilityFilterPrompt
+
+			if !strings.Contains(filtered, "APPLICABILITY FILTER") {
+				t.Errorf("filtered %s prompt missing filter block", persona)
+			}
+			if !strings.Contains(filtered, "ACTIONABLE") {
+				t.Errorf("filtered %s prompt missing ACTIONABLE gate", persona)
+			}
+			if !strings.Contains(filtered, "EVIDENCED") {
+				t.Errorf("filtered %s prompt missing EVIDENCED gate", persona)
+			}
+			// Prose filter should NOT contain code-specific gates
+			if strings.Contains(filtered, "LANGUAGE SAFETY") {
+				t.Errorf("filtered %s prompt should not contain LANGUAGE SAFETY gate", persona)
+			}
+		})
+	}
+}
+
 func TestGetPersonaPrompt_WithFilter(t *testing.T) {
 	personas := []string{"code-reviewer", "code-reviewer-verbose", "architect", "security"}
 	for _, persona := range personas {
