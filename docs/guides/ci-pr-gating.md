@@ -61,7 +61,7 @@ policies:
     enabled: true
 ```
 
-Commit this file to your repository. For other providers (Ollama, Bedrock, OpenAI), see [example-configs.yaml](../../example-configs.yaml).
+Commit this file to your repository. For other providers (Ollama, Bedrock, OpenAI), see [example-configs.yaml](https://github.com/chris-regnier/gavel/blob/main/example-configs.yaml).
 
 ## Step 3: Add the GitHub Actions Workflow
 

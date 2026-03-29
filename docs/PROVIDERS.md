@@ -323,7 +323,7 @@ The project-level config takes precedence over the machine-level config.
 
 ## See Also
 
-- `example-configs.yaml` - Complete configuration examples with all providers
+- [`example-configs.yaml`](https://github.com/chris-regnier/gavel/blob/main/example-configs.yaml) - Complete configuration examples with all providers
 - `CLAUDE.md` - Technical architecture and BAML details
 - Anthropic API docs: https://docs.anthropic.com/
 - OpenAI API docs: https://platform.openai.com/docs

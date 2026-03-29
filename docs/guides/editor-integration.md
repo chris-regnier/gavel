@@ -54,7 +54,7 @@ policies:
     enabled: true
 ```
 
-If you prefer a cloud provider (Anthropic, OpenRouter, OpenAI, Bedrock), see [example-configs.yaml](../../example-configs.yaml) for complete configuration examples. Cloud providers require an API key set as an environment variable.
+If you prefer a cloud provider (Anthropic, OpenRouter, OpenAI, Bedrock), see [example-configs.yaml](https://github.com/chris-regnier/gavel/blob/main/example-configs.yaml) for complete configuration examples. Cloud providers require an API key set as an environment variable.
 
 ## Step 2: Run an Analysis
 
