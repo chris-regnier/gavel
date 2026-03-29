@@ -71,6 +71,17 @@ func TestGetPersonaPrompt(t *testing.T) {
 			},
 		},
 		{
+			name:    "sharp-editor persona",
+			persona: "sharp-editor",
+			wantErr: false,
+			wantContains: []string{
+				"editor",
+				"clarity",
+				"passive voice",
+				"CONFIDENCE GUIDANCE",
+			},
+		},
+		{
 			name:    "invalid persona",
 			persona: "invalid-persona",
 			wantErr: true,
