@@ -3,6 +3,11 @@
   - [Quick Start](quickstart.md)
   - [Installation](installation.md)
 
+- **Use Cases**
+  - [For Developers](guides/for-developers.md)
+  - [For CI/CD](guides/for-ci-cd.md)
+  - [For Security Teams](guides/for-security-teams.md)
+
 - **Guides**
   - [Try on Open Source](guides/try-on-open-source.md)
   - [Gate PRs with CI](guides/ci-pr-gating.md)
