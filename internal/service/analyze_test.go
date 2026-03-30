@@ -126,8 +126,10 @@ func TestAnalyzeService_AnalyzeStream(t *testing.T) {
 
 	// No fatal errors
 	select {
-	case err := <-errCh:
-		t.Fatalf("unexpected error: %v", err)
+	case err, ok := <-errCh:
+		if ok {
+			t.Fatalf("unexpected error: %v", err)
+		}
 	default:
 	}
 }

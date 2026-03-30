@@ -40,6 +40,8 @@ func kindFromString(s string) input.Kind {
 	switch s {
 	case "diff":
 		return input.KindDiff
+	// TODO: "prose" should map to a KindProse once input.Kind supports it.
+	// For now, prose artifacts are treated as files (instant-tier code rules still run).
 	default:
 		return input.KindFile
 	}
@@ -79,6 +81,8 @@ func (h *Handlers) HandleAnalyze(w http.ResponseWriter, r *http.Request) {
 	}
 	defer h.releaseSlot()
 
+	r.Body = http.MaxBytesReader(w, r.Body, 32<<20) // 32 MB limit
+
 	var req analyzeRequestJSON
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
@@ -107,6 +111,8 @@ func (h *Handlers) HandleAnalyzeStream(w http.ResponseWriter, r *http.Request) {
 	}
 	defer h.releaseSlot()
 
+	r.Body = http.MaxBytesReader(w, r.Body, 32<<20) // 32 MB limit
+
 	var req analyzeRequestJSON
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
@@ -132,17 +138,20 @@ func (h *Handlers) HandleAnalyzeStream(w http.ResponseWriter, r *http.Request) {
 
 	// Send completion or error
 	select {
-	case result := <-resultCh:
-		sse.WriteEvent("complete", result)
-	case err := <-errCh:
-		sse.WriteEvent("error", map[string]string{"message": err.Error()})
+	case result, ok := <-resultCh:
+		if ok {
+			sse.WriteEvent("complete", result)
+		}
+	case err, ok := <-errCh:
+		if ok {
+			sse.WriteEvent("error", map[string]string{"message": err.Error()})
+		}
 	}
 }
 
 // judgeRequestJSON is the JSON wire format for judge requests.
 type judgeRequestJSON struct {
 	ResultID string `json:"result_id"`
-	RegoDir  string `json:"rego_dir,omitempty"`
 }
 
 // HandleJudge handles POST /v1/judge.
@@ -155,7 +164,7 @@ func (h *Handlers) HandleJudge(w http.ResponseWriter, r *http.Request) {
 
 	verdict, err := h.judge.Judge(r.Context(), service.JudgeRequest{
 		ResultID: req.ResultID,
-		RegoDir:  req.RegoDir,
+		// RegoDir intentionally not exposed via HTTP API — use --rego-dir server flag
 	})
 	if err != nil {
 		slog.Error("judge failed", "error", err, "tenant", middleware.TenantFromContext(r.Context()))

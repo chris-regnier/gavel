@@ -38,12 +38,6 @@ type JudgeRequest struct {
 	RegoDir  string
 }
 
-// SSEEvent is a typed SSE event for serialization.
-type SSEEvent struct {
-	Event string      `json:"event"` // "tier", "complete", "error"
-	Data  interface{} `json:"data"`
-}
-
 // ResultLister provides read access to stored results.
 type ResultLister interface {
 	ReadSARIF(ctx context.Context, id string) (*sarif.Log, error)
