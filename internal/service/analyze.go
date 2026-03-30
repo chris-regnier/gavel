@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/chris-regnier/gavel/internal/analyzer"
 	"github.com/chris-regnier/gavel/internal/config"
@@ -67,6 +68,99 @@ func (s *AnalyzeService) Analyze(ctx context.Context, req AnalyzeRequest) (*Anal
 		ResultID:      resultID,
 		TotalFindings: len(results),
 	}, nil
+}
+
+// AnalyzeStream runs analysis progressively, emitting per-tier results on a channel.
+// The error channel is for fatal errors only (invalid config, all providers unreachable).
+// Tier-level failures are reported as TierResult with an Error field.
+// The result channel receives exactly one value when the stream completes.
+func (s *AnalyzeService) AnalyzeStream(ctx context.Context, req AnalyzeRequest) (<-chan TierResult, <-chan AnalyzeResult, <-chan error) {
+	tierCh := make(chan TierResult, 10)
+	resultCh := make(chan AnalyzeResult, 1)
+	errCh := make(chan error, 1)
+
+	go func() {
+		defer close(tierCh)
+		defer close(resultCh)
+
+		client := s.clientFactory(req.Config.Provider)
+
+		personaPrompt, err := analyzer.GetPersonaPrompt(ctx, req.Config.Persona)
+		if err != nil {
+			errCh <- fmt.Errorf("getting persona prompt: %w", err)
+			return
+		}
+
+		opts := []analyzer.TieredAnalyzerOption{}
+		if len(req.Rules) > 0 {
+			opts = append(opts, analyzer.WithInstantPatterns(req.Rules))
+		}
+
+		ta := analyzer.NewTieredAnalyzer(client, opts...)
+		progressive := ta.AnalyzeProgressive(ctx, req.Artifacts, req.Config.Policies, personaPrompt)
+
+		// Aggregate TieredResults by tier for SSE events
+		currentTier := ""
+		var currentResults []sarif.Result
+		var allResults []sarif.Result
+		tierStart := time.Now()
+		tierSeen := false
+
+		for tr := range progressive {
+			tierName := tr.Tier.String()
+
+			// When tier changes, flush the previous tier's aggregated results
+			if currentTier != "" && tierName != currentTier {
+				tierCh <- TierResult{
+					Tier:      currentTier,
+					Results:   currentResults,
+					ElapsedMs: time.Since(tierStart).Milliseconds(),
+				}
+				currentResults = nil
+				tierStart = time.Now()
+				tierSeen = false
+			}
+			currentTier = tierName
+			tierSeen = true
+
+			if tr.Error != nil {
+				tierCh <- TierResult{
+					Tier:      tierName,
+					ElapsedMs: time.Since(tierStart).Milliseconds(),
+					Error:     tr.Error.Error(),
+				}
+				tierSeen = false
+				continue
+			}
+
+			currentResults = append(currentResults, tr.Results...)
+			allResults = append(allResults, tr.Results...)
+		}
+
+		// Flush final tier (always emit if the tier was seen, even with no results)
+		if currentTier != "" && tierSeen {
+			tierCh <- TierResult{
+				Tier:      currentTier,
+				Results:   currentResults,
+				ElapsedMs: time.Since(tierStart).Milliseconds(),
+			}
+		}
+
+		// Store final SARIF
+		sarifLog := sarif.Assemble(allResults, policyRules(req.Config.Policies), scopeFromArtifacts(req.Artifacts), req.Config.Persona)
+		resultID, err := s.store.WriteSARIF(ctx, sarifLog)
+		if err != nil {
+			errCh <- fmt.Errorf("storing SARIF: %w", err)
+			return
+		}
+
+		resultCh <- AnalyzeResult{
+			ResultID:      resultID,
+			TotalFindings: len(allResults),
+		}
+	}()
+
+	return tierCh, resultCh, errCh
 }
 
 // policyRules converts enabled policies to SARIF reporting descriptors.
