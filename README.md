@@ -38,8 +38,9 @@ Every finding includes a confidence score, an explanation of *why* it's a proble
 ## Quick Start
 
 ```bash
-# Install
-curl -L https://github.com/chris-regnier/gavel/releases/latest/download/gavel_Darwin_arm64.tar.gz | tar xz
+# Install (see https://github.com/chris-regnier/gavel/releases for latest version)
+VERSION=v0.2.0
+curl -L "https://github.com/chris-regnier/gavel/releases/download/${VERSION}/gavel_${VERSION}_Darwin_arm64.tar.gz" | tar xz
 sudo mv gavel_Darwin_arm64 /usr/local/bin/gavel
 
 # Set up a provider (pick one)

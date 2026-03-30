@@ -213,21 +213,39 @@ Auto-merge must be enabled in repository settings (**Settings** > **General** > 
 
 ### Tiered model strategy
 
-Use different models based on PR context:
+Use different models based on PR context. Since Gavel reads the model from `policies.yaml`, use separate config files or generate them dynamically:
 
 ```yaml
-# .github/workflows/gavel.yml - conditional model selection
-      - name: Select model
+# .github/workflows/gavel.yml - write config per branch
+      - name: Configure model for branch
         run: |
           if [[ "${{ github.base_ref }}" == "release/"* ]]; then
-            echo "MODEL=anthropic/claude-sonnet-4" >> "$GITHUB_ENV"
+            # Thorough model for release branches
+            cat > /tmp/policies-override.yaml <<'YAML'
+          provider:
+            name: openrouter
+            openrouter:
+              model: anthropic/claude-sonnet-4-20250514
+          YAML
           else
-            echo "MODEL=google/gemini-2.0-flash-exp" >> "$GITHUB_ENV"
+            # Fast model for regular PRs
+            cat > /tmp/policies-override.yaml <<'YAML'
+          provider:
+            name: openrouter
+            openrouter:
+              model: google/gemini-2.0-flash-exp
+          YAML
           fi
+
+      - name: Run Gavel analysis
+        run: |
+          /tmp/gavel analyze \
+            --diff /tmp/pr.diff \
+            --policies /tmp/policies-override.yaml
 ```
 
 - **Most PRs:** Fast, cheap model (Gemini Flash, DeepSeek)
-- **Release branches:** Thorough model (Sonnet, GPT-5)
+- **Release branches:** Thorough model (Sonnet)
 - **Security-sensitive:** Add `--persona security` for OWASP-focused analysis
 
 ### Cache for cost savings

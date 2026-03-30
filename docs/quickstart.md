@@ -39,16 +39,19 @@ Now let's set that up.
 Download the latest release:
 
 ```bash
+# Check https://github.com/chris-regnier/gavel/releases for the latest version
+VERSION=v0.2.0
+
 # macOS (Apple Silicon)
-curl -L https://github.com/chris-regnier/gavel/releases/latest/download/gavel_Darwin_arm64.tar.gz | tar xz
+curl -L "https://github.com/chris-regnier/gavel/releases/download/${VERSION}/gavel_${VERSION}_Darwin_arm64.tar.gz" | tar xz
 sudo mv gavel_Darwin_arm64 /usr/local/bin/gavel
 
 # macOS (Intel)
-curl -L https://github.com/chris-regnier/gavel/releases/latest/download/gavel_Darwin_x86_64.tar.gz | tar xz
+curl -L "https://github.com/chris-regnier/gavel/releases/download/${VERSION}/gavel_${VERSION}_Darwin_x86_64.tar.gz" | tar xz
 sudo mv gavel_Darwin_x86_64 /usr/local/bin/gavel
 
 # Linux (amd64)
-curl -L https://github.com/chris-regnier/gavel/releases/latest/download/gavel_Linux_x86_64.tar.gz | tar xz
+curl -L "https://github.com/chris-regnier/gavel/releases/download/${VERSION}/gavel_${VERSION}_Linux_x86_64.tar.gz" | tar xz
 sudo mv gavel_Linux_x86_64 /usr/local/bin/gavel
 ```
 
@@ -93,7 +96,7 @@ The fastest way to get a config tailored to your project is to generate one:
 gavel create config "Go REST API with PostgreSQL, focus on security"
 ```
 
-This creates `.gavel/policies.yaml` with a provider, persona, and starter policies matched to your description.
+This creates `.gavel/policies.yaml` with a provider, persona, and starter policies matched to your description. (Note: `create config` requires `OPENROUTER_API_KEY`. If you chose Ollama, skip to the manual config below.)
 
 Alternatively, create the config manually:
 
