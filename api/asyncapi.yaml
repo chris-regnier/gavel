@@ -1,0 +1,103 @@
+asyncapi: 2.6.0
+info:
+  title: Gavel API
+  version: 0.1.0
+  description: |
+    Gavel as a Service — AI-powered code and prose analysis with SSE streaming.
+
+    The streaming endpoint (POST /v1/analyze/stream) returns Server-Sent Events
+    with progressive analysis results from each tier.
+
+channels:
+  /v1/analyze/stream:
+    publish:
+      summary: Submit artifacts for streaming analysis
+      message:
+        name: AnalyzeRequest
+        contentType: application/json
+        payload:
+          type: object
+          required: [artifacts, config]
+          properties:
+            artifacts:
+              type: array
+              items:
+                type: object
+                required: [path, content, kind]
+                properties:
+                  path:
+                    type: string
+                  content:
+                    type: string
+                  kind:
+                    type: string
+                    enum: [file, diff, prose]
+            config:
+              type: object
+              required: [provider, persona]
+              properties:
+                provider:
+                  type: object
+                  required: [name]
+                  properties:
+                    name:
+                      type: string
+                persona:
+                  type: string
+                policies:
+                  type: object
+                  additionalProperties:
+                    type: object
+                    properties:
+                      enabled:
+                        type: boolean
+                      description:
+                        type: string
+                      severity:
+                        type: string
+            rules:
+              type: array
+              items:
+                type: object
+
+    subscribe:
+      summary: Receive progressive analysis results via SSE
+      message:
+        oneOf:
+          - name: TierEvent
+            summary: Results from a single analysis tier
+            payload:
+              type: object
+              required: [tier, results, elapsed_ms]
+              properties:
+                tier:
+                  type: string
+                  enum: [instant, fast, comprehensive]
+                results:
+                  type: array
+                  description: SARIF Result objects
+                elapsed_ms:
+                  type: integer
+                error:
+                  type: string
+                  description: Non-fatal tier error message
+
+          - name: CompleteEvent
+            summary: Analysis complete, result stored
+            payload:
+              type: object
+              required: [result_id, total_findings]
+              properties:
+                result_id:
+                  type: string
+                total_findings:
+                  type: integer
+
+          - name: ErrorEvent
+            summary: Fatal analysis error
+            payload:
+              type: object
+              required: [message]
+              properties:
+                message:
+                  type: string
