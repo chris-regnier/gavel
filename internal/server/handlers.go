@@ -136,16 +136,13 @@ func (h *Handlers) HandleAnalyzeStream(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Send completion or error
-	select {
-	case result, ok := <-resultCh:
-		if ok {
-			sse.WriteEvent("complete", result)
-		}
-	case err, ok := <-errCh:
-		if ok {
-			sse.WriteEvent("error", map[string]string{"message": err.Error()})
-		}
+	// Send completion or error.
+	// resultCh receives a value on success; errCh on fatal error. Exactly one is written to.
+	// We read resultCh first — if it yields a zero value (closed without send), check errCh.
+	if result, ok := <-resultCh; ok {
+		sse.WriteEvent("complete", result)
+	} else if err, ok := <-errCh; ok {
+		sse.WriteEvent("error", map[string]string{"message": err.Error()})
 	}
 }
 
