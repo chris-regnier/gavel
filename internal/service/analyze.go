@@ -80,8 +80,9 @@ func (s *AnalyzeService) AnalyzeStream(ctx context.Context, req AnalyzeRequest) 
 	errCh := make(chan error, 1)
 
 	go func() {
-		defer close(tierCh)
-		defer close(resultCh)
+		defer close(errCh)    // runs 3rd (last)
+		defer close(resultCh) // runs 2nd
+		defer close(tierCh)   // runs 1st
 
 		client := s.clientFactory(req.Config.Provider)
 

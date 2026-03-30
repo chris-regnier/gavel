@@ -22,6 +22,7 @@ func (s *SSEWriter) SetHeaders() {
 	s.w.Header().Set("Content-Type", "text/event-stream")
 	s.w.Header().Set("Cache-Control", "no-cache")
 	s.w.Header().Set("Connection", "keep-alive")
+	s.w.Header().Set("X-Accel-Buffering", "no")
 }
 
 // WriteEvent writes a single SSE event. Data is JSON-encoded.
