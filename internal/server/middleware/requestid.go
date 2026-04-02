@@ -24,7 +24,10 @@ func RequestID() func(http.Handler) http.Handler {
 			id := r.Header.Get("X-Request-ID")
 			if id == "" {
 				b := make([]byte, 8)
-				_, _ = rand.Read(b)
+				if _, err := rand.Read(b); err != nil {
+					http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+					return
+				}
 				id = hex.EncodeToString(b)
 			}
 

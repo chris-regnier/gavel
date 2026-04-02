@@ -65,7 +65,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 	// Create services
 	analyzeSvc := service.NewAnalyzeService(fs)
-	judgeSvc := service.NewJudgeService(fs)
+	judgeSvc := service.NewJudgeService(fs, flagServeRegoDir)
 
 	// Build router
 	router := server.NewRouter(server.RouterConfig{

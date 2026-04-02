@@ -95,7 +95,7 @@ func (h *Handlers) HandleAnalyze(w http.ResponseWriter, r *http.Request) {
 		Rules:     req.Rules,
 	})
 	if err != nil {
-		slog.Error("analyze failed", "error", err, "tenant", middleware.TenantFromContext(r.Context()))
+		slog.Error("analyze failed", "error", err, "tenant", middleware.TenantFromContext(r.Context()), "request_id", middleware.RequestIDFromContext(r.Context()))
 		http.Error(w, `{"error":"analysis failed"}`, http.StatusInternalServerError)
 		return
 	}
@@ -164,7 +164,7 @@ func (h *Handlers) HandleJudge(w http.ResponseWriter, r *http.Request) {
 		// RegoDir intentionally not exposed via HTTP API — use --rego-dir server flag
 	})
 	if err != nil {
-		slog.Error("judge failed", "error", err, "tenant", middleware.TenantFromContext(r.Context()))
+		slog.Error("judge failed", "error", err, "tenant", middleware.TenantFromContext(r.Context()), "request_id", middleware.RequestIDFromContext(r.Context()))
 		http.Error(w, `{"error":"evaluation failed"}`, http.StatusInternalServerError)
 		return
 	}

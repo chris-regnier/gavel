@@ -28,7 +28,7 @@ func Auth(keys map[string]string) func(http.Handler) http.Handler {
 			}
 
 			token := strings.TrimPrefix(auth, "Bearer ")
-			if token == auth {
+			if token == auth || token == "" {
 				http.Error(w, `{"error":"invalid authorization format"}`, http.StatusUnauthorized)
 				return
 			}

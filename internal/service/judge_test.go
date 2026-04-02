@@ -19,7 +19,7 @@ func TestJudgeService_Judge(t *testing.T) {
 		t.Fatalf("writing SARIF: %v", err)
 	}
 
-	svc := NewJudgeService(ms)
+	svc := NewJudgeService(ms, "")
 	verdict, err := svc.Judge(ctx, JudgeRequest{ResultID: id})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
