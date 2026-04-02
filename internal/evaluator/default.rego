@@ -17,7 +17,7 @@ unsuppressed_results contains result if {
 decision := "reject" if {
 	some result in unsuppressed_results
 	result.level == "error"
-	result.properties["gavel/confidence"] > 0.8
+	result.properties["gavel/confidence"] > 0.85
 }
 
 decision := "merge" if {
