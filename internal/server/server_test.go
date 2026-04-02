@@ -36,7 +36,7 @@ func setupTestServer(t *testing.T) *httptest.Server {
 			return &mockBAMLClient{}
 		},
 	)
-	judgeSvc := service.NewJudgeService(fs)
+	judgeSvc := service.NewJudgeService(fs, "")
 
 	router := server.NewRouter(server.RouterConfig{
 		AnalyzeService: analyzeSvc,
