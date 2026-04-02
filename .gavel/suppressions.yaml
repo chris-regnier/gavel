@@ -1,0 +1,39 @@
+suppressions:
+  # Cobra commands use package-level flag vars — this is the standard pattern
+  # across all cmd/gavel/*.go files. Not a real issue.
+  - rule_id: shall-be-merged
+    file: cmd/gavel/serve.go
+    reason: "False positive — global flag vars are the standard Cobra pattern used by all commands in this project"
+    created: "2026-04-01T00:00:00Z"
+    source: "cli:user:chris-regnier"
+
+  # Test files generate style/coverage opinions, not real bugs
+  - rule_id: shall-be-merged
+    file: internal/service/analyze_test.go
+    reason: "Test quality opinions — mock simplicity and timeout values are intentional"
+    created: "2026-04-01T00:00:00Z"
+    source: "cli:user:chris-regnier"
+
+  - rule_id: shall-be-merged
+    file: internal/service/judge_test.go
+    reason: "Test quality opinions — test covers the service orchestration path, not evaluator internals"
+    created: "2026-04-01T00:00:00Z"
+    source: "cli:user:chris-regnier"
+
+  - rule_id: shall-be-merged
+    file: internal/server/server_test.go
+    reason: "Test quality opinions — httptest.NewRequest never fails with valid constant args"
+    created: "2026-04-01T00:00:00Z"
+    source: "cli:user:chris-regnier"
+
+  - rule_id: shall-be-merged
+    file: internal/server/sse_test.go
+    reason: "Test quality opinions — SSE writer is a thin utility, error paths tested via integration"
+    created: "2026-04-01T00:00:00Z"
+    source: "cli:user:chris-regnier"
+
+  - rule_id: shall-be-merged
+    file: internal/server/middleware/requestid_test.go
+    reason: "Test quality opinions — edge cases for crypto/rand are not meaningful to test"
+    created: "2026-04-01T00:00:00Z"
+    source: "cli:user:chris-regnier"
