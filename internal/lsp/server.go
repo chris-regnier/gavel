@@ -78,8 +78,9 @@ type Server struct {
 	analyze AnalyzeFunc
 
 	// Document tracking
-	documents map[string]string // URI -> content
-	docMu     sync.RWMutex
+	documents     map[string]string // URI -> content
+	contentHashes map[string]string // URI -> SHA256 hash
+	docMu         sync.RWMutex
 
 	// Results cache for code actions
 	resultsCache map[string]resultsCacheEntry
@@ -105,12 +106,13 @@ func NewServer(reader *bufio.Reader, writer *bufio.Writer, analyze AnalyzeFunc) 
 // NewServerWithConfig creates a new LSP server with custom configuration
 func NewServerWithConfig(reader *bufio.Reader, writer *bufio.Writer, analyze AnalyzeFunc, cfg ServerConfig) *Server {
 	s := &Server{
-		reader:       reader,
-		writer:       writer,
-		analyze:      analyze,
-		documents:    make(map[string]string),
-		resultsCache: make(map[string]resultsCacheEntry),
-		config:       cfg,
+		reader:        reader,
+		writer:        writer,
+		analyze:       analyze,
+		documents:     make(map[string]string),
+		contentHashes: make(map[string]string),
+		resultsCache:  make(map[string]resultsCacheEntry),
+		config:        cfg,
 	}
 
 	// Initialize progress reporter
@@ -338,6 +340,7 @@ func (s *Server) handleDidClose(params json.RawMessage) error {
 	// Remove document from tracking
 	s.docMu.Lock()
 	delete(s.documents, uri)
+	delete(s.contentHashes, uri)
 	s.docMu.Unlock()
 
 	// Remove from results cache
@@ -460,8 +463,28 @@ func (s *Server) handleDidChangeConfiguration(params json.RawMessage) error {
 	return nil
 }
 
-// analyzeAndPublish runs analysis on a file and publishes diagnostics
+// computeContentHash returns a deterministic hash of the file content
+func computeContentHash(content string) string {
+	return cache.GenerateKey(content)
+}
+
+// analyzeAndPublish runs analysis on a file and publishes diagnostics.
+// It skips analysis if the file content has not changed since the last run.
 func (s *Server) analyzeAndPublish(ctx context.Context, uri, path, content string) {
+	newHash := computeContentHash(content)
+	s.docMu.RLock()
+	oldHash := s.contentHashes[uri]
+	s.docMu.RUnlock()
+
+	if oldHash == newHash {
+		slog.Debug("skipping analysis, content unchanged", "uri", uri)
+		return
+	}
+
+	s.docMu.Lock()
+	s.contentHashes[uri] = newHash
+	s.docMu.Unlock()
+
 	// Run analysis
 	results, err := s.analyze(ctx, path, content)
 	if err != nil {
