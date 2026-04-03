@@ -116,6 +116,46 @@ func TestSarifToDiagnosticWarning(t *testing.T) {
 	}
 }
 
+func TestSarifToDiagnosticTierSource(t *testing.T) {
+	tests := []struct {
+		name           string
+		tier           string
+		expectedSource string
+	}{
+		{"instant tier", "instant", "gavel/instant"},
+		{"fast tier", "fast", "gavel/fast"},
+		{"comprehensive tier", "comprehensive", "gavel/comprehensive"},
+		{"no tier property", "", "gavel"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := sarif.Result{
+				RuleID:  "SEC001",
+				Level:   "error",
+				Message: sarif.Message{Text: "test"},
+				Locations: []sarif.Location{{
+					PhysicalLocation: sarif.PhysicalLocation{
+						ArtifactLocation: sarif.ArtifactLocation{URI: "main.go"},
+						Region:           sarif.Region{StartLine: 1, EndLine: 1},
+					},
+				}},
+			}
+
+			if tt.tier != "" {
+				result.Properties = map[string]interface{}{
+					"gavel/tier": tt.tier,
+				}
+			}
+
+			diag := SarifToDiagnostic(result)
+			if diag.Source != tt.expectedSource {
+				t.Errorf("Expected source %q, got %q", tt.expectedSource, diag.Source)
+			}
+		})
+	}
+}
+
 func TestSarifResultsToDiagnostics(t *testing.T) {
 	results := []sarif.Result{
 		{
