@@ -256,6 +256,54 @@ func TestEntry_IsExpired(t *testing.T) {
 	}
 }
 
+func TestCacheKeyPromptHash(t *testing.T) {
+	key1 := CacheKey{
+		FileHash:   "abc123",
+		FilePath:   "main.go",
+		Provider:   "anthropic",
+		Model:      "claude-sonnet-4",
+		PromptHash: "prompt_v1_hash",
+		Policies:   map[string]string{"error-handling": "hash1"},
+	}
+	key2 := CacheKey{
+		FileHash:   "abc123",
+		FilePath:   "main.go",
+		Provider:   "anthropic",
+		Model:      "claude-sonnet-4",
+		PromptHash: "prompt_v2_hash",
+		Policies:   map[string]string{"error-handling": "hash1"},
+	}
+
+	hash1 := key1.Hash()
+	hash2 := key2.Hash()
+
+	if hash1 == hash2 {
+		t.Error("Different PromptHash values should produce different cache key hashes")
+	}
+
+	// Same prompt hash should produce same key
+	key3 := key1
+	if key1.Hash() != key3.Hash() {
+		t.Error("Identical CacheKeys should produce identical hashes")
+	}
+}
+
+func TestPromptHash(t *testing.T) {
+	hash1 := PromptHash("You are a code reviewer", "- error-handling [warning]: Check errors")
+	hash2 := PromptHash("You are a security expert", "- error-handling [warning]: Check errors")
+	hash3 := PromptHash("You are a code reviewer", "- error-handling [warning]: Check errors")
+
+	if hash1 == hash2 {
+		t.Error("Different persona prompts should produce different hashes")
+	}
+	if hash1 != hash3 {
+		t.Error("Same inputs should produce same hash")
+	}
+	if hash1 == "" {
+		t.Error("Hash should not be empty")
+	}
+}
+
 func BenchmarkCache_Set(b *testing.B) {
 	c := New()
 	

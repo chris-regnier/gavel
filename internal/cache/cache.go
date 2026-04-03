@@ -236,6 +236,11 @@ func ContentKey(content, policies, persona string) string {
 	return GenerateKey(content, policies, persona)
 }
 
+// PromptHash computes a SHA256 hash of the combined persona prompt and policy text.
+func PromptHash(personaPrompt, policyText string) string {
+	return GenerateKey(personaPrompt, policyText)
+}
+
 // ============================================================================
 // LSP CacheManager interface and types
 // ============================================================================
@@ -249,6 +254,7 @@ type CacheKey struct {
 	Provider    string            `json:"provider"`
 	Model       string            `json:"model"`
 	BAMLVersion string            `json:"baml_version"`
+	PromptHash  string            `json:"prompt_hash"`
 	Policies    map[string]string `json:"policies"` // policy name -> instruction hash
 }
 
