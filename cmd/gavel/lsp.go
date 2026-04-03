@@ -12,6 +12,7 @@ import (
 	"github.com/chris-regnier/gavel/internal/analyzer"
 	"github.com/chris-regnier/gavel/internal/cache"
 	"github.com/chris-regnier/gavel/internal/config"
+	"github.com/chris-regnier/gavel/internal/input"
 	"github.com/chris-regnier/gavel/internal/lsp"
 )
 
@@ -143,6 +144,32 @@ func runLSP(cmd *cobra.Command, args []string) error {
 	if cacheManager != nil {
 		server.SetCacheManager(cacheManager)
 	}
+
+	// Wire progressive analysis via TieredAnalyzer
+	tieredAnalyzer := analyzer.NewTieredAnalyzer(client)
+
+	personaPrompt, err := analyzer.GetPersonaPrompt(ctx, cfg.Persona)
+	if err != nil {
+		return fmt.Errorf("getting persona prompt: %w", err)
+	}
+
+	server.SetProgressiveAnalyze(func(ctx context.Context, path, content string) <-chan lsp.ProgressiveResult {
+		art := input.Artifact{Path: path, Content: content, Kind: input.KindFile}
+		tieredCh := tieredAnalyzer.AnalyzeProgressive(ctx, []input.Artifact{art}, cfg.Policies, personaPrompt)
+
+		resultCh := make(chan lsp.ProgressiveResult, 3)
+		go func() {
+			defer close(resultCh)
+			for tr := range tieredCh {
+				resultCh <- lsp.ProgressiveResult{
+					Tier:    tr.Tier.String(),
+					Results: tr.Results,
+					Error:   tr.Error,
+				}
+			}
+		}()
+		return resultCh
+	})
 
 	// Run server
 	if err := server.Run(ctx); err != nil {
