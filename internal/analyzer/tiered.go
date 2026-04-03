@@ -290,8 +290,16 @@ func (ta *TieredAnalyzer) runInstantTier(ctx context.Context, art input.Artifact
 
 	// Run pattern matching
 	results := ta.runPatternMatching(art)
+	// Add prompt hash to instant tier results
+	promptHash := cache.PromptHash(personaPrompt, policyText)
+	for i := range results {
+		if results[i].Properties == nil {
+			results[i].Properties = make(map[string]interface{})
+		}
+		results[i].Properties["gavel/prompt_hash"] = promptHash
+	}
 	duration := time.Since(start)
-	
+
 	ta.recordMetrics(art, metrics.TierInstant, duration, len(results), metrics.CacheMiss, nil)
 
 	span.SetAttributes(attribute.Int("gavel.finding_count", len(results)))
@@ -534,6 +542,7 @@ func (ta *TieredAnalyzer) runFastTier(ctx context.Context, art input.Artifact, p
 			results[i].Properties = make(map[string]interface{})
 		}
 		results[i].Properties["gavel/tier"] = "fast"
+		results[i].Properties["gavel/prompt_hash"] = cache.PromptHash(personaPrompt, FormatPolicies(policies))
 	}
 
 	if err != nil {
@@ -585,6 +594,7 @@ func (ta *TieredAnalyzer) runComprehensiveTier(ctx context.Context, art input.Ar
 			results[i].Properties = make(map[string]interface{})
 		}
 		results[i].Properties["gavel/tier"] = "comprehensive"
+		results[i].Properties["gavel/prompt_hash"] = cache.PromptHash(personaPrompt, policyText)
 	}
 
 	if err != nil {
