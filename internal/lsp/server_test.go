@@ -215,6 +215,82 @@ func TestServerSkipsUnchangedFile(t *testing.T) {
 	}
 }
 
+func TestServerProgressiveMultipleTiers(t *testing.T) {
+	didOpenParams := DidOpenTextDocumentParams{
+		TextDocument: TextDocumentItem{
+			URI:        "file:///test.go",
+			LanguageID: "go",
+			Version:    1,
+			Text:       "package main\n\nfunc main() { var x = 1 }\n",
+		},
+	}
+
+	input := makeJSONRPCMessage(MethodTextDocumentDidOpen, didOpenParams, 1)
+
+	var output bytes.Buffer
+	reader := bufio.NewReader(strings.NewReader(input))
+	writer := bufio.NewWriter(&output)
+
+	syncFunc := func(ctx context.Context, path, content string) ([]sarif.Result, error) {
+		return nil, nil
+	}
+
+	server := NewServer(reader, writer, syncFunc)
+
+	server.SetProgressiveAnalyze(func(ctx context.Context, path, content string) <-chan ProgressiveResult {
+		ch := make(chan ProgressiveResult, 2)
+		go func() {
+			defer close(ch)
+			ch <- ProgressiveResult{
+				Tier: "instant",
+				Results: []sarif.Result{{
+					RuleID:  "PAT001",
+					Level:   "warning",
+					Message: sarif.Message{Text: "pattern match"},
+					Locations: []sarif.Location{{
+						PhysicalLocation: sarif.PhysicalLocation{
+							ArtifactLocation: sarif.ArtifactLocation{URI: path},
+							Region:           sarif.Region{StartLine: 3, EndLine: 3},
+						},
+					}},
+					Properties: map[string]interface{}{"gavel/tier": "instant"},
+				}},
+			}
+			time.Sleep(50 * time.Millisecond)
+			ch <- ProgressiveResult{
+				Tier: "comprehensive",
+				Results: []sarif.Result{{
+					RuleID:  "LLM001",
+					Level:   "error",
+					Message: sarif.Message{Text: "unused variable"},
+					Locations: []sarif.Location{{
+						PhysicalLocation: sarif.PhysicalLocation{
+							ArtifactLocation: sarif.ArtifactLocation{URI: path},
+							Region:           sarif.Region{StartLine: 3, EndLine: 3},
+						},
+					}},
+					Properties: map[string]interface{}{"gavel/tier": "comprehensive"},
+				}},
+			}
+		}()
+		return ch
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 800*time.Millisecond)
+	defer cancel()
+
+	go server.Run(ctx)
+	time.Sleep(700 * time.Millisecond)
+	writer.Flush()
+
+	outputStr := output.String()
+
+	publishCount := strings.Count(outputStr, MethodTextDocumentPublishDiagnostics)
+	if publishCount < 2 {
+		t.Errorf("Expected at least 2 publishDiagnostics notifications (one per tier), got %d", publishCount)
+	}
+}
+
 func intPtr(i int) *int {
 	return &i
 }
