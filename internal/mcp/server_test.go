@@ -85,6 +85,7 @@ func registerAll(ts *mcptest.Server, h *handlers) {
 	ts.AddTool(suppressFindingTool(), h.handleSuppressFinding)
 	ts.AddTool(listSuppressionsTool(), h.handleListSuppressions)
 	ts.AddTool(unsuppressFindingTool(), h.handleUnsuppressFinding)
+	ts.AddTool(analyzeDiffTool(), h.handleAnalyzeDiff)
 	ts.AddResource(policiesResource(), h.handlePoliciesResource)
 	ts.AddResourceTemplate(resultTemplate(), h.handleResultTemplate)
 	ts.AddPrompt(codeReviewPrompt(), h.handleCodeReviewPrompt)
@@ -909,4 +910,96 @@ func TestUnsuppressFindingTool(t *testing.T) {
 	supps, err := suppression.Load(dir)
 	require.NoError(t, err)
 	assert.Empty(t, supps)
+}
+
+// --- analyze_diff tests ---
+
+func TestAnalyzeDiffToolRegistered(t *testing.T) {
+	ts := setupTestServer(t)
+	client := ts.Client()
+
+	result, err := client.ListTools(context.Background(), mcpgo.ListToolsRequest{})
+	require.NoError(t, err)
+
+	toolNames := make(map[string]bool)
+	for _, tool := range result.Tools {
+		toolNames[tool.Name] = true
+	}
+
+	assert.True(t, toolNames["analyze_diff"], "analyze_diff tool should be registered")
+}
+
+func TestAnalyzeDiffRequiresPath(t *testing.T) {
+	ts := setupTestServer(t)
+	client := ts.Client()
+
+	result, err := callTool(context.Background(), client, "analyze_diff", map[string]any{})
+	require.NoError(t, err)
+	assert.True(t, result.IsError, "expected error when path is missing")
+
+	text := result.Content[0].(mcpgo.TextContent).Text
+	assert.Contains(t, text, "path is required")
+}
+
+func TestAnalyzeDiffRequiresDiffOrRange(t *testing.T) {
+	tmpDir := t.TempDir()
+	testFile := filepath.Join(tmpDir, "test.go")
+	require.NoError(t, os.WriteFile(testFile, []byte("package main\n"), 0644))
+
+	cfg := testConfig()
+	fs := testStore(t)
+	h := newTestHandlers(t, cfg, fs, tmpDir)
+
+	testServer := mcptest.NewUnstartedServer(t)
+	registerAll(testServer, h)
+	require.NoError(t, testServer.Start(context.Background()))
+	defer testServer.Close()
+
+	client := testServer.Client()
+
+	// Only path, no diff or range
+	result, err := callTool(context.Background(), client, "analyze_diff", map[string]any{
+		"path": testFile,
+	})
+	require.NoError(t, err)
+	assert.True(t, result.IsError, "expected error when neither diff nor range provided")
+
+	text := result.Content[0].(mcpgo.TextContent).Text
+	assert.Contains(t, text, "exactly one of")
+}
+
+func TestExtractChangedLines(t *testing.T) {
+	tests := []struct {
+		name      string
+		diff      string
+		wantStart int
+		wantEnd   int
+	}{
+		{
+			name:      "single hunk",
+			diff:      "@@ -10,5 +10,7 @@ func foo() {\n+added line\n+another line\n context\n",
+			wantStart: 10,
+			wantEnd:   16,
+		},
+		{
+			name: "multiple hunks",
+			diff: "@@ -5,3 +5,4 @@ header\n+line\n @@ -20,2 +21,5 @@ other\n+more\n",
+			wantStart: 5,
+			wantEnd:   25,
+		},
+		{
+			name:      "no hunks",
+			diff:      "just some random text\nno hunk headers here\n",
+			wantStart: 0,
+			wantEnd:   0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			start, end := extractChangedLines(tt.diff)
+			assert.Equal(t, tt.wantStart, start, "start line")
+			assert.Equal(t, tt.wantEnd, end, "end line")
+		})
+	}
 }

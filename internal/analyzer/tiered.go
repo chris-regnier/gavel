@@ -305,6 +305,11 @@ func (ta *TieredAnalyzer) runInstantTier(ctx context.Context, art input.Artifact
 	}
 }
 
+// RunPatternMatching executes instant checks (regex + AST) and returns matching SARIF results.
+func (ta *TieredAnalyzer) RunPatternMatching(art input.Artifact) []sarif.Result {
+	return ta.runPatternMatching(art)
+}
+
 // runPatternMatching executes instant checks by partitioning rules into regex and AST types
 func (ta *TieredAnalyzer) runPatternMatching(art input.Artifact) []sarif.Result {
 	ta.mu.RLock()
