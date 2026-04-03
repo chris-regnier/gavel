@@ -21,6 +21,17 @@ import (
 // AnalyzeFunc is the function signature for analyzing a file
 type AnalyzeFunc func(ctx context.Context, path, content string) ([]sarif.Result, error)
 
+// ProgressiveAnalyzeFunc analyzes a file progressively, emitting tier results on the channel.
+// The channel is closed when all tiers complete. The context supports cancellation.
+type ProgressiveAnalyzeFunc func(ctx context.Context, path, content string) <-chan ProgressiveResult
+
+// ProgressiveResult is a single tier's findings for a file
+type ProgressiveResult struct {
+	Tier    string        // "instant", "fast", "comprehensive"
+	Results []sarif.Result
+	Error   error
+}
+
 // resultsCacheEntry holds cached SARIF results for a document
 type resultsCacheEntry struct {
 	results     []sarif.Result
@@ -86,6 +97,13 @@ type Server struct {
 	resultsCache map[string]resultsCacheEntry
 	resultsMu    sync.RWMutex
 
+	// Per-file cancellation for in-flight progressive analysis
+	cancelFuncs map[string]context.CancelFunc // URI -> cancel
+	cancelMu    sync.Mutex
+
+	// Optional progressive analysis function
+	progressiveAnalyze ProgressiveAnalyzeFunc
+
 	// Components
 	watcher      *DebouncedWatcher
 	cacheManager cache.CacheManager
@@ -112,6 +130,7 @@ func NewServerWithConfig(reader *bufio.Reader, writer *bufio.Writer, analyze Ana
 		documents:     make(map[string]string),
 		contentHashes: make(map[string]string),
 		resultsCache:  make(map[string]resultsCacheEntry),
+		cancelFuncs:   make(map[string]context.CancelFunc),
 		config:        cfg,
 	}
 
@@ -147,6 +166,11 @@ func NewServerWithConfig(reader *bufio.Reader, writer *bufio.Writer, analyze Ana
 // SetCacheManager sets the cache manager for the server
 func (s *Server) SetCacheManager(c cache.CacheManager) {
 	s.cacheManager = c
+}
+
+// SetProgressiveAnalyze sets the progressive analysis function.
+func (s *Server) SetProgressiveAnalyze(fn ProgressiveAnalyzeFunc) {
+	s.progressiveAnalyze = fn
 }
 
 // jsonRPCMessage represents a JSON-RPC 2.0 message
@@ -470,6 +494,9 @@ func computeContentHash(content string) string {
 
 // analyzeAndPublish runs analysis on a file and publishes diagnostics.
 // It skips analysis if the file content has not changed since the last run.
+// When a progressive analysis function is set, diagnostics are published
+// incrementally as each tier completes. Otherwise, diagnostics are published
+// once after the synchronous analysis completes.
 func (s *Server) analyzeAndPublish(ctx context.Context, uri, path, content string) {
 	newHash := computeContentHash(content)
 	s.docMu.RLock()
@@ -485,17 +512,37 @@ func (s *Server) analyzeAndPublish(ctx context.Context, uri, path, content strin
 	s.contentHashes[uri] = newHash
 	s.docMu.Unlock()
 
-	// Run analysis
+	// Cancel any in-flight analysis for this URI
+	s.cancelMu.Lock()
+	if cancel, ok := s.cancelFuncs[uri]; ok {
+		cancel()
+	}
+	analysisCtx, cancel := context.WithCancel(ctx)
+	s.cancelFuncs[uri] = cancel
+	s.cancelMu.Unlock()
+
+	if s.progressiveAnalyze != nil {
+		s.analyzeProgressive(analysisCtx, uri, path, content)
+	} else {
+		s.analyzeSynchronous(analysisCtx, uri, path, content)
+	}
+}
+
+func (s *Server) analyzeSynchronous(ctx context.Context, uri, path, content string) {
+	defer s.cleanupCancel(uri)
+
 	results, err := s.analyze(ctx, path, content)
 	if err != nil {
+		if ctx.Err() != nil {
+			slog.Debug("analysis cancelled", "uri", uri)
+			return
+		}
 		slog.Error("analysis failed", "uri", uri, "err", err)
 		return
 	}
 
-	// Convert to diagnostics
 	diagnostics := SarifResultsToDiagnostics(results)
 
-	// Cache results for code actions
 	s.resultsMu.Lock()
 	s.resultsCache[uri] = resultsCacheEntry{
 		results:     results,
@@ -503,10 +550,48 @@ func (s *Server) analyzeAndPublish(ctx context.Context, uri, path, content strin
 	}
 	s.resultsMu.Unlock()
 
-	// Publish diagnostics
 	if err := s.publishDiagnostics(uri, diagnostics); err != nil {
 		slog.Error("failed to publish diagnostics", "uri", uri, "err", err)
 	}
+}
+
+func (s *Server) analyzeProgressive(ctx context.Context, uri, path, content string) {
+	defer s.cleanupCancel(uri)
+
+	resultCh := s.progressiveAnalyze(ctx, path, content)
+
+	var allResults []sarif.Result
+	for tierResult := range resultCh {
+		if ctx.Err() != nil {
+			slog.Debug("progressive analysis cancelled", "uri", uri)
+			return
+		}
+
+		if tierResult.Error != nil {
+			slog.Error("tier analysis failed", "uri", uri, "tier", tierResult.Tier, "err", tierResult.Error)
+			continue
+		}
+
+		allResults = append(allResults, tierResult.Results...)
+		diagnostics := SarifResultsToDiagnostics(allResults)
+
+		s.resultsMu.Lock()
+		s.resultsCache[uri] = resultsCacheEntry{
+			results:     allResults,
+			diagnostics: diagnostics,
+		}
+		s.resultsMu.Unlock()
+
+		if err := s.publishDiagnostics(uri, diagnostics); err != nil {
+			slog.Error("failed to publish diagnostics", "uri", uri, "tier", tierResult.Tier, "err", err)
+		}
+	}
+}
+
+func (s *Server) cleanupCancel(uri string) {
+	s.cancelMu.Lock()
+	delete(s.cancelFuncs, uri)
+	s.cancelMu.Unlock()
 }
 
 // shouldAnalyze checks if a file should be analyzed based on watch/ignore patterns
