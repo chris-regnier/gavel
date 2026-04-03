@@ -172,6 +172,49 @@ func TestServerDocumentSync(t *testing.T) {
 	}
 }
 
+func TestServerSkipsUnchangedFile(t *testing.T) {
+	content := "package main\n\nfunc main() {}\n"
+
+	didOpenParams := DidOpenTextDocumentParams{
+		TextDocument: TextDocumentItem{
+			URI:        "file:///test.go",
+			LanguageID: "go",
+			Version:    1,
+			Text:       content,
+		},
+	}
+
+	didSaveParams := DidSaveTextDocumentParams{
+		TextDocument: TextDocumentIdentifier{URI: "file:///test.go"},
+		Text:         &content,
+	}
+
+	input := makeJSONRPCMessage(MethodTextDocumentDidOpen, didOpenParams, 1) +
+		makeJSONRPCMessage(MethodTextDocumentDidSave, didSaveParams, 2)
+
+	var output bytes.Buffer
+	reader := bufio.NewReader(strings.NewReader(input))
+	writer := bufio.NewWriter(&output)
+
+	analyzeCount := 0
+	analyzeFunc := func(ctx context.Context, path, content string) ([]sarif.Result, error) {
+		analyzeCount++
+		return []sarif.Result{}, nil
+	}
+
+	server := NewServer(reader, writer, analyzeFunc)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 800*time.Millisecond)
+	defer cancel()
+
+	go server.Run(ctx)
+	time.Sleep(700 * time.Millisecond)
+
+	if analyzeCount != 1 {
+		t.Errorf("Expected 1 analysis call (skip unchanged), got %d", analyzeCount)
+	}
+}
+
 func intPtr(i int) *int {
 	return &i
 }
