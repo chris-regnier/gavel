@@ -38,6 +38,13 @@ type resultsCacheEntry struct {
 	diagnostics []Diagnostic
 }
 
+// cancelEntry pairs a cancel function with its generation counter
+// so that cleanup from a stale analysis does not remove a newer entry.
+type cancelEntry struct {
+	cancel context.CancelFunc
+	gen    uint64
+}
+
 // ServerConfig holds configuration for the LSP server
 type ServerConfig struct {
 	DebounceDuration time.Duration
@@ -98,7 +105,8 @@ type Server struct {
 	resultsMu    sync.RWMutex
 
 	// Per-file cancellation for in-flight progressive analysis
-	cancelFuncs map[string]context.CancelFunc // URI -> cancel
+	cancelFuncs map[string]cancelEntry // URI -> cancel entry with generation
+	cancelGen   uint64                 // monotonic generation counter
 	cancelMu    sync.Mutex
 
 	// Optional progressive analysis function
@@ -130,7 +138,7 @@ func NewServerWithConfig(reader *bufio.Reader, writer *bufio.Writer, analyze Ana
 		documents:     make(map[string]string),
 		contentHashes: make(map[string]string),
 		resultsCache:  make(map[string]resultsCacheEntry),
-		cancelFuncs:   make(map[string]context.CancelFunc),
+		cancelFuncs:   make(map[string]cancelEntry),
 		config:        cfg,
 	}
 
@@ -155,7 +163,7 @@ func NewServerWithConfig(reader *bufio.Reader, writer *bufio.Writer, analyze Ana
 
 			if ok {
 				path := uriToPath(uri)
-				s.analyzeAndPublish(context.Background(), uri, path, content)
+				go s.analyzeAndPublish(context.Background(), uri, path, content)
 			}
 		}
 	})
@@ -361,6 +369,14 @@ func (s *Server) handleDidClose(params json.RawMessage) error {
 
 	uri := didCloseParams.TextDocument.URI
 
+	// Cancel any in-flight analysis
+	s.cancelMu.Lock()
+	if e, ok := s.cancelFuncs[uri]; ok {
+		e.cancel()
+		delete(s.cancelFuncs, uri)
+	}
+	s.cancelMu.Unlock()
+
 	// Remove document from tracking
 	s.docMu.Lock()
 	delete(s.documents, uri)
@@ -514,22 +530,24 @@ func (s *Server) analyzeAndPublish(ctx context.Context, uri, path, content strin
 
 	// Cancel any in-flight analysis for this URI
 	s.cancelMu.Lock()
-	if cancel, ok := s.cancelFuncs[uri]; ok {
-		cancel()
+	if e, ok := s.cancelFuncs[uri]; ok {
+		e.cancel()
 	}
+	s.cancelGen++
+	gen := s.cancelGen
 	analysisCtx, cancel := context.WithCancel(ctx)
-	s.cancelFuncs[uri] = cancel
+	s.cancelFuncs[uri] = cancelEntry{cancel: cancel, gen: gen}
 	s.cancelMu.Unlock()
 
 	if s.progressiveAnalyze != nil {
-		s.analyzeProgressive(analysisCtx, uri, path, content)
+		s.analyzeProgressive(analysisCtx, uri, path, content, gen)
 	} else {
-		s.analyzeSynchronous(analysisCtx, uri, path, content)
+		s.analyzeSynchronous(analysisCtx, uri, path, content, gen)
 	}
 }
 
-func (s *Server) analyzeSynchronous(ctx context.Context, uri, path, content string) {
-	defer s.cleanupCancel(uri)
+func (s *Server) analyzeSynchronous(ctx context.Context, uri, path, content string, gen uint64) {
+	defer s.cleanupCancel(uri, gen)
 
 	results, err := s.analyze(ctx, path, content)
 	if err != nil {
@@ -555,18 +573,13 @@ func (s *Server) analyzeSynchronous(ctx context.Context, uri, path, content stri
 	}
 }
 
-func (s *Server) analyzeProgressive(ctx context.Context, uri, path, content string) {
-	defer s.cleanupCancel(uri)
+func (s *Server) analyzeProgressive(ctx context.Context, uri, path, content string, gen uint64) {
+	defer s.cleanupCancel(uri, gen)
 
 	resultCh := s.progressiveAnalyze(ctx, path, content)
 
 	var allResults []sarif.Result
 	for tierResult := range resultCh {
-		if ctx.Err() != nil {
-			slog.Debug("progressive analysis cancelled", "uri", uri)
-			return
-		}
-
 		if tierResult.Error != nil {
 			slog.Error("tier analysis failed", "uri", uri, "tier", tierResult.Tier, "err", tierResult.Error)
 			continue
@@ -588,9 +601,12 @@ func (s *Server) analyzeProgressive(ctx context.Context, uri, path, content stri
 	}
 }
 
-func (s *Server) cleanupCancel(uri string) {
+func (s *Server) cleanupCancel(uri string, gen uint64) {
 	s.cancelMu.Lock()
-	delete(s.cancelFuncs, uri)
+	if e, ok := s.cancelFuncs[uri]; ok && e.gen == gen {
+		e.cancel() // release context resources
+		delete(s.cancelFuncs, uri)
+	}
 	s.cancelMu.Unlock()
 }
 
