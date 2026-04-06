@@ -2,6 +2,7 @@ package bench
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"sort"
 	"sync"
@@ -211,4 +212,153 @@ func ComputeCostMetrics(calls []CallRecord, model ModelInfo, totalFiles int) Cos
 		TotalUSD:          totalUSD,
 		PerFileAvgUSD:     perFile,
 	}
+}
+
+// ClientFactory creates a BAMLClient for a given model ID.
+type ClientFactory func(modelID string) analyzer.BAMLClient
+
+// BenchmarkModel runs the corpus against a single model for the given number of
+// runs and returns aggregated quality, latency, and cost metrics.
+func BenchmarkModel(ctx context.Context, corpus *Corpus, client analyzer.BAMLClient, model ModelInfo, runs int, policies map[string]config.Policy, persona string, lineTolerance int) (*ModelResult, error) {
+	bc := NewBenchClient(client, model)
+	policiesText := analyzer.FormatPolicies(policies)
+	personaPrompt, err := analyzer.GetPersonaPrompt(ctx, persona)
+	if err != nil {
+		return nil, fmt.Errorf("getting persona prompt: %w", err)
+	}
+
+	var allCaseScores [][]CaseScore
+	for run := 0; run < runs; run++ {
+		var runScores []CaseScore
+		for _, c := range corpus.Cases {
+			findings, err := bc.AnalyzeCode(ctx, c.SourceContent, policiesText, personaPrompt, "")
+			if err != nil {
+				return nil, fmt.Errorf("model %s, case %s, run %d: %w", model.ID, c.Name, run, err)
+			}
+			results := findingsToResults(findings)
+			score := ScoreCase(c, results, lineTolerance)
+			runScores = append(runScores, score)
+		}
+		allCaseScores = append(allCaseScores, runScores)
+	}
+
+	quality := aggregateQuality(allCaseScores)
+	calls := bc.Calls()
+	return &ModelResult{
+		ModelID: model.ID,
+		Quality: quality,
+		Latency: ComputeLatencyMetrics(calls),
+		Cost:    ComputeCostMetrics(calls, model, len(corpus.Cases)*runs),
+		Runs:    calls,
+	}, nil
+}
+
+// aggregateQuality computes aggregate quality metrics across multiple runs of case scores.
+func aggregateQuality(allRuns [][]CaseScore) QualityMetrics {
+	if len(allRuns) == 0 {
+		return QualityMetrics{}
+	}
+	var f1s []float64
+	var totalTP, totalFP, totalFN, totalHalluc int
+	var totalTPConf float64
+	var tpCount int
+
+	for _, runScores := range allRuns {
+		agg := AggregateScores(runScores)
+		f1s = append(f1s, agg.MicroF1)
+		totalTP += agg.TotalTP
+		totalFP += agg.TotalFP
+		totalFN += agg.TotalFN
+		totalHalluc += agg.TotalHalluc
+		for _, cs := range runScores {
+			if cs.TruePositives > 0 {
+				totalTPConf += cs.MeanTPConf * float64(cs.TruePositives)
+				tpCount += cs.TruePositives
+			}
+		}
+	}
+
+	nRuns := float64(len(allRuns))
+	totalResults := float64(totalTP+totalFP) / nRuns
+	var precision, recall, f1, hallucinRate, meanConf, variance float64
+	if totalTP+totalFP > 0 {
+		precision = float64(totalTP) / float64(totalTP+totalFP)
+	}
+	if totalTP+totalFN > 0 {
+		recall = float64(totalTP) / float64(totalTP+totalFN)
+	}
+	if precision+recall > 0 {
+		f1 = 2 * precision * recall / (precision + recall)
+	}
+	if totalResults > 0 {
+		hallucinRate = float64(totalHalluc) / nRuns / totalResults
+	}
+	if tpCount > 0 {
+		meanConf = totalTPConf / float64(tpCount)
+	}
+	if len(f1s) > 1 {
+		meanF1 := 0.0
+		for _, v := range f1s {
+			meanF1 += v
+		}
+		meanF1 /= float64(len(f1s))
+		for _, v := range f1s {
+			variance += (v - meanF1) * (v - meanF1)
+		}
+		variance /= float64(len(f1s) - 1)
+	}
+	return QualityMetrics{
+		Precision:         precision,
+		Recall:            recall,
+		F1:                f1,
+		HallucinationRate: hallucinRate,
+		MeanConfidence:    meanConf,
+		Variance:          variance,
+	}
+}
+
+// RunComparison benchmarks all provided models concurrently against the corpus
+// and returns a ComparisonReport sorted by descending F1 score.
+func RunComparison(ctx context.Context, corpus *Corpus, models map[string]ModelInfo, factory ClientFactory, cfg CompareConfig) (*ComparisonReport, error) {
+	report := &ComparisonReport{
+		Metadata: ComparisonMetadata{
+			Timestamp:    time.Now(),
+			RunsPerModel: cfg.Runs,
+			CorpusSize:   len(corpus.Cases),
+		},
+	}
+
+	type modelResultOrErr struct {
+		result *ModelResult
+		err    error
+	}
+	resultsCh := make(chan modelResultOrErr, len(models))
+	sem := make(chan struct{}, cfg.Parallel)
+	var wg sync.WaitGroup
+
+	for id, info := range models {
+		wg.Add(1)
+		go func(modelID string, modelInfo ModelInfo) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			client := factory(modelID)
+			result, err := BenchmarkModel(ctx, corpus, client, modelInfo, cfg.Runs, cfg.Policies, cfg.Persona, 5)
+			resultsCh <- modelResultOrErr{result: result, err: err}
+		}(id, info)
+	}
+
+	go func() { wg.Wait(); close(resultsCh) }()
+
+	for res := range resultsCh {
+		if res.err != nil {
+			return nil, res.err
+		}
+		report.Models = append(report.Models, *res.result)
+	}
+
+	sort.Slice(report.Models, func(i, j int) bool {
+		return report.Models[i].Quality.F1 > report.Models[j].Quality.F1
+	})
+	return report, nil
 }

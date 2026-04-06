@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/chris-regnier/gavel/internal/analyzer"
+	"github.com/chris-regnier/gavel/internal/config"
 )
 
 // mockDelayClient returns findings after a fixed delay.
@@ -80,5 +81,85 @@ func TestComputeLatencyMetrics_Empty(t *testing.T) {
 	lm := ComputeLatencyMetrics(nil)
 	if lm.MeanMs != 0 {
 		t.Errorf("expected 0 mean for empty calls, got %d", lm.MeanMs)
+	}
+}
+
+// mockCorpusClient is a simple BAMLClient returning fixed findings.
+type mockCorpusClient struct {
+	findings []analyzer.Finding
+}
+
+func (m *mockCorpusClient) AnalyzeCode(ctx context.Context, code, policies, persona, additional string) ([]analyzer.Finding, error) {
+	return m.findings, nil
+}
+
+func TestBenchmarkModel(t *testing.T) {
+	corpus := &Corpus{Cases: []Case{{
+		Name:          "test-case",
+		SourceContent: "func main() { password := \"secret\" }",
+		ExpectedFindings: []ExpectedFinding{
+			{RuleID: "any", Severity: "error", LineRange: [2]int{1, 1}, Category: "security", MustFind: true},
+		},
+		Metadata: CaseMetadata{Language: "go", Category: "security"},
+	}}}
+	client := &mockCorpusClient{findings: []analyzer.Finding{
+		{RuleID: "hardcoded-secret", Level: "error", Message: "Hardcoded password", StartLine: 1, EndLine: 1, Confidence: 0.9},
+	}}
+	modelInfo := ModelInfo{ID: "test/model", InputPricePerM: 1.0, OutputPricePerM: 5.0}
+	policies := map[string]config.Policy{
+		"shall-be-merged": {Description: "test", Instruction: "check for issues", Enabled: true},
+	}
+
+	result, err := BenchmarkModel(context.Background(), corpus, client, modelInfo, 2, policies, "code-reviewer", 5)
+	if err != nil {
+		t.Fatalf("BenchmarkModel: %v", err)
+	}
+	if result.ModelID != "test/model" {
+		t.Errorf("expected test/model, got %s", result.ModelID)
+	}
+	if result.Quality.F1 == 0 {
+		t.Error("expected non-zero F1")
+	}
+	if len(result.Runs) != 2 {
+		t.Errorf("expected 2 run records, got %d", len(result.Runs))
+	}
+}
+
+func TestRunComparison(t *testing.T) {
+	corpus := &Corpus{Cases: []Case{{
+		Name:          "test-case",
+		SourceContent: "x = eval(input())",
+		ExpectedFindings: []ExpectedFinding{
+			{RuleID: "any", Severity: "error", LineRange: [2]int{1, 1}, Category: "security", MustFind: true},
+		},
+		Metadata: CaseMetadata{Language: "python", Category: "security"},
+	}}}
+	clientFactory := func(modelID string) analyzer.BAMLClient {
+		return &mockCorpusClient{findings: []analyzer.Finding{
+			{RuleID: "eval-usage", Level: "error", Message: "Dangerous eval", StartLine: 1, EndLine: 1, Confidence: 0.85},
+		}}
+	}
+	models := map[string]ModelInfo{
+		"model-a": {ID: "model-a", InputPricePerM: 1.0, OutputPricePerM: 5.0},
+		"model-b": {ID: "model-b", InputPricePerM: 0.5, OutputPricePerM: 3.0},
+	}
+	cfg := CompareConfig{
+		Runs:     2,
+		Parallel: 2,
+		Policies: map[string]config.Policy{
+			"shall-be-merged": {Instruction: "check for issues", Enabled: true},
+		},
+		Persona: "code-reviewer",
+	}
+
+	report, err := RunComparison(context.Background(), corpus, models, clientFactory, cfg)
+	if err != nil {
+		t.Fatalf("RunComparison: %v", err)
+	}
+	if len(report.Models) != 2 {
+		t.Fatalf("expected 2 model results, got %d", len(report.Models))
+	}
+	if report.Metadata.RunsPerModel != 2 {
+		t.Errorf("expected 2 runs_per_model, got %d", report.Metadata.RunsPerModel)
 	}
 }
