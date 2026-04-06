@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -73,12 +74,19 @@ func TestServerInitialize(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 
+	serverDone := make(chan struct{})
 	go func() {
 		server.Run(ctx)
+		close(serverDone)
 	}()
 
-	// Wait for server to process
-	time.Sleep(50 * time.Millisecond)
+	// Wait for server goroutine to finish (input EOF causes immediate exit)
+	select {
+	case <-serverDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("server did not exit in time")
+	}
+
 	writer.Flush()
 
 	// Parse response
@@ -142,9 +150,9 @@ func TestServerDocumentSync(t *testing.T) {
 	writer := bufio.NewWriter(&output)
 
 	// Track if analyze was called
-	analyzeCalled := false
+	var analyzeCalled atomic.Bool
 	analyzeFunc := func(ctx context.Context, path, content string) ([]sarif.Result, error) {
-		analyzeCalled = true
+		analyzeCalled.Store(true)
 		if path != "/test.go" {
 			t.Errorf("Expected path '/test.go', got '%s'", path)
 		}
@@ -166,8 +174,12 @@ func TestServerDocumentSync(t *testing.T) {
 	// Wait for debounced watcher to trigger (300ms debounce + buffer)
 	time.Sleep(400 * time.Millisecond)
 
+	// Cancel server before reading shared state to avoid data race
+	cancel()
+	time.Sleep(50 * time.Millisecond)
+
 	// Verify document was tracked
-	if !analyzeCalled {
+	if !analyzeCalled.Load() {
 		t.Error("Expected analyze function to be called after didOpen")
 	}
 }
@@ -196,9 +208,9 @@ func TestServerSkipsUnchangedFile(t *testing.T) {
 	reader := bufio.NewReader(strings.NewReader(input))
 	writer := bufio.NewWriter(&output)
 
-	analyzeCount := 0
+	var analyzeCount atomic.Int32
 	analyzeFunc := func(ctx context.Context, path, content string) ([]sarif.Result, error) {
-		analyzeCount++
+		analyzeCount.Add(1)
 		return []sarif.Result{}, nil
 	}
 
@@ -210,8 +222,12 @@ func TestServerSkipsUnchangedFile(t *testing.T) {
 	go server.Run(ctx)
 	time.Sleep(700 * time.Millisecond)
 
-	if analyzeCount != 1 {
-		t.Errorf("Expected 1 analysis call (skip unchanged), got %d", analyzeCount)
+	// Cancel server before reading shared state to avoid data race
+	cancel()
+	time.Sleep(50 * time.Millisecond)
+
+	if analyzeCount.Load() != 1 {
+		t.Errorf("Expected 1 analysis call (skip unchanged), got %d", analyzeCount.Load())
 	}
 }
 
@@ -279,11 +295,30 @@ func TestServerProgressiveMultipleTiers(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 800*time.Millisecond)
 	defer cancel()
 
-	go server.Run(ctx)
-	time.Sleep(700 * time.Millisecond)
-	writer.Flush()
+	serverDone := make(chan struct{})
+	go func() {
+		server.Run(ctx)
+		close(serverDone)
+	}()
 
+	// Wait for debounce + analysis to complete
+	time.Sleep(700 * time.Millisecond)
+
+	// Stop watcher and cancel server, then wait for goroutine to finish
+	server.watcher.Stop()
+	cancel()
+	select {
+	case <-serverDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("server did not exit in time")
+	}
+
+	// Lock writerMu to synchronize with any in-flight analysis goroutines,
+	// then read output safely. sendMessage already flushes after each write.
+	server.writerMu.Lock()
+	writer.Flush()
 	outputStr := output.String()
+	server.writerMu.Unlock()
 
 	publishCount := strings.Count(outputStr, MethodTextDocumentPublishDiagnostics)
 	if publishCount < 2 {

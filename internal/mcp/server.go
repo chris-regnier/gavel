@@ -479,6 +479,10 @@ func (h *handlers) handleAnalyzeDiff(ctx context.Context, request mcp.CallToolRe
 		return mcp.NewToolResultError("exactly one of: diff or (line_start + line_end) must be provided"), nil
 	}
 
+	if hasRange && lineStart > lineEnd {
+		return mcp.NewToolResultError("line_start must be <= line_end"), nil
+	}
+
 	persona := request.GetString("persona", h.cfg.Config.Persona)
 	if persona == "" {
 		persona = "code-reviewer"
