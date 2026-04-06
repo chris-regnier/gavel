@@ -58,3 +58,27 @@ func TestBenchClient_RecordsTiming(t *testing.T) {
 		t.Errorf("expected positive output token estimate, got %d", call.OutputTokensEst)
 	}
 }
+
+func TestComputeLatencyMetrics(t *testing.T) {
+	calls := []CallRecord{
+		{LatencyMs: 100}, {LatencyMs: 200}, {LatencyMs: 300}, {LatencyMs: 400}, {LatencyMs: 500},
+		{LatencyMs: 600}, {LatencyMs: 700}, {LatencyMs: 800}, {LatencyMs: 900}, {LatencyMs: 1000},
+	}
+	lm := ComputeLatencyMetrics(calls)
+	if lm.MeanMs != 550 {
+		t.Errorf("expected mean 550, got %d", lm.MeanMs)
+	}
+	if lm.P50Ms != 500 {
+		t.Errorf("expected P50 500, got %d", lm.P50Ms)
+	}
+	if lm.P95Ms != 1000 {
+		t.Errorf("expected P95 1000, got %d", lm.P95Ms)
+	}
+}
+
+func TestComputeLatencyMetrics_Empty(t *testing.T) {
+	lm := ComputeLatencyMetrics(nil)
+	if lm.MeanMs != 0 {
+		t.Errorf("expected 0 mean for empty calls, got %d", lm.MeanMs)
+	}
+}

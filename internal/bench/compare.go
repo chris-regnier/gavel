@@ -2,6 +2,8 @@ package bench
 
 import (
 	"context"
+	"math"
+	"sort"
 	"sync"
 	"time"
 
@@ -152,4 +154,61 @@ type CompareConfig struct {
 	CorpusDir    string
 	RealWorldDir string
 	OutputDir    string
+}
+
+// ComputeLatencyMetrics computes mean and percentile latency from a set of call records.
+func ComputeLatencyMetrics(calls []CallRecord) LatencyMetrics {
+	if len(calls) == 0 {
+		return LatencyMetrics{}
+	}
+	latencies := make([]int64, len(calls))
+	var sum int64
+	for i, c := range calls {
+		latencies[i] = c.LatencyMs
+		sum += c.LatencyMs
+	}
+	sort.Slice(latencies, func(i, j int) bool { return latencies[i] < latencies[j] })
+	return LatencyMetrics{
+		MeanMs: sum / int64(len(latencies)),
+		P50Ms:  percentile(latencies, 0.50),
+		P95Ms:  percentile(latencies, 0.95),
+		P99Ms:  percentile(latencies, 0.99),
+	}
+}
+
+// percentile returns the value at the given percentile from a sorted int64 slice.
+func percentile(sorted []int64, p float64) int64 {
+	if len(sorted) == 0 {
+		return 0
+	}
+	idx := int(math.Ceil(p*float64(len(sorted)))) - 1
+	if idx < 0 {
+		idx = 0
+	}
+	if idx >= len(sorted) {
+		idx = len(sorted) - 1
+	}
+	return sorted[idx]
+}
+
+// ComputeCostMetrics aggregates token counts and computes USD cost from call records.
+func ComputeCostMetrics(calls []CallRecord, model ModelInfo, totalFiles int) CostMetrics {
+	var inTok, outTok int64
+	for _, c := range calls {
+		inTok += int64(c.InputTokensEst)
+		outTok += int64(c.OutputTokensEst)
+	}
+	totalUSD := float64(inTok)/1_000_000*model.InputPricePerM + float64(outTok)/1_000_000*model.OutputPricePerM
+	var perFile float64
+	if totalFiles > 0 {
+		perFile = totalUSD / float64(totalFiles)
+	}
+	return CostMetrics{
+		InputTokensTotal:  inTok,
+		OutputTokensTotal: outTok,
+		InputPricePerM:    model.InputPricePerM,
+		OutputPricePerM:   model.OutputPricePerM,
+		TotalUSD:          totalUSD,
+		PerFileAvgUSD:     perFile,
+	}
 }
