@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -15,9 +16,9 @@ import (
 
 func TestLSPIntegration(t *testing.T) {
 	// Setup mock analyzer with findings
-	analyzeCalled := false
+	var analyzeCalled atomic.Bool
 	mockAnalyze := func(ctx context.Context, path, content string) ([]sarif.Result, error) {
-		analyzeCalled = true
+		analyzeCalled.Store(true)
 		// Only return findings if the content contains SQL injection vulnerability
 		if strings.Contains(content, "SELECT * FROM users WHERE id = ' + userId") {
 			return []sarif.Result{
@@ -96,10 +97,22 @@ func getUser(userId string) {
 	// Wait for messages to be processed and analysis to complete
 	// Initialize (50ms) + didOpen (50ms) + debounce (100ms) + analysis (50ms) = ~250ms
 	time.Sleep(300 * time.Millisecond)
-	writer.Flush()
 
-	// Get output
+	// Stop watcher and cancel server, then wait for goroutine to finish
+	server.watcher.Stop()
+	cancel()
+	select {
+	case <-serverDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("server did not exit in time")
+	}
+
+	// Lock writerMu to synchronize with any in-flight analysis goroutines,
+	// then read output safely. sendMessage already flushes after each write.
+	server.writerMu.Lock()
+	writer.Flush()
 	output := outputBuf.String()
+	server.writerMu.Unlock()
 
 	// Verify initialize response was sent
 	if !strings.Contains(output, "gavel-lsp") {
@@ -107,7 +120,7 @@ func getUser(userId string) {
 	}
 
 	// Verify analyze was called
-	if !analyzeCalled {
+	if !analyzeCalled.Load() {
 		t.Error("expected analyze to be called")
 	}
 
@@ -148,16 +161,6 @@ func getUser(userId string) {
 
 	if !foundDiagnostic {
 		t.Errorf("did not find valid diagnostic in output: %s", output)
-	}
-
-	cancel()
-
-	// Wait for server to finish
-	select {
-	case <-serverDone:
-		// Server exited normally
-	case <-time.After(500 * time.Millisecond):
-		t.Error("server did not exit in time")
 	}
 }
 

@@ -109,6 +109,9 @@ type Server struct {
 	cancelGen   uint64                 // monotonic generation counter
 	cancelMu    sync.Mutex
 
+	// Writer mutex protects s.writer from concurrent writes
+	writerMu sync.Mutex
+
 	// Optional progressive analysis function
 	progressiveAnalyze ProgressiveAnalyzeFunc
 
@@ -644,6 +647,9 @@ func (s *Server) sendResponse(id interface{}, result interface{}, err interface{
 
 // sendMessage sends a JSON-RPC message with Content-Length header
 func (s *Server) sendMessage(msg jsonRPCMessage) error {
+	s.writerMu.Lock()
+	defer s.writerMu.Unlock()
+
 	data, err := json.Marshal(msg)
 	if err != nil {
 		return err

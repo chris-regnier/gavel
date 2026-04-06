@@ -113,6 +113,7 @@ func (w *AnalyzerWrapper) buildCacheKey(path, content string) cache.CacheKey {
 		Provider:    provider,
 		Model:       model,
 		BAMLVersion: "1.0", // TODO: Get from BAML metadata
+		PromptHash:  cache.PromptHash(w.cfg.Persona, w.formatPolicies()),
 		Policies:    policies,
 	}
 }
