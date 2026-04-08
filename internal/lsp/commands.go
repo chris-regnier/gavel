@@ -32,6 +32,8 @@ func (h *CommandHandler) Execute(ctx context.Context, params ExecuteCommandParam
 		return h.analyzeWorkspace(ctx, params.Arguments)
 	case CommandClearCache:
 		return h.clearCache(ctx, params.Arguments)
+	case CommandShowRecommendation:
+		return h.showRecommendation(ctx, params.Arguments)
 	default:
 		return nil, fmt.Errorf("unknown command: %s", params.Command)
 	}
@@ -119,6 +121,18 @@ func (h *CommandHandler) analyzeWorkspace(ctx context.Context, args []interface{
 		Success: true,
 		Message: fmt.Sprintf("Analyzed %d files", analyzed),
 		Data:    map[string]int{"filesAnalyzed": analyzed},
+	}, nil
+}
+
+// showRecommendation returns the recommendation text for a finding
+func (h *CommandHandler) showRecommendation(ctx context.Context, args []interface{}) (*CommandResult, error) {
+	if len(args) < 3 {
+		return &CommandResult{Success: false, Message: "requires uri, ruleId, recommendation arguments"}, nil
+	}
+	recommendation, _ := args[2].(string)
+	return &CommandResult{
+		Success: true,
+		Message: recommendation,
 	}, nil
 }
 

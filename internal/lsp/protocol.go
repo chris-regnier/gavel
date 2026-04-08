@@ -22,9 +22,10 @@ const (
 
 // Gavel custom command names
 const (
-	CommandAnalyzeFile      = "gavel.analyzeFile"
-	CommandAnalyzeWorkspace = "gavel.analyzeWorkspace"
-	CommandClearCache       = "gavel.clearCache"
+	CommandAnalyzeFile        = "gavel.analyzeFile"
+	CommandAnalyzeWorkspace   = "gavel.analyzeWorkspace"
+	CommandClearCache         = "gavel.clearCache"
+	CommandShowRecommendation = "gavel.showRecommendation"
 )
 
 // InitializeParams represents the parameters for the initialize request
