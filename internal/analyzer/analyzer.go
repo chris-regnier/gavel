@@ -33,6 +33,12 @@ type Finding struct {
 type Analyzer struct {
 	client            BAMLClient
 	additionalContext string
+
+	// Cached function index for logical location enrichment. Avoids
+	// re-parsing and re-traversing the same file when Analyze is called
+	// repeatedly with the same artifact.
+	cachedPath string
+	cachedIdx  *astcheck.FunctionIndex
 }
 
 // AnalyzerOption configures an Analyzer.
@@ -94,6 +100,10 @@ func (a *Analyzer) Analyze(ctx context.Context, artifacts []input.Artifact, poli
 			return nil, fmt.Errorf("analyzing %s: %w", art.Path, err)
 		}
 
+		// Build a function index once per artifact (cached across calls)
+		// so logical location lookups use pure Go without CGO overhead.
+		idx := a.getOrBuildIndex(art.Path, []byte(art.Content))
+
 		for _, f := range findings {
 			path := f.FilePath
 			if path == "" {
@@ -115,8 +125,10 @@ func (a *Analyzer) Analyze(ctx context.Context, artifacts []input.Artifact, poli
 			loc := sarif.Location{
 				PhysicalLocation: physLoc,
 			}
-			if ll := astcheck.ResolveLogicalLocation(art.Path, []byte(art.Content), f.StartLine); ll != nil {
-				loc.LogicalLocations = []sarif.LogicalLocation{*ll}
+			if idx != nil {
+				if ll := astcheck.LogicalLocationFromIndex(idx, f.StartLine); ll != nil {
+					loc.LogicalLocations = []sarif.LogicalLocation{*ll}
+				}
 			}
 
 			allResults = append(allResults, sarif.Result{
@@ -134,4 +146,16 @@ func (a *Analyzer) Analyze(ctx context.Context, artifacts []input.Artifact, poli
 	}
 
 	return allResults, nil
+}
+
+// getOrBuildIndex returns a cached or freshly built function index for the
+// given file path. Returns nil for unsupported languages.
+func (a *Analyzer) getOrBuildIndex(path string, source []byte) *astcheck.FunctionIndex {
+	if a.cachedPath == path && a.cachedIdx != nil {
+		return a.cachedIdx
+	}
+	idx, _ := astcheck.BuildIndex(path, source)
+	a.cachedPath = path
+	a.cachedIdx = idx
+	return idx
 }
