@@ -29,7 +29,6 @@ func init() {
 	benchCmd.Flags().StringSlice("models", nil, "Comma-separated list of OpenRouter model IDs to benchmark (default: built-in set)")
 	benchCmd.Flags().String("corpus", "", "Path to corpus directory (default: benchmarks/corpus)")
 	benchCmd.Flags().String("output", ".gavel/bench", "Output directory for benchmark results")
-	benchCmd.Flags().String("format", "json", "Output format: json or markdown")
 
 	modelsCmd := &cobra.Command{
 		Use:   "models",

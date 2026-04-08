@@ -31,7 +31,8 @@ func WriteMarkdown(w io.Writer, report *ComparisonReport) error {
 	}
 	sb.WriteString("\n## How to reproduce\n\n```bash\n")
 	sb.WriteString(fmt.Sprintf("gavel bench --runs %d\n", report.Metadata.RunsPerModel))
-	sb.WriteString("```\n\nFor detailed results, see the structured JSON in `.gavel/bench/`.\n")
+	sb.WriteString("```\n\nFor detailed results, see the structured JSON in `.gavel/bench/`.\n\n")
+	sb.WriteString("> **Note:** Token counts and costs are estimates (character-count/4 heuristic). Actual costs may vary by ~30%.\n")
 	_, err := io.WriteString(w, sb.String())
 	return err
 }
