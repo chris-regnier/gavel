@@ -331,6 +331,9 @@ func (ta *TieredAnalyzer) runRegexRules(art input.Artifact, regexRules []rules.R
 	var results []sarif.Result
 	lines := strings.Split(art.Content, "\n")
 
+	// Build function index once for logical location resolution across all matches.
+	idx, _ := astcheck.BuildIndex(art.Path, []byte(art.Content))
+
 	for _, rule := range regexRules {
 		// Skip rules that don't apply to this file's language
 		if len(rule.Languages) > 0 && !matchesLanguage(art.Path, rule.Languages) {
@@ -380,7 +383,7 @@ func (ta *TieredAnalyzer) runRegexRules(art input.Artifact, regexRules []rules.R
 					ContextRegion: sarif.ExtractContextRegion(art.Content, lineNum, lineNum),
 				},
 			}
-			if ll := astcheck.ResolveLogicalLocation(art.Path, []byte(art.Content), lineNum); ll != nil {
+			if ll := astcheck.LogicalLocationFromIndex(idx, lineNum); ll != nil {
 				loc.LogicalLocations = []sarif.LogicalLocation{*ll}
 			}
 
@@ -417,6 +420,9 @@ func (ta *TieredAnalyzer) runASTRules(art input.Artifact, astRules []rules.Rule)
 
 	var results []sarif.Result
 	sourceBytes := []byte(art.Content)
+
+	// Build function index once for logical location lookups across all matches.
+	funcIdx := astcheck.BuildFunctionIndex(tree.RootNode(), sourceBytes, langName)
 
 	for _, rule := range astRules {
 		if len(rule.Languages) > 0 && !matchesLanguage(art.Path, rule.Languages) {
@@ -471,7 +477,7 @@ func (ta *TieredAnalyzer) runASTRules(art input.Artifact, astRules []rules.Rule)
 					ContextRegion: sarif.ExtractContextRegion(art.Content, m.StartLine, m.EndLine),
 				},
 			}
-			if ll := astcheck.ResolveLogicalLocationFromTree(tree, sourceBytes, langName, m.StartLine); ll != nil {
+			if ll := astcheck.LogicalLocationFromIndex(funcIdx, m.StartLine); ll != nil {
 				loc.LogicalLocations = []sarif.LogicalLocation{*ll}
 			}
 
