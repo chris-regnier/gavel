@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"syscall"
 
 	"github.com/spf13/cobra"
 
@@ -134,9 +135,25 @@ func runLSP(cmd *cobra.Command, args []string) error {
 	// Build server configuration from LSP config
 	serverConfig := lsp.ServerConfigFromLSPConfig(cfg.LSP)
 
+	// Protect the LSP protocol stream from rogue stdout writes.
+	// BAML is a C library (CGO) that writes debug output to fd 1 (stdout)
+	// directly, bypassing Go's os.Stdout. We must redirect at the fd level:
+	// 1. Duplicate fd 1 so the LSP server has exclusive access to real stdout
+	// 2. Redirect fd 1 → fd 2 (stderr) so C libraries' stdout goes to stderr
+	lspFD, err := syscall.Dup(1)
+	if err != nil {
+		return fmt.Errorf("duplicating stdout: %w", err)
+	}
+	if err := syscall.Dup2(2, 1); err != nil {
+		return fmt.Errorf("redirecting stdout to stderr: %w", err)
+	}
+	lspOut := os.NewFile(uintptr(lspFD), "lsp-stdout")
+	defer lspOut.Close()
+	os.Stdout = os.Stderr // also redirect Go-level writes
+
 	// Create LSP server with configuration
 	reader := bufio.NewReader(os.Stdin)
-	writer := bufio.NewWriter(os.Stdout)
+	writer := bufio.NewWriter(lspOut)
 
 	server := lsp.NewServerWithConfig(reader, writer, wrapper.Analyze, serverConfig)
 
