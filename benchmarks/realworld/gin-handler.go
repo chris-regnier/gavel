@@ -1,3 +1,5 @@
+//go:build ignore
+
 // Copyright 2014 Manu Martinez-Almeida. All rights reserved.
 // Use of this source code is governed by a MIT style license.
 // Source: github.com/gin-gonic/gin (MIT License)

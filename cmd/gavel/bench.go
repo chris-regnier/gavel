@@ -120,11 +120,12 @@ func runBench(cmd *cobra.Command, args []string) error {
 
 	// Run benchmark comparison
 	compareCfg := bench.CompareConfig{
-		Runs:     runs,
-		Parallel: parallel,
-		Models:   modelIDs,
-		Policies: cfg.Policies,
-		Persona:  cfg.Persona,
+		Runs:         runs,
+		Parallel:     parallel,
+		Models:       modelIDs,
+		Policies:     cfg.Policies,
+		Persona:      cfg.Persona,
+		RealWorldDir: "benchmarks/realworld",
 	}
 
 	slog.Info("starting benchmark", "models", len(validModels), "runs", runs, "parallel", parallel)

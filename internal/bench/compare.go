@@ -3,10 +3,15 @@ package bench
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"math"
+	"os"
+	"path/filepath"
 	"sort"
 	"sync"
 	"time"
+
+	"gopkg.in/yaml.v3"
 
 	"github.com/chris-regnier/gavel/internal/analyzer"
 	"github.com/chris-regnier/gavel/internal/config"
@@ -253,6 +258,69 @@ func BenchmarkModel(ctx context.Context, corpus *Corpus, client analyzer.BAMLCli
 	}, nil
 }
 
+// RealWorldFile is a file loaded from the real-world benchmark set.
+type RealWorldFile struct {
+	Path    string
+	Content string
+}
+
+// LoadRealWorldFiles reads the manifest and source files from a directory.
+func LoadRealWorldFiles(dir string) ([]RealWorldFile, error) {
+	manifestPath := filepath.Join(dir, "manifest.yaml")
+	data, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return nil, fmt.Errorf("reading manifest: %w", err)
+	}
+
+	var manifest struct {
+		Files []struct {
+			Path string `yaml:"path"`
+		} `yaml:"files"`
+	}
+	if err := yaml.Unmarshal(data, &manifest); err != nil {
+		return nil, fmt.Errorf("parsing manifest: %w", err)
+	}
+
+	var files []RealWorldFile
+	for _, entry := range manifest.Files {
+		content, err := os.ReadFile(filepath.Join(dir, entry.Path))
+		if err != nil {
+			return nil, fmt.Errorf("reading %s: %w", entry.Path, err)
+		}
+		files = append(files, RealWorldFile{Path: entry.Path, Content: string(content)})
+	}
+	return files, nil
+}
+
+// BenchmarkRealWorldFiles runs each file once through a model and captures latency/token data.
+func BenchmarkRealWorldFiles(ctx context.Context, files []RealWorldFile, client analyzer.BAMLClient, model ModelInfo, policies map[string]config.Policy, persona string) (*RealWorldModelResult, error) {
+	bc := NewBenchClient(client, model)
+	policiesText := analyzer.FormatPolicies(policies)
+	personaPrompt, err := analyzer.GetPersonaPrompt(ctx, persona)
+	if err != nil {
+		return nil, fmt.Errorf("getting persona prompt: %w", err)
+	}
+
+	var fileResults []RealWorldFileResult
+	for _, f := range files {
+		start := time.Now()
+		_, err := bc.AnalyzeCode(ctx, f.Content, policiesText, personaPrompt, "")
+		elapsed := time.Since(start)
+		if err != nil {
+			return nil, fmt.Errorf("analyzing %s: %w", f.Path, err)
+		}
+		calls := bc.Calls()
+		lastCall := calls[len(calls)-1]
+		fileResults = append(fileResults, RealWorldFileResult{
+			Path:            f.Path,
+			LatencyMs:       elapsed.Milliseconds(),
+			InputTokensEst:  lastCall.InputTokensEst,
+			OutputTokensEst: lastCall.OutputTokensEst,
+		})
+	}
+	return &RealWorldModelResult{ModelID: model.ID, Files: fileResults}, nil
+}
+
 // aggregateQuality computes aggregate quality metrics across multiple runs of case scores.
 func aggregateQuality(allRuns [][]CaseScore) QualityMetrics {
 	if len(allRuns) == 0 {
@@ -360,5 +428,23 @@ func RunComparison(ctx context.Context, corpus *Corpus, models map[string]ModelI
 	sort.Slice(report.Models, func(i, j int) bool {
 		return report.Models[i].Quality.F1 > report.Models[j].Quality.F1
 	})
+
+	if cfg.RealWorldDir != "" {
+		rwFiles, err := LoadRealWorldFiles(cfg.RealWorldDir)
+		if err != nil {
+			slog.Warn("skipping real-world files", "error", err)
+		} else {
+			for id, info := range models {
+				client := factory(id)
+				rwResult, err := BenchmarkRealWorldFiles(ctx, rwFiles, client, info, cfg.Policies, cfg.Persona)
+				if err != nil {
+					slog.Warn("real-world benchmark failed", "model", id, "error", err)
+					continue
+				}
+				report.RealWorld = append(report.RealWorld, *rwResult)
+			}
+		}
+	}
+
 	return report, nil
 }

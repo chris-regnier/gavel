@@ -163,3 +163,30 @@ func TestRunComparison(t *testing.T) {
 		t.Errorf("expected 2 runs_per_model, got %d", report.Metadata.RunsPerModel)
 	}
 }
+
+func TestBenchmarkRealWorldFiles(t *testing.T) {
+	files := []RealWorldFile{
+		{Path: "test.go", Content: "package main\n\nfunc main() {\n\tfmt.Println(\"hello\")\n}"},
+	}
+	client := &mockCorpusClient{
+		findings: []analyzer.Finding{
+			{RuleID: "test", Level: "warning", Message: "test", Confidence: 0.5},
+		},
+	}
+	model := ModelInfo{ID: "test/model", InputPricePerM: 1.0, OutputPricePerM: 5.0}
+	policies := map[string]config.Policy{"shall-be-merged": {Instruction: "check", Enabled: true}}
+
+	result, err := BenchmarkRealWorldFiles(context.Background(), files, client, model, policies, "code-reviewer")
+	if err != nil {
+		t.Fatalf("BenchmarkRealWorldFiles: %v", err)
+	}
+	if result.ModelID != "test/model" {
+		t.Errorf("expected test/model, got %s", result.ModelID)
+	}
+	if len(result.Files) != 1 {
+		t.Errorf("expected 1 file result, got %d", len(result.Files))
+	}
+	if result.Files[0].LatencyMs < 0 {
+		t.Error("expected non-negative latency")
+	}
+}
