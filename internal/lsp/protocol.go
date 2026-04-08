@@ -1,6 +1,8 @@
 // internal/lsp/protocol.go
 package lsp
 
+import "encoding/json"
+
 // LSP method names
 const (
 	MethodInitialize                     = "initialize"
@@ -52,8 +54,8 @@ type TextDocumentClientCapabilities struct {
 
 // PublishDiagnosticsClientCapabilities defines capabilities for diagnostics
 type PublishDiagnosticsClientCapabilities struct {
-	RelatedInformation bool `json:"relatedInformation,omitempty"`
-	TagSupport         bool `json:"tagSupport,omitempty"`
+	RelatedInformation bool            `json:"relatedInformation,omitempty"`
+	TagSupport         json.RawMessage `json:"tagSupport,omitempty"` // bool or {"valueSet": [...]}
 }
 
 // InitializeResult represents the result of the initialize request
