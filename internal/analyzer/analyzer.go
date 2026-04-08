@@ -99,15 +99,24 @@ func (a *Analyzer) Analyze(ctx context.Context, artifacts []input.Artifact, poli
 				path = art.Path
 			}
 
+			region := sarif.Region{
+				StartLine: f.StartLine,
+				EndLine:   f.EndLine,
+				Snippet:   sarif.ExtractSnippet(art.Content, f.StartLine, f.EndLine),
+			}
+
+			physLoc := sarif.PhysicalLocation{
+				ArtifactLocation: sarif.ArtifactLocation{URI: path},
+				Region:           region,
+				ContextRegion:    sarif.ExtractContextRegion(art.Content, f.StartLine, f.EndLine),
+			}
+
 			allResults = append(allResults, sarif.Result{
 				RuleID:  f.RuleID,
 				Level:   f.Level,
 				Message: sarif.Message{Text: f.Message},
 				Locations: []sarif.Location{{
-					PhysicalLocation: sarif.PhysicalLocation{
-						ArtifactLocation: sarif.ArtifactLocation{URI: path},
-						Region:           sarif.Region{StartLine: f.StartLine, EndLine: f.EndLine},
-					},
+					PhysicalLocation: physLoc,
 				}},
 				Properties: map[string]interface{}{
 					"gavel/recommendation": f.Recommendation,

@@ -376,7 +376,12 @@ func (ta *TieredAnalyzer) runRegexRules(art input.Artifact, regexRules []rules.R
 				Locations: []sarif.Location{{
 					PhysicalLocation: sarif.PhysicalLocation{
 						ArtifactLocation: sarif.ArtifactLocation{URI: art.Path},
-						Region:           sarif.Region{StartLine: lineNum, EndLine: lineNum},
+						Region: sarif.Region{
+							StartLine: lineNum,
+							EndLine:   lineNum,
+							Snippet:   sarif.ExtractSnippet(art.Content, lineNum, lineNum),
+						},
+						ContextRegion: sarif.ExtractContextRegion(art.Content, lineNum, lineNum),
 					},
 				}},
 				Properties: props,
@@ -457,7 +462,12 @@ func (ta *TieredAnalyzer) runASTRules(art input.Artifact, astRules []rules.Rule)
 				Locations: []sarif.Location{{
 					PhysicalLocation: sarif.PhysicalLocation{
 						ArtifactLocation: sarif.ArtifactLocation{URI: art.Path},
-						Region:           sarif.Region{StartLine: m.StartLine, EndLine: m.EndLine},
+						Region: sarif.Region{
+							StartLine: m.StartLine,
+							EndLine:   m.EndLine,
+							Snippet:   sarif.ExtractSnippet(art.Content, m.StartLine, m.EndLine),
+						},
+						ContextRegion: sarif.ExtractContextRegion(art.Content, m.StartLine, m.EndLine),
 					},
 				}},
 				Properties: props,
