@@ -369,21 +369,26 @@ func (ta *TieredAnalyzer) runRegexRules(art input.Artifact, regexRules []rules.R
 				props["gavel/references"] = rule.References
 			}
 
-			results = append(results, sarif.Result{
-				RuleID:  rule.ID,
-				Level:   rule.Level,
-				Message: sarif.Message{Text: rule.Message},
-				Locations: []sarif.Location{{
-					PhysicalLocation: sarif.PhysicalLocation{
-						ArtifactLocation: sarif.ArtifactLocation{URI: art.Path},
-						Region: sarif.Region{
-							StartLine: lineNum,
-							EndLine:   lineNum,
-							Snippet:   sarif.ExtractSnippet(art.Content, lineNum, lineNum),
-						},
-						ContextRegion: sarif.ExtractContextRegion(art.Content, lineNum, lineNum),
+			loc := sarif.Location{
+				PhysicalLocation: sarif.PhysicalLocation{
+					ArtifactLocation: sarif.ArtifactLocation{URI: art.Path},
+					Region: sarif.Region{
+						StartLine: lineNum,
+						EndLine:   lineNum,
+						Snippet:   sarif.ExtractSnippet(art.Content, lineNum, lineNum),
 					},
-				}},
+					ContextRegion: sarif.ExtractContextRegion(art.Content, lineNum, lineNum),
+				},
+			}
+			if ll := astcheck.ResolveLogicalLocation(art.Path, []byte(art.Content), lineNum); ll != nil {
+				loc.LogicalLocations = []sarif.LogicalLocation{*ll}
+			}
+
+			results = append(results, sarif.Result{
+				RuleID:     rule.ID,
+				Level:      rule.Level,
+				Message:    sarif.Message{Text: rule.Message},
+				Locations:  []sarif.Location{loc},
 				Properties: props,
 			})
 		}
@@ -455,21 +460,26 @@ func (ta *TieredAnalyzer) runASTRules(art input.Artifact, astRules []rules.Rule)
 				}
 			}
 
-			results = append(results, sarif.Result{
-				RuleID:  rule.ID,
-				Level:   rule.Level,
-				Message: sarif.Message{Text: msg},
-				Locations: []sarif.Location{{
-					PhysicalLocation: sarif.PhysicalLocation{
-						ArtifactLocation: sarif.ArtifactLocation{URI: art.Path},
-						Region: sarif.Region{
-							StartLine: m.StartLine,
-							EndLine:   m.EndLine,
-							Snippet:   sarif.ExtractSnippet(art.Content, m.StartLine, m.EndLine),
-						},
-						ContextRegion: sarif.ExtractContextRegion(art.Content, m.StartLine, m.EndLine),
+			loc := sarif.Location{
+				PhysicalLocation: sarif.PhysicalLocation{
+					ArtifactLocation: sarif.ArtifactLocation{URI: art.Path},
+					Region: sarif.Region{
+						StartLine: m.StartLine,
+						EndLine:   m.EndLine,
+						Snippet:   sarif.ExtractSnippet(art.Content, m.StartLine, m.EndLine),
 					},
-				}},
+					ContextRegion: sarif.ExtractContextRegion(art.Content, m.StartLine, m.EndLine),
+				},
+			}
+			if ll := astcheck.ResolveLogicalLocationFromTree(tree, sourceBytes, langName, m.StartLine); ll != nil {
+				loc.LogicalLocations = []sarif.LogicalLocation{*ll}
+			}
+
+			results = append(results, sarif.Result{
+				RuleID:     rule.ID,
+				Level:      rule.Level,
+				Message:    sarif.Message{Text: msg},
+				Locations:  []sarif.Location{loc},
 				Properties: props,
 			})
 		}

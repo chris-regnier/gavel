@@ -63,7 +63,16 @@ type Message struct {
 }
 
 type Location struct {
-	PhysicalLocation PhysicalLocation `json:"physicalLocation"`
+	PhysicalLocation  PhysicalLocation  `json:"physicalLocation"`
+	LogicalLocations []LogicalLocation `json:"logicalLocations,omitempty"`
+}
+
+// LogicalLocation provides semantic context (e.g. enclosing function/method/class)
+// for a finding, per SARIF 2.1.0 §3.33.
+type LogicalLocation struct {
+	Name               string `json:"name,omitempty"`
+	Kind               string `json:"kind,omitempty"`
+	FullyQualifiedName string `json:"fullyQualifiedName,omitempty"`
 }
 
 type PhysicalLocation struct {
