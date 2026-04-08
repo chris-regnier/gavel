@@ -69,6 +69,7 @@ type Location struct {
 type PhysicalLocation struct {
 	ArtifactLocation ArtifactLocation `json:"artifactLocation"`
 	Region           Region           `json:"region,omitempty"`
+	ContextRegion    *Region          `json:"contextRegion,omitempty"`
 }
 
 type ArtifactLocation struct {
@@ -76,8 +77,13 @@ type ArtifactLocation struct {
 }
 
 type Region struct {
-	StartLine int `json:"startLine,omitempty"`
-	EndLine   int `json:"endLine,omitempty"`
+	StartLine int              `json:"startLine,omitempty"`
+	EndLine   int              `json:"endLine,omitempty"`
+	Snippet   *ArtifactContent `json:"snippet,omitempty"`
+}
+
+type ArtifactContent struct {
+	Text string `json:"text"`
 }
 
 func NewLog(toolName, toolVersion string) *Log {
