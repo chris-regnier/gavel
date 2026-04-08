@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/chris-regnier/gavel/internal/astcheck"
 	"github.com/chris-regnier/gavel/internal/config"
 	"github.com/chris-regnier/gavel/internal/input"
 	"github.com/chris-regnier/gavel/internal/sarif"
@@ -111,13 +112,18 @@ func (a *Analyzer) Analyze(ctx context.Context, artifacts []input.Artifact, poli
 				ContextRegion:    sarif.ExtractContextRegion(art.Content, f.StartLine, f.EndLine),
 			}
 
+			loc := sarif.Location{
+				PhysicalLocation: physLoc,
+			}
+			if ll := astcheck.ResolveLogicalLocation(art.Path, []byte(art.Content), f.StartLine); ll != nil {
+				loc.LogicalLocations = []sarif.LogicalLocation{*ll}
+			}
+
 			allResults = append(allResults, sarif.Result{
 				RuleID:  f.RuleID,
 				Level:   f.Level,
 				Message: sarif.Message{Text: f.Message},
-				Locations: []sarif.Location{{
-					PhysicalLocation: physLoc,
-				}},
+				Locations: []sarif.Location{loc},
 				Properties: map[string]interface{}{
 					"gavel/recommendation": f.Recommendation,
 					"gavel/explanation":    f.Explanation,
