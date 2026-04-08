@@ -1,0 +1,35 @@
+# benchmarks/realworld/manifest.yaml
+# Curated real-world files for latency/cost benchmarking.
+# These files are NOT scored for quality — only measured for performance.
+# Replace with your own files for local experimentation.
+
+files:
+  - path: gin-handler.go
+    source: github.com/gin-gonic/gin (MIT License)
+    description: HTTP handler with middleware, ~200 LOC
+    language: go
+    lines: 200
+
+  - path: fastapi-crud.py
+    source: github.com/tiangolo/fastapi (MIT License)
+    description: REST CRUD endpoints with Pydantic models, ~150 LOC
+    language: python
+    lines: 150
+
+  - path: express-auth.ts
+    source: github.com/expressjs/express (MIT License)
+    description: Authentication middleware with JWT validation, ~120 LOC
+    language: typescript
+    lines: 120
+
+  - path: data-pipeline.py
+    source: github.com/apache/airflow (Apache 2.0 License)
+    description: Data transformation pipeline, ~300 LOC
+    language: python
+    lines: 300
+
+  - path: cli-parser.go
+    source: github.com/spf13/cobra (Apache 2.0 License)
+    description: CLI argument parsing and command dispatch, ~250 LOC
+    language: go
+    lines: 250

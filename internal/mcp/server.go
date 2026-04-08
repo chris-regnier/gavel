@@ -58,6 +58,7 @@ func NewMCPServer(cfg ServerConfig) *server.MCPServer {
 	s.AddTool(suppressFindingTool(), h.handleSuppressFinding)
 	s.AddTool(listSuppressionsTool(), h.handleListSuppressions)
 	s.AddTool(unsuppressFindingTool(), h.handleUnsuppressFinding)
+	s.AddTool(analyzeDiffTool(), h.handleAnalyzeDiff)
 
 	// Register resources
 	s.AddResource(policiesResource(), h.handlePoliciesResource)
@@ -162,6 +163,29 @@ func unsuppressFindingTool() mcp.Tool {
 		),
 		mcp.WithString("file",
 			mcp.Description("Remove file-specific suppression only (omit for global)"),
+		),
+	)
+}
+
+func analyzeDiffTool() mcp.Tool {
+	return mcp.NewTool("analyze_diff",
+		mcp.WithDescription("Analyze only the changed regions of a file. Accepts either a unified diff or a line range. "+
+			"Returns SARIF-formatted findings scoped to the changed lines. Ideal for AI agent hooks that check code after each edit."),
+		mcp.WithString("path",
+			mcp.Description("Path to the file to analyze"),
+			mcp.Required(),
+		),
+		mcp.WithString("diff",
+			mcp.Description("Unified diff text. If provided, only changed hunks are analyzed."),
+		),
+		mcp.WithNumber("line_start",
+			mcp.Description("Start line of the changed region (1-indexed). Use with line_end as an alternative to diff."),
+		),
+		mcp.WithNumber("line_end",
+			mcp.Description("End line of the changed region (1-indexed). Use with line_start."),
+		),
+		mcp.WithString("persona",
+			mcp.Description("Analysis persona: code-reviewer, architect, or security"),
 		),
 	)
 }
@@ -430,6 +454,197 @@ func (h *handlers) handleGetResult(ctx context.Context, request mcp.CallToolRequ
 	}
 
 	return mcp.NewToolResultText(string(out)), nil
+}
+
+// --- Diff analysis handler ---
+
+func (h *handlers) handleAnalyzeDiff(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	path := request.GetString("path", "")
+	if path == "" {
+		return mcp.NewToolResultError("path is required"), nil
+	}
+
+	if err := h.validatePath(path); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	diffText := request.GetString("diff", "")
+	lineStart := int(request.GetFloat("line_start", 0))
+	lineEnd := int(request.GetFloat("line_end", 0))
+
+	hasDiff := diffText != ""
+	hasRange := lineStart > 0 && lineEnd > 0
+
+	if hasDiff == hasRange {
+		return mcp.NewToolResultError("exactly one of: diff or (line_start + line_end) must be provided"), nil
+	}
+
+	persona := request.GetString("persona", h.cfg.Config.Persona)
+	if persona == "" {
+		persona = "code-reviewer"
+	}
+
+	// Read the full file
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("reading file: %v", err)), nil
+	}
+
+	// Determine changed line range
+	var changedStart, changedEnd int
+	if hasDiff {
+		changedStart, changedEnd = extractChangedLines(diffText)
+		if changedStart == 0 && changedEnd == 0 {
+			return mcp.NewToolResultError("no hunk headers found in diff"), nil
+		}
+	} else {
+		changedStart = lineStart
+		changedEnd = lineEnd
+	}
+
+	lines := strings.Split(string(content), "\n")
+	totalLines := len(lines)
+
+	// Extract scoped content with 10-line context window
+	contextWindow := 10
+	scopeStart := changedStart - contextWindow
+	if scopeStart < 1 {
+		scopeStart = 1
+	}
+	scopeEnd := changedEnd + contextWindow
+	if scopeEnd > totalLines {
+		scopeEnd = totalLines
+	}
+
+	// Build scoped content (scopeStart and scopeEnd are 1-indexed)
+	scopedLines := lines[scopeStart-1 : scopeEnd]
+	scopedContent := strings.Join(scopedLines, "\n")
+
+	// Run instant tier on full file, filter findings to changed lines
+	fullArtifact := input.Artifact{Path: path, Content: string(content), Kind: input.KindFile}
+	ta := analyzer.NewTieredAnalyzer(h.client)
+	instantResults := ta.RunPatternMatching(fullArtifact)
+
+	var filteredInstant []sarif.Result
+	for _, r := range instantResults {
+		if len(r.Locations) > 0 {
+			region := r.Locations[0].PhysicalLocation.Region
+			if region.StartLine >= changedStart && region.StartLine <= changedEnd {
+				filteredInstant = append(filteredInstant, r)
+			}
+		}
+	}
+
+	// Run comprehensive tier on scoped content
+	scopedArtifact := []input.Artifact{{Path: path, Content: scopedContent, Kind: input.KindFile}}
+	comprehensiveResults, err := h.runAnalysis(ctx, scopedArtifact, persona)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("analysis failed: %v", err)), nil
+	}
+
+	// Adjust comprehensive tier line numbers (add scopeStart offset)
+	// The LLM sees scopedContent starting at line 1, but it's actually at scopeStart
+	offset := scopeStart - 1
+	for i := range comprehensiveResults {
+		if len(comprehensiveResults[i].Locations) > 0 {
+			comprehensiveResults[i].Locations[0].PhysicalLocation.Region.StartLine += offset
+			comprehensiveResults[i].Locations[0].PhysicalLocation.Region.EndLine += offset
+		}
+	}
+
+	// Filter comprehensive results to changed lines
+	var filteredComprehensive []sarif.Result
+	for _, r := range comprehensiveResults {
+		if len(r.Locations) > 0 {
+			region := r.Locations[0].PhysicalLocation.Region
+			if region.StartLine >= changedStart && region.StartLine <= changedEnd {
+				filteredComprehensive = append(filteredComprehensive, r)
+			}
+		}
+	}
+
+	// Combine all filtered results
+	allResults := append(filteredInstant, filteredComprehensive...)
+
+	// Build SARIF, apply suppressions, store, return summary
+	rules := buildRules(h.cfg.Config.Policies)
+	sarifLog := sarif.Assemble(allResults, rules, "diff", persona)
+
+	supps, loadErr := suppression.Load(h.rootDir())
+	if loadErr != nil {
+		slog.Warn("failed to load suppressions", "err", loadErr)
+	}
+	suppression.Apply(supps, sarifLog)
+
+	id, err := h.cfg.Store.WriteSARIF(ctx, sarifLog)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("storing results: %v", err)), nil
+	}
+
+	summary := map[string]interface{}{
+		"id":            id,
+		"findings":      len(allResults),
+		"path":          path,
+		"persona":       persona,
+		"changed_start": changedStart,
+		"changed_end":   changedEnd,
+	}
+	out, err := json.MarshalIndent(summary, "", "  ")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("marshaling summary: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(out)), nil
+}
+
+// extractChangedLines parses a unified diff and returns the overall range of changed lines.
+func extractChangedLines(diff string) (int, int) {
+	var minStart, maxEnd int
+	for _, line := range strings.Split(diff, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "@@") {
+			continue
+		}
+		// Parse @@ -old,len +new,len @@ format
+		// Find the +start,length portion
+		plusIdx := strings.Index(line, "+")
+		if plusIdx < 0 {
+			continue
+		}
+		rest := line[plusIdx+1:]
+		// rest looks like "10,7 @@" or "10 @@"
+		endIdx := strings.Index(rest, " ")
+		if endIdx < 0 {
+			continue
+		}
+		chunk := rest[:endIdx]
+
+		var start, length int
+		if commaIdx := strings.Index(chunk, ","); commaIdx >= 0 {
+			fmt.Sscanf(chunk[:commaIdx], "%d", &start)
+			fmt.Sscanf(chunk[commaIdx+1:], "%d", &length)
+		} else {
+			fmt.Sscanf(chunk, "%d", &start)
+			length = 1
+		}
+
+		if start == 0 {
+			continue
+		}
+
+		end := start + length - 1
+		if end < start {
+			end = start
+		}
+
+		if minStart == 0 || start < minStart {
+			minStart = start
+		}
+		if end > maxEnd {
+			maxEnd = end
+		}
+	}
+	return minStart, maxEnd
 }
 
 // --- Suppression handlers ---

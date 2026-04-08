@@ -60,10 +60,17 @@ func levelToSeverity(level string) DiagnosticSeverity {
 
 // SarifToDiagnostic converts a SARIF result to an LSP diagnostic
 func SarifToDiagnostic(result sarif.Result) Diagnostic {
+	source := "gavel"
+	if result.Properties != nil {
+		if tier, ok := result.Properties["gavel/tier"].(string); ok && tier != "" {
+			source = "gavel/" + tier
+		}
+	}
+
 	diag := Diagnostic{
 		Severity: levelToSeverity(result.Level),
 		Code:     result.RuleID,
-		Source:   "gavel",
+		Source:   source,
 		Message:  result.Message.Text,
 	}
 
