@@ -298,6 +298,7 @@ func (s *Server) handleInitialize(id interface{}, params json.RawMessage) error 
 					CommandAnalyzeFile,
 					CommandAnalyzeWorkspace,
 					CommandClearCache,
+					CommandShowRecommendation,
 				},
 			},
 		},
