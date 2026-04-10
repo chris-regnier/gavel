@@ -1,7 +1,6 @@
 package rules
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/chris-regnier/gavel/internal/sarif"
@@ -55,10 +54,12 @@ func (r Rule) ToSARIFDescriptor() sarif.ReportingDescriptor {
 	return d
 }
 
-// buildHelp assembles a MultiformatMessage from remediation, CWE/OWASP,
-// and reference links. Returns nil when no help content is available.
+// buildHelp assembles a MultiformatMessage from remediation and reference
+// links. Returns nil when no help content is available.
+// CWE/OWASP references are no longer included here — they are represented
+// as first-class reportingDescriptor.relationships instead.
 func buildHelp(r Rule) *sarif.MultiformatMessage {
-	if r.Remediation == "" && len(r.CWE) == 0 && len(r.OWASP) == 0 && len(r.References) == 0 {
+	if r.Remediation == "" && len(r.References) == 0 {
 		return nil
 	}
 
@@ -68,21 +69,6 @@ func buildHelp(r Rule) *sarif.MultiformatMessage {
 	if r.Remediation != "" {
 		textParts = append(textParts, r.Remediation)
 		mdParts = append(mdParts, "**Remediation:** "+r.Remediation)
-	}
-
-	if len(r.CWE) > 0 {
-		var cweLinks []string
-		for _, id := range r.CWE {
-			cweLinks = append(cweLinks, fmt.Sprintf("[%s](%s)", id, cweURL(id)))
-		}
-		textParts = append(textParts, "CWE: "+strings.Join(r.CWE, ", "))
-		mdParts = append(mdParts, "**CWE:** "+strings.Join(cweLinks, ", "))
-	}
-
-	if len(r.OWASP) > 0 {
-		joined := strings.Join(r.OWASP, ", ")
-		textParts = append(textParts, "OWASP: "+joined)
-		mdParts = append(mdParts, "**OWASP:** "+joined)
 	}
 
 	if len(r.References) > 0 {

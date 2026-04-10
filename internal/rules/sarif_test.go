@@ -51,14 +51,15 @@ func TestToSARIFDescriptor_AllFields(t *testing.T) {
 	if !strings.Contains(d.Help.Markdown, "**Remediation:**") {
 		t.Errorf("Help.Markdown: expected remediation heading, got %q", d.Help.Markdown)
 	}
-	if !strings.Contains(d.Help.Markdown, "CWE-798") {
-		t.Errorf("Help.Markdown: expected CWE-798 reference, got %q", d.Help.Markdown)
+	// CWE/OWASP should NOT appear in help text — they are in relationships now.
+	if strings.Contains(d.Help.Markdown, "**CWE:**") {
+		t.Errorf("Help.Markdown: should not contain CWE section, got %q", d.Help.Markdown)
+	}
+	if strings.Contains(d.Help.Markdown, "**OWASP:**") {
+		t.Errorf("Help.Markdown: should not contain OWASP section, got %q", d.Help.Markdown)
 	}
 	if !strings.Contains(d.Help.Markdown, "https://cwe.mitre.org/data/definitions/798.html") {
 		t.Errorf("Help.Markdown: expected reference URL, got %q", d.Help.Markdown)
-	}
-	if !strings.Contains(d.Help.Markdown, "A07:2021") {
-		t.Errorf("Help.Markdown: expected OWASP entry, got %q", d.Help.Markdown)
 	}
 	// Reference list items must not be separated by blank lines - that would
 	// render each item as a separate paragraph in markdown viewers.
@@ -138,15 +139,20 @@ func TestToSARIFDescriptor_CWEWithoutReferences(t *testing.T) {
 
 	d := r.ToSARIFDescriptor()
 
-	if d.Help == nil {
-		t.Fatal("Help: expected populated, got nil")
+	// No remediation and no references → Help should be nil (CWE is in relationships now).
+	if d.Help != nil {
+		t.Errorf("Help: expected nil for CWE-only rule, got %+v", d.Help)
 	}
-	if !strings.Contains(d.Help.Markdown, "CWE-89") {
-		t.Errorf("Help.Markdown: expected CWE-89, got %q", d.Help.Markdown)
-	}
-	// HelpURI should fall back to the synthesized cwe.mitre.org URL.
+	// HelpURI should still fall back to the synthesized cwe.mitre.org URL.
 	if d.HelpURI != "https://cwe.mitre.org/data/definitions/89.html" {
 		t.Errorf("HelpURI: expected synthesized CWE URL, got %q", d.HelpURI)
+	}
+	// Relationships should be populated.
+	if len(d.Relationships) != 1 {
+		t.Fatalf("expected 1 relationship, got %d", len(d.Relationships))
+	}
+	if d.Relationships[0].Target.ID != "89" {
+		t.Errorf("relationship target: expected 89, got %q", d.Relationships[0].Target.ID)
 	}
 }
 
