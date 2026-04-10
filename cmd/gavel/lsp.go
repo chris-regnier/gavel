@@ -144,7 +144,7 @@ func runLSP(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("duplicating stdout: %w", err)
 	}
-	if err := syscall.Dup2(2, 1); err != nil {
+	if err := dup2(2, 1); err != nil {
 		return fmt.Errorf("redirecting stdout to stderr: %w", err)
 	}
 	lspOut := os.NewFile(uintptr(lspFD), "lsp-stdout")
