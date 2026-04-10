@@ -57,9 +57,16 @@ func TestReportingDescriptor_HelpMarshaling(t *testing.T) {
 		ShortDescription: Message{Text: "Hard-coded credentials detected"},
 		FullDescription:  &Message{Text: "Credentials should not be hard-coded."},
 		Help: &MultiformatMessage{
-			Text:     "Use environment variables.\n\nCWE: CWE-798",
-			Markdown: "**Remediation:** Use environment variables.\n\n**CWE:** [CWE-798](https://cwe.mitre.org/data/definitions/798.html)",
+			Text:     "Use environment variables.",
+			Markdown: "**Remediation:** Use environment variables.",
 		},
+		Relationships: []Relationship{{
+			Target: RelationshipTarget{
+				ID:            "798",
+				ToolComponent: &ToolComponentReference{Name: "CWE"},
+			},
+			Kinds: []string{"relevant"},
+		}},
 		HelpURI:       "https://cwe.mitre.org/data/definitions/798.html",
 		DefaultConfig: &ReportingConfiguration{Level: "error"},
 	}}
