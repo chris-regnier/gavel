@@ -8,6 +8,7 @@ import (
 	"github.com/chris-regnier/gavel/internal/analyzer"
 	"github.com/chris-regnier/gavel/internal/config"
 	"github.com/chris-regnier/gavel/internal/input"
+	"github.com/chris-regnier/gavel/internal/rules"
 	"github.com/chris-regnier/gavel/internal/sarif"
 	"github.com/chris-regnier/gavel/internal/store"
 )
@@ -57,7 +58,7 @@ func (s *AnalyzeService) Analyze(ctx context.Context, req AnalyzeRequest) (*Anal
 		return nil, fmt.Errorf("analyzing: %w", err)
 	}
 
-	sarifLog := sarif.Assemble(results, policyRules(req.Config.Policies), scopeFromArtifacts(req.Artifacts), req.Config.Persona)
+	sarifLog := sarif.Assemble(results, buildDescriptors(req.Config.Policies, req.Rules), scopeFromArtifacts(req.Artifacts), req.Config.Persona)
 
 	resultID, err := s.store.WriteSARIF(ctx, sarifLog)
 	if err != nil {
@@ -148,7 +149,7 @@ func (s *AnalyzeService) AnalyzeStream(ctx context.Context, req AnalyzeRequest) 
 		}
 
 		// Store final SARIF
-		sarifLog := sarif.Assemble(allResults, policyRules(req.Config.Policies), scopeFromArtifacts(req.Artifacts), req.Config.Persona)
+		sarifLog := sarif.Assemble(allResults, buildDescriptors(req.Config.Policies, req.Rules), scopeFromArtifacts(req.Artifacts), req.Config.Persona)
 		resultID, err := s.store.WriteSARIF(ctx, sarifLog)
 		if err != nil {
 			errCh <- fmt.Errorf("storing SARIF: %w", err)
@@ -164,19 +165,24 @@ func (s *AnalyzeService) AnalyzeStream(ctx context.Context, req AnalyzeRequest) 
 	return tierCh, resultCh, errCh
 }
 
-// policyRules converts enabled policies to SARIF reporting descriptors.
-func policyRules(policies map[string]config.Policy) []sarif.ReportingDescriptor {
-	var rules []sarif.ReportingDescriptor
+// buildDescriptors assembles SARIF reportingDescriptors from both enabled
+// policies and loaded rules. Rule descriptors carry help/helpUri populated
+// from the rule's remediation, CWE, and reference metadata.
+func buildDescriptors(policies map[string]config.Policy, loadedRules []rules.Rule) []sarif.ReportingDescriptor {
+	var descriptors []sarif.ReportingDescriptor
 	for name, p := range policies {
 		if p.Enabled {
-			rules = append(rules, sarif.ReportingDescriptor{
+			descriptors = append(descriptors, sarif.ReportingDescriptor{
 				ID:               name,
 				ShortDescription: sarif.Message{Text: p.Description},
 				DefaultConfig:    &sarif.ReportingConfiguration{Level: p.Severity},
 			})
 		}
 	}
-	return rules
+	for _, r := range loadedRules {
+		descriptors = append(descriptors, r.ToSARIFDescriptor())
+	}
+	return descriptors
 }
 
 // scopeFromArtifacts determines the input scope string from artifact kinds.
