@@ -75,6 +75,41 @@ tasks:
             echo "gcc"
           fi
 
+  check:cross:
+    desc: Cross-compile release targets for current OS (compile-only, no archiving)
+    deps: [generate]
+    cmds:
+      - task: check:cross:arch
+        vars: {ARCH: amd64}
+      - task: check:cross:arch
+        vars: {ARCH: arm64}
+
+  check:cross:arch:
+    internal: true
+    cmds:
+      - |
+        CGO_ENABLED=1 GOOS={{.GOOS}} GOARCH={{.ARCH}} CC={{.CC}} go build \
+          -o /dev/null \
+          ./cmd/gavel
+    vars:
+      GOOS:
+        sh: go env GOOS
+      CC:
+        sh: |
+          if [ "$(go env GOOS)" = "linux" ] && [ "{{.ARCH}}" = "arm64" ]; then
+            echo "aarch64-linux-gnu-gcc"
+          else
+            echo "gcc"
+          fi
+
+  check:
+    desc: Run all CI checks locally (generate, lint, test, cross-compile)
+    deps: [generate]
+    cmds:
+      - task: lint
+      - task: test
+      - task: check:cross
+
   test:
     desc: Run all tests
     cmds:

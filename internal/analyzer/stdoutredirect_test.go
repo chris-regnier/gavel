@@ -22,8 +22,8 @@ func TestRedirectStdoutToStderr(t *testing.T) {
 	}
 	t.Cleanup(func() {
 		// Unconditionally restore real fds to protect the test binary
-		syscall.Dup2(origStdoutFd, 1)
-		syscall.Dup2(origStderrFd2, 2)
+		dup2(origStdoutFd, 1)
+		dup2(origStderrFd2, 2)
 		syscall.Close(origStdoutFd)
 		syscall.Close(origStderrFd2)
 	})
@@ -43,7 +43,7 @@ func TestRedirectStdoutToStderr(t *testing.T) {
 	defer stderrR.Close()
 
 	// Point fd 1 (stdout) at our stdout pipe
-	if err := syscall.Dup2(int(stdoutW.Fd()), 1); err != nil {
+	if err := dup2(int(stdoutW.Fd()), 1); err != nil {
 		t.Fatalf("failed to redirect stdout to pipe: %v", err)
 	}
 	stdoutW.Close()
@@ -55,7 +55,7 @@ func TestRedirectStdoutToStderr(t *testing.T) {
 	}
 	defer syscall.Close(origStderrFd)
 
-	if err := syscall.Dup2(int(stderrW.Fd()), 2); err != nil {
+	if err := dup2(int(stderrW.Fd()), 2); err != nil {
 		t.Fatalf("failed to redirect stderr to pipe: %v", err)
 	}
 	stderrW.Close()
@@ -79,8 +79,8 @@ func TestRedirectStdoutToStderr(t *testing.T) {
 	syscall.Write(1, []byte("after-restore"))
 
 	// Restore real fds before reading pipes — close write-ends by restoring originals
-	syscall.Dup2(origStdoutFd, 1)
-	syscall.Dup2(origStderrFd, 2)
+	dup2(origStdoutFd, 1)
+	dup2(origStderrFd, 2)
 
 	// Read all data from pipes
 	stdoutData, err := io.ReadAll(stdoutR)

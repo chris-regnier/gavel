@@ -30,7 +30,7 @@ func redirectStdoutToStderr() (func(), error) {
 	}
 	syscall.CloseOnExec(savedFd)
 
-	if err := syscall.Dup2(2, 1); err != nil {
+	if err := dup2(2, 1); err != nil {
 		syscall.Close(savedFd)
 		stdoutMu.Unlock()
 		slog.Warn("failed to dup2 stderr onto stdout for BAML redirect", "error", err)
@@ -38,7 +38,7 @@ func redirectStdoutToStderr() (func(), error) {
 	}
 
 	return func() {
-		if err := syscall.Dup2(savedFd, 1); err != nil {
+		if err := dup2(savedFd, 1); err != nil {
 			slog.Warn("failed to restore stdout after BAML redirect", "error", err)
 		}
 		if err := syscall.Close(savedFd); err != nil {
