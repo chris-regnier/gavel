@@ -8,7 +8,11 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -28,6 +32,12 @@ jobs:
       - name: Install Task
         uses: go-task/setup-task@v1
 
+      - name: Install cross-compile toolchain
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+
       - name: Generate BAML Client
         run: |
           task generate
@@ -45,3 +55,6 @@ jobs:
 
       - name: Build Binary
         run: task build
+
+      - name: Cross-compile release targets
+        run: task check:cross
