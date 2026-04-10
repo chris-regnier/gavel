@@ -12,6 +12,7 @@ type Log struct {
 type Run struct {
 	Tool        Tool                   `json:"tool"`
 	Results     []Result               `json:"results"`
+	Taxonomies  []ToolComponent        `json:"taxonomies,omitempty"`
 	Invocations []Invocation           `json:"invocations,omitempty"`
 	Properties  map[string]interface{} `json:"properties,omitempty"`
 }
@@ -60,6 +61,21 @@ type RelationshipTarget struct {
 // ToolComponentReference identifies a toolComponent by name.
 type ToolComponentReference struct {
 	Name string `json:"name"`
+}
+
+// ToolComponent represents a SARIF toolComponent (§3.19). Used inside
+// Run.Taxonomies to describe a taxonomy (e.g., CWE, OWASP) and its taxa.
+type ToolComponent struct {
+	Name         string  `json:"name"`
+	Organization string  `json:"organization,omitempty"`
+	Taxa         []Taxon `json:"taxa,omitempty"`
+}
+
+// Taxon represents an entry in a taxonomy (a reportingDescriptor used as
+// a taxon, §3.19.6).
+type Taxon struct {
+	ID   string `json:"id"`
+	Name string `json:"name,omitempty"`
 }
 
 type ReportingConfiguration struct {
