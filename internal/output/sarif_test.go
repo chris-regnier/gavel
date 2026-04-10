@@ -35,7 +35,6 @@ func testSARIFLog() *sarif.Log {
 					Properties: map[string]any{
 						"gavel/confidence": 0.95,
 						"gavel/tier":       "comprehensive",
-						"gavel/cwe":        []string{"CWE-798"},
 					},
 				},
 			},
