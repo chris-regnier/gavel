@@ -54,7 +54,7 @@ type Relationship struct {
 
 // RelationshipTarget identifies a specific taxon within a named toolComponent.
 type RelationshipTarget struct {
-	ID            string                 `json:"id"`
+	ID            string                  `json:"id"`
 	ToolComponent *ToolComponentReference `json:"toolComponent,omitempty"`
 }
 
@@ -111,7 +111,7 @@ type Message struct {
 }
 
 type Location struct {
-	PhysicalLocation  PhysicalLocation  `json:"physicalLocation"`
+	PhysicalLocation PhysicalLocation  `json:"physicalLocation"`
 	LogicalLocations []LogicalLocation `json:"logicalLocations,omitempty"`
 }
 
