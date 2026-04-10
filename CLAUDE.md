@@ -9,6 +9,7 @@ task build          # builds dist/gavel for current platform
 task test           # go test ./... -v
 task lint           # go vet ./...
 task generate       # baml-cli generate (regenerates baml_client/ from baml_src/)
+task check          # full CI parity: generate + lint + test + cross-compile (run before pushing)
 
 # Run a single test
 go test ./internal/config/ -run TestMergeOverrides -v
