@@ -237,19 +237,22 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("analyzing: %w", err)
 	}
 
-	rules := []sarif.ReportingDescriptor{}
+	descriptors := []sarif.ReportingDescriptor{}
 	for name, p := range cfg.Policies {
 		if p.Enabled {
-			rules = append(rules, sarif.ReportingDescriptor{
+			descriptors = append(descriptors, sarif.ReportingDescriptor{
 				ID:               name,
 				ShortDescription: sarif.Message{Text: p.Description},
 				DefaultConfig:    &sarif.ReportingConfiguration{Level: p.Severity},
 			})
 		}
 	}
+	for _, r := range loadedRules {
+		descriptors = append(descriptors, r.ToSARIFDescriptor())
+	}
 
 	// Assemble SARIF
-	sarifLog := sarif.Assemble(results, rules, inputScope, cfg.Persona)
+	sarifLog := sarif.Assemble(results, descriptors, inputScope, cfg.Persona)
 
 	// Calibration: apply threshold overrides
 	if thresholdOverrides != nil && len(sarifLog.Runs) > 0 {

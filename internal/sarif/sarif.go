@@ -34,12 +34,24 @@ type Driver struct {
 
 type ReportingDescriptor struct {
 	ID               string                  `json:"id"`
+	Name             string                  `json:"name,omitempty"`
 	ShortDescription Message                 `json:"shortDescription,omitempty"`
+	FullDescription  *Message                `json:"fullDescription,omitempty"`
+	Help             *MultiformatMessage     `json:"help,omitempty"`
+	HelpURI          string                  `json:"helpUri,omitempty"`
 	DefaultConfig    *ReportingConfiguration `json:"defaultConfiguration,omitempty"`
 }
 
 type ReportingConfiguration struct {
 	Level string `json:"level,omitempty"`
+}
+
+// MultiformatMessage carries a message in both plain text and markdown forms,
+// per SARIF 2.1.0 §3.11 (multiformatMessageString). SARIF viewers such as
+// GitHub Code Scanning and VS Code render the markdown form as rule help.
+type MultiformatMessage struct {
+	Text     string `json:"text,omitempty"`
+	Markdown string `json:"markdown,omitempty"`
 }
 
 type Result struct {
