@@ -40,6 +40,26 @@ type ReportingDescriptor struct {
 	Help             *MultiformatMessage     `json:"help,omitempty"`
 	HelpURI          string                  `json:"helpUri,omitempty"`
 	DefaultConfig    *ReportingConfiguration `json:"defaultConfiguration,omitempty"`
+	Relationships    []Relationship          `json:"relationships,omitempty"`
+}
+
+// Relationship represents a reportingDescriptorRelationship (§3.52) on a
+// rule descriptor, linking it to a taxon in an external taxonomy such as CWE
+// or OWASP.
+type Relationship struct {
+	Target RelationshipTarget `json:"target"`
+	Kinds  []string           `json:"kinds,omitempty"`
+}
+
+// RelationshipTarget identifies a specific taxon within a named toolComponent.
+type RelationshipTarget struct {
+	ID            string                 `json:"id"`
+	ToolComponent *ToolComponentReference `json:"toolComponent,omitempty"`
+}
+
+// ToolComponentReference identifies a toolComponent by name.
+type ToolComponentReference struct {
+	Name string `json:"name"`
 }
 
 type ReportingConfiguration struct {

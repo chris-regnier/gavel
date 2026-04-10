@@ -32,6 +32,26 @@ func (r Rule) ToSARIFDescriptor() sarif.ReportingDescriptor {
 
 	d.HelpURI = resolveHelpURI(r)
 
+	for _, cwe := range r.CWE {
+		id := strings.TrimPrefix(cwe, "CWE-")
+		d.Relationships = append(d.Relationships, sarif.Relationship{
+			Target: sarif.RelationshipTarget{
+				ID:            id,
+				ToolComponent: &sarif.ToolComponentReference{Name: "CWE"},
+			},
+			Kinds: []string{"relevant"},
+		})
+	}
+	for _, owasp := range r.OWASP {
+		d.Relationships = append(d.Relationships, sarif.Relationship{
+			Target: sarif.RelationshipTarget{
+				ID:            owasp,
+				ToolComponent: &sarif.ToolComponentReference{Name: "OWASP"},
+			},
+			Kinds: []string{"relevant"},
+		})
+	}
+
 	return d
 }
 
