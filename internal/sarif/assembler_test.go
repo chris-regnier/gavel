@@ -142,3 +142,35 @@ func TestAssembler_AddsCacheMetadata(t *testing.T) {
 		t.Fatal("Expected policies in analyzer metadata")
 	}
 }
+
+func TestAssemble_Taxonomies(t *testing.T) {
+	rules := []ReportingDescriptor{{
+		ID: "S2068",
+		Relationships: []Relationship{
+			{Target: RelationshipTarget{ID: "798", ToolComponent: &ToolComponentReference{Name: "CWE"}}},
+			{Target: RelationshipTarget{ID: "A07:2021", ToolComponent: &ToolComponentReference{Name: "OWASP"}}},
+		},
+	}}
+
+	log := Assemble(nil, rules, "files", "code-reviewer")
+
+	if len(log.Runs[0].Taxonomies) != 2 {
+		t.Fatalf("expected 2 taxonomies, got %d", len(log.Runs[0].Taxonomies))
+	}
+	if log.Runs[0].Taxonomies[0].Name != "CWE" {
+		t.Errorf("first taxonomy: expected CWE, got %q", log.Runs[0].Taxonomies[0].Name)
+	}
+	if log.Runs[0].Taxonomies[1].Name != "OWASP" {
+		t.Errorf("second taxonomy: expected OWASP, got %q", log.Runs[0].Taxonomies[1].Name)
+	}
+}
+
+func TestAssemble_NoTaxonomiesWhenNoRelationships(t *testing.T) {
+	rules := []ReportingDescriptor{{ID: "R001"}}
+
+	log := Assemble(nil, rules, "files", "code-reviewer")
+
+	if log.Runs[0].Taxonomies != nil {
+		t.Errorf("expected nil taxonomies, got %+v", log.Runs[0].Taxonomies)
+	}
+}

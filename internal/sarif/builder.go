@@ -107,6 +107,7 @@ func (a *Assembler) Build() *Log {
 	// Create log
 	log := NewLog("gavel", "0.1.0")
 	log.Runs[0].Tool.Driver.Rules = a.rules
+	log.Runs[0].Taxonomies = BuildTaxonomies(a.rules)
 	log.Runs[0].Results = deduped
 
 	if a.inputScope != "" {
