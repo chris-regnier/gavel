@@ -11,6 +11,36 @@ These properties appear on each SARIF run (in `runs[0].properties`):
 | `gavel/inputScope` | string | Input type: `files`, `diff`, or `directory` |
 | `gavel/persona` | string | Persona used for analysis (e.g., `code-reviewer`) |
 
+## Taxonomies
+
+Rules that reference CWE or OWASP categories emit standard SARIF taxonomies in `runs[0].taxonomies` and `reportingDescriptor.relationships`. This enables interoperability with GitHub Advanced Security, Semgrep, Snyk, DefectDojo, and other SARIF-aware security dashboards.
+
+```json
+{
+  "taxonomies": [{
+    "name": "CWE",
+    "organization": "MITRE",
+    "taxa": [
+      { "id": "798" },
+      { "id": "89" }
+    ]
+  }],
+  "tool": {
+    "driver": {
+      "rules": [{
+        "id": "S2068",
+        "relationships": [{
+          "target": { "id": "798", "toolComponent": { "name": "CWE" } },
+          "kinds": ["relevant"]
+        }]
+      }]
+    }
+  }
+}
+```
+
+Taxonomies are built automatically from the `cwe` and `owasp` fields in rule definitions. No additional configuration is needed.
+
 ## Result-Level Properties
 
 These properties appear on each finding (in `results[].properties`):
@@ -37,8 +67,6 @@ These properties appear on each finding (in `results[].properties`):
 |----------|------|-------------|
 | `gavel/rule-source` | string | Rule origin: `CWE`, `OWASP`, `SonarQube`, or `Custom` |
 | `gavel/rule-type` | string | `ast` for tree-sitter checks (absent for regex) |
-| `gavel/cwe` | string[] | CWE references (e.g., `["CWE-798"]`) |
-| `gavel/owasp` | string[] | OWASP references (e.g., `["A07:2021"]`) |
 | `gavel/remediation` | string | Remediation guidance |
 | `gavel/references` | string[] | External reference URLs |
 
