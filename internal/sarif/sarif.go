@@ -12,6 +12,7 @@ type Log struct {
 type Run struct {
 	Tool        Tool                   `json:"tool"`
 	Results     []Result               `json:"results"`
+	Taxonomies  []ToolComponent        `json:"taxonomies,omitempty"`
 	Invocations []Invocation           `json:"invocations,omitempty"`
 	Properties  map[string]interface{} `json:"properties,omitempty"`
 }
@@ -40,6 +41,41 @@ type ReportingDescriptor struct {
 	Help             *MultiformatMessage     `json:"help,omitempty"`
 	HelpURI          string                  `json:"helpUri,omitempty"`
 	DefaultConfig    *ReportingConfiguration `json:"defaultConfiguration,omitempty"`
+	Relationships    []Relationship          `json:"relationships,omitempty"`
+}
+
+// Relationship represents a reportingDescriptorRelationship (§3.52) on a
+// rule descriptor, linking it to a taxon in an external taxonomy such as CWE
+// or OWASP.
+type Relationship struct {
+	Target RelationshipTarget `json:"target"`
+	Kinds  []string           `json:"kinds,omitempty"`
+}
+
+// RelationshipTarget identifies a specific taxon within a named toolComponent.
+type RelationshipTarget struct {
+	ID            string                 `json:"id"`
+	ToolComponent *ToolComponentReference `json:"toolComponent,omitempty"`
+}
+
+// ToolComponentReference identifies a toolComponent by name.
+type ToolComponentReference struct {
+	Name string `json:"name"`
+}
+
+// ToolComponent represents a SARIF toolComponent (§3.19). Used inside
+// Run.Taxonomies to describe a taxonomy (e.g., CWE, OWASP) and its taxa.
+type ToolComponent struct {
+	Name         string  `json:"name"`
+	Organization string  `json:"organization,omitempty"`
+	Taxa         []Taxon `json:"taxa,omitempty"`
+}
+
+// Taxon represents an entry in a taxonomy (a reportingDescriptor used as
+// a taxon, §3.19.6).
+type Taxon struct {
+	ID   string `json:"id"`
+	Name string `json:"name,omitempty"`
 }
 
 type ReportingConfiguration struct {

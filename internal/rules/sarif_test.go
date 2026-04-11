@@ -51,14 +51,15 @@ func TestToSARIFDescriptor_AllFields(t *testing.T) {
 	if !strings.Contains(d.Help.Markdown, "**Remediation:**") {
 		t.Errorf("Help.Markdown: expected remediation heading, got %q", d.Help.Markdown)
 	}
-	if !strings.Contains(d.Help.Markdown, "CWE-798") {
-		t.Errorf("Help.Markdown: expected CWE-798 reference, got %q", d.Help.Markdown)
+	// CWE/OWASP should NOT appear in help text — they are in relationships now.
+	if strings.Contains(d.Help.Markdown, "**CWE:**") {
+		t.Errorf("Help.Markdown: should not contain CWE section, got %q", d.Help.Markdown)
+	}
+	if strings.Contains(d.Help.Markdown, "**OWASP:**") {
+		t.Errorf("Help.Markdown: should not contain OWASP section, got %q", d.Help.Markdown)
 	}
 	if !strings.Contains(d.Help.Markdown, "https://cwe.mitre.org/data/definitions/798.html") {
 		t.Errorf("Help.Markdown: expected reference URL, got %q", d.Help.Markdown)
-	}
-	if !strings.Contains(d.Help.Markdown, "A07:2021") {
-		t.Errorf("Help.Markdown: expected OWASP entry, got %q", d.Help.Markdown)
 	}
 	// Reference list items must not be separated by blank lines - that would
 	// render each item as a separate paragraph in markdown viewers.
@@ -138,14 +139,75 @@ func TestToSARIFDescriptor_CWEWithoutReferences(t *testing.T) {
 
 	d := r.ToSARIFDescriptor()
 
-	if d.Help == nil {
-		t.Fatal("Help: expected populated, got nil")
+	// No remediation and no references → Help should be nil (CWE is in relationships now).
+	if d.Help != nil {
+		t.Errorf("Help: expected nil for CWE-only rule, got %+v", d.Help)
 	}
-	if !strings.Contains(d.Help.Markdown, "CWE-89") {
-		t.Errorf("Help.Markdown: expected CWE-89, got %q", d.Help.Markdown)
-	}
-	// HelpURI should fall back to the synthesized cwe.mitre.org URL.
+	// HelpURI should still fall back to the synthesized cwe.mitre.org URL.
 	if d.HelpURI != "https://cwe.mitre.org/data/definitions/89.html" {
 		t.Errorf("HelpURI: expected synthesized CWE URL, got %q", d.HelpURI)
+	}
+	// Relationships should be populated.
+	if len(d.Relationships) != 1 {
+		t.Fatalf("expected 1 relationship, got %d", len(d.Relationships))
+	}
+	if d.Relationships[0].Target.ID != "89" {
+		t.Errorf("relationship target: expected 89, got %q", d.Relationships[0].Target.ID)
+	}
+}
+
+func TestToSARIFDescriptor_Relationships(t *testing.T) {
+	r := Rule{
+		ID:         "S2068",
+		Level:      "error",
+		Confidence: 0.85,
+		Message:    "Hard-coded credentials detected",
+		CWE:        []string{"CWE-259", "CWE-798"},
+		OWASP:      []string{"A07:2021"},
+	}
+
+	d := r.ToSARIFDescriptor()
+
+	if len(d.Relationships) != 3 {
+		t.Fatalf("expected 3 relationships, got %d", len(d.Relationships))
+	}
+
+	rel0 := d.Relationships[0]
+	if rel0.Target.ID != "259" {
+		t.Errorf("rel[0] target ID: expected 259, got %q", rel0.Target.ID)
+	}
+	if rel0.Target.ToolComponent == nil || rel0.Target.ToolComponent.Name != "CWE" {
+		t.Errorf("rel[0] toolComponent: got %+v", rel0.Target.ToolComponent)
+	}
+	if len(rel0.Kinds) != 1 || rel0.Kinds[0] != "relevant" {
+		t.Errorf("rel[0] kinds: got %v", rel0.Kinds)
+	}
+
+	rel1 := d.Relationships[1]
+	if rel1.Target.ID != "798" {
+		t.Errorf("rel[1] target ID: expected 798, got %q", rel1.Target.ID)
+	}
+
+	rel2 := d.Relationships[2]
+	if rel2.Target.ID != "A07:2021" {
+		t.Errorf("rel[2] target ID: expected A07:2021, got %q", rel2.Target.ID)
+	}
+	if rel2.Target.ToolComponent == nil || rel2.Target.ToolComponent.Name != "OWASP" {
+		t.Errorf("rel[2] toolComponent: got %+v", rel2.Target.ToolComponent)
+	}
+}
+
+func TestToSARIFDescriptor_NoRelationshipsForMinimalRule(t *testing.T) {
+	r := Rule{
+		ID:         "R001",
+		Level:      "warning",
+		Confidence: 0.5,
+		Message:    "found foo",
+	}
+
+	d := r.ToSARIFDescriptor()
+
+	if len(d.Relationships) != 0 {
+		t.Errorf("expected no relationships for minimal rule, got %d", len(d.Relationships))
 	}
 }

@@ -6,6 +6,7 @@ func Assemble(results []Result, rules []ReportingDescriptor, inputScope, persona
 
 	log := NewLog("gavel", "0.1.0")
 	log.Runs[0].Tool.Driver.Rules = rules
+	log.Runs[0].Taxonomies = BuildTaxonomies(rules)
 	log.Runs[0].Results = deduped
 	log.Runs[0].Properties = map[string]interface{}{
 		"gavel/inputScope": inputScope,

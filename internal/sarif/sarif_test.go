@@ -57,9 +57,16 @@ func TestReportingDescriptor_HelpMarshaling(t *testing.T) {
 		ShortDescription: Message{Text: "Hard-coded credentials detected"},
 		FullDescription:  &Message{Text: "Credentials should not be hard-coded."},
 		Help: &MultiformatMessage{
-			Text:     "Use environment variables.\n\nCWE: CWE-798",
-			Markdown: "**Remediation:** Use environment variables.\n\n**CWE:** [CWE-798](https://cwe.mitre.org/data/definitions/798.html)",
+			Text:     "Use environment variables.",
+			Markdown: "**Remediation:** Use environment variables.",
 		},
+		Relationships: []Relationship{{
+			Target: RelationshipTarget{
+				ID:            "798",
+				ToolComponent: &ToolComponentReference{Name: "CWE"},
+			},
+			Kinds: []string{"relevant"},
+		}},
 		HelpURI:       "https://cwe.mitre.org/data/definitions/798.html",
 		DefaultConfig: &ReportingConfiguration{Level: "error"},
 	}}
@@ -99,6 +106,93 @@ func TestReportingDescriptor_HelpMarshaling(t *testing.T) {
 	}
 	if rd.HelpURI != "https://cwe.mitre.org/data/definitions/798.html" {
 		t.Errorf("HelpURI: got %q", rd.HelpURI)
+	}
+}
+
+func TestTaxonomyTypes_MarshalJSON(t *testing.T) {
+	log := NewLog("gavel", "0.1.0")
+	log.Runs[0].Tool.Driver.Rules = []ReportingDescriptor{{
+		ID:               "S2068",
+		Name:             "hardcoded-credentials",
+		ShortDescription: Message{Text: "Hard-coded credentials detected"},
+		Relationships: []Relationship{{
+			Target: RelationshipTarget{
+				ID:            "798",
+				ToolComponent: &ToolComponentReference{Name: "CWE"},
+			},
+			Kinds: []string{"relevant"},
+		}},
+	}}
+	log.Runs[0].Taxonomies = []ToolComponent{{
+		Name:         "CWE",
+		Organization: "MITRE",
+		Taxa:         []Taxon{{ID: "798"}},
+	}}
+
+	data, err := json.Marshal(log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(data)
+
+	for _, want := range []string{
+		`"taxonomies"`,
+		`"taxa"`,
+		`"relationships"`,
+		`"toolComponent"`,
+		`"kinds":["relevant"]`,
+	} {
+		if !contains(s, want) {
+			t.Errorf("expected JSON to contain %s", want)
+		}
+	}
+
+	// Round-trip
+	var parsed Log
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatal(err)
+	}
+	if len(parsed.Runs[0].Taxonomies) != 1 {
+		t.Fatalf("expected 1 taxonomy, got %d", len(parsed.Runs[0].Taxonomies))
+	}
+	tax := parsed.Runs[0].Taxonomies[0]
+	if tax.Name != "CWE" || tax.Organization != "MITRE" {
+		t.Errorf("taxonomy: got name=%q org=%q", tax.Name, tax.Organization)
+	}
+	if len(tax.Taxa) != 1 || tax.Taxa[0].ID != "798" {
+		t.Errorf("taxa: got %+v", tax.Taxa)
+	}
+
+	rule := parsed.Runs[0].Tool.Driver.Rules[0]
+	if len(rule.Relationships) != 1 {
+		t.Fatalf("expected 1 relationship, got %d", len(rule.Relationships))
+	}
+	rel := rule.Relationships[0]
+	if rel.Target.ID != "798" {
+		t.Errorf("relationship target ID: got %q", rel.Target.ID)
+	}
+	if rel.Target.ToolComponent == nil || rel.Target.ToolComponent.Name != "CWE" {
+		t.Errorf("relationship toolComponent: got %+v", rel.Target.ToolComponent)
+	}
+}
+
+func TestTaxonomyTypes_OmitEmpty(t *testing.T) {
+	log := NewLog("gavel", "0.1.0")
+	log.Runs[0].Tool.Driver.Rules = []ReportingDescriptor{{
+		ID:               "R001",
+		ShortDescription: Message{Text: "test"},
+	}}
+
+	data, err := json.Marshal(log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(data)
+
+	for _, absent := range []string{"taxonomies", "relationships"} {
+		if contains(s, absent) {
+			t.Errorf("expected JSON to NOT contain %q when empty", absent)
+		}
 	}
 }
 

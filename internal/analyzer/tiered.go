@@ -371,13 +371,6 @@ func (ta *TieredAnalyzer) runRegexRules(art input.Artifact, regexRules []rules.R
 				"gavel/rule-source":  string(rule.Source),
 			}
 
-			// Add standard references if available
-			if len(rule.CWE) > 0 {
-				props["gavel/cwe"] = rule.CWE
-			}
-			if len(rule.OWASP) > 0 {
-				props["gavel/owasp"] = rule.OWASP
-			}
 			if rule.Remediation != "" {
 				props["gavel/remediation"] = rule.Remediation
 			}
@@ -460,12 +453,6 @@ func (ta *TieredAnalyzer) runASTRules(art input.Artifact, astRules []rules.Rule)
 				"gavel/tier":        "instant",
 				"gavel/rule-type":   "ast",
 				"gavel/rule-source": string(rule.Source),
-			}
-			if len(rule.CWE) > 0 {
-				props["gavel/cwe"] = rule.CWE
-			}
-			if len(rule.OWASP) > 0 {
-				props["gavel/owasp"] = rule.OWASP
 			}
 			if rule.Remediation != "" {
 				props["gavel/remediation"] = rule.Remediation
