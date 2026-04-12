@@ -31,8 +31,8 @@ jobs:
         with:
           go-version: '1.25'
 
-      - name: Install BAML CLI
-        run: go install github.com/boundaryml/baml/baml-cli@latest
+      - name: Install pinned dev tools
+        uses: ./.github/actions/install-tools
 
       - name: Generate BAML client
         run: baml-cli generate
