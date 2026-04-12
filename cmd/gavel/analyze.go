@@ -42,6 +42,7 @@ var (
 	flagPolicyDir   string
 	flagRulesDir    string
 	flagCacheServer string
+	flagBaseline    string
 )
 
 func init() {
@@ -58,6 +59,7 @@ func init() {
 	analyzeCmd.Flags().StringVar(&flagPolicyDir, "policies", ".gavel", "Directory containing policies.yaml")
 	analyzeCmd.Flags().StringVar(&flagRulesDir, "rules-dir", "", "Directory containing custom rule YAML files")
 	analyzeCmd.Flags().StringVar(&flagCacheServer, "cache-server", "", "Remote cache server URL to upload results (e.g., https://gavel.company.com)")
+	analyzeCmd.Flags().StringVar(&flagBaseline, "baseline", "", "Baseline SARIF to compare against (result ID from the store or a path to a sarif.json file). Each result gets a baselineState (new|unchanged|absent).")
 
 	rootCmd.AddCommand(analyzeCmd)
 }
@@ -254,6 +256,36 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 	// Assemble SARIF
 	sarifLog := sarif.Assemble(results, descriptors, inputScope, cfg.Persona)
 
+	// Stamp a stable automation guid so subsequent runs can reference this
+	// one via baselineGuid.
+	sarif.EnsureAutomationDetails(sarifLog)
+
+	// Baseline comparison: annotate every result with new|unchanged|absent
+	// relative to the baseline SARIF, if one was provided. This runs after
+	// SARIF assembly (so content fingerprints are populated) and before
+	// calibration/suppression (so they operate on a log that already
+	// carries baselineState for downstream consumers to key off).
+	baselineNew, baselineUnchanged, baselineAbsent := 0, 0, 0
+	if flagBaseline != "" {
+		baselineLog, err := loadBaselineSARIF(ctx, flagBaseline, flagOutput)
+		if err != nil {
+			return fmt.Errorf("loading baseline %q: %w", flagBaseline, err)
+		}
+		sarif.CompareBaseline(sarifLog, baselineLog)
+		if len(sarifLog.Runs) > 0 {
+			for _, r := range sarifLog.Runs[0].Results {
+				switch r.BaselineState {
+				case sarif.BaselineStateNew:
+					baselineNew++
+				case sarif.BaselineStateUnchanged:
+					baselineUnchanged++
+				case sarif.BaselineStateAbsent:
+					baselineAbsent++
+				}
+			}
+		}
+	}
+
 	// Calibration: apply threshold overrides
 	if thresholdOverrides != nil && len(sarifLog.Runs) > 0 {
 		suppressed := calibration.SuppressedResults(sarifLog.Runs[0].Results, thresholdOverrides)
@@ -327,16 +359,45 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 		findingCount = len(sarifLog.Runs[0].Results)
 	}
 	summary := map[string]interface{}{
-		"id":       id,
-		"findings": findingCount,
-		"scope":    inputScope,
+		"id":         id,
+		"findings":   findingCount,
+		"scope":      inputScope,
 		"persona":    cfg.Persona,
 		"suppressed": suppressedCount,
+	}
+	if flagBaseline != "" {
+		summary["baseline"] = map[string]interface{}{
+			"source":    flagBaseline,
+			"new":       baselineNew,
+			"unchanged": baselineUnchanged,
+			"absent":    baselineAbsent,
+		}
 	}
 	out, _ := json.MarshalIndent(summary, "", "  ")
 	fmt.Println(string(out))
 
 	return nil
+}
+
+// loadBaselineSARIF resolves the --baseline argument to a SARIF log. If ref
+// points at an existing file it is read directly; otherwise ref is treated
+// as a store result ID under storeDir. This lets CI point at a downloaded
+// artifact (`--baseline ./prev/sarif.json`) while local workflows can just
+// reference the previous run by ID.
+func loadBaselineSARIF(ctx context.Context, ref, storeDir string) (*sarif.Log, error) {
+	if info, err := os.Stat(ref); err == nil && !info.IsDir() {
+		data, err := os.ReadFile(ref)
+		if err != nil {
+			return nil, err
+		}
+		var log sarif.Log
+		if err := json.Unmarshal(data, &log); err != nil {
+			return nil, fmt.Errorf("decoding baseline SARIF: %w", err)
+		}
+		return &log, nil
+	}
+	fs := store.NewFileStore(storeDir)
+	return fs.ReadSARIF(ctx, ref)
 }
 
 // uploadResultsToCache uploads analysis results to the remote cache server

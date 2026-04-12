@@ -85,6 +85,12 @@ func (a *Assembler) Build() *Log {
 	// Deduplicate results
 	deduped := dedup(a.results)
 
+	// Populate content-based fingerprints on every result so the SARIF log
+	// carries stable identifiers for baseline comparison downstream.
+	for i := range deduped {
+		SetContentFingerprint(&deduped[i])
+	}
+
 	// Add cache metadata to each result if configured
 	if a.cacheMetadata != nil {
 		cacheKey := computeCacheKey(a.cacheMetadata)

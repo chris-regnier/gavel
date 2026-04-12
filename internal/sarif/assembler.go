@@ -3,6 +3,9 @@ package sarif
 // Assemble creates a SARIF log from analysis results, deduplicating overlapping findings.
 func Assemble(results []Result, rules []ReportingDescriptor, inputScope, persona string) *Log {
 	deduped := dedup(results)
+	for i := range deduped {
+		SetContentFingerprint(&deduped[i])
+	}
 
 	log := NewLog("gavel", "0.1.0")
 	log.Runs[0].Tool.Driver.Rules = rules
