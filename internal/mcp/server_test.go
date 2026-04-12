@@ -1003,3 +1003,142 @@ func TestExtractChangedLines(t *testing.T) {
 		})
 	}
 }
+
+// TestApplyBaseline_StampsAutomationAndCompares is a unit test for the
+// shared applyBaseline helper used by every MCP analyze_* handler. It
+// seeds the store with a baseline run, calls applyBaseline, and asserts
+// that the current log is linked to the baseline GUID and that its
+// results carry baselineState buckets.
+func TestApplyBaseline_StampsAutomationAndCompares(t *testing.T) {
+	dir := t.TempDir()
+	fs := store.NewFileStore(dir)
+	ctx := context.Background()
+
+	// Seed a baseline SARIF in the store with one error-level finding
+	// whose content will match a finding in the current run.
+	baselineLog := sarif.NewLog("gavel", "0.1.0")
+	baselineLog.Runs[0].AutomationDetails = &sarif.RunAutomationDetails{Guid: "prev-run-guid"}
+	baselineLog.Runs[0].Results = []sarif.Result{
+		{
+			RuleID:  "bug-detection",
+			Level:   "error",
+			Message: sarif.Message{Text: "pre-existing"},
+			Locations: []sarif.Location{{PhysicalLocation: sarif.PhysicalLocation{
+				ArtifactLocation: sarif.ArtifactLocation{URI: "a.go"},
+				Region: sarif.Region{
+					StartLine: 10, EndLine: 10,
+					Snippet: &sarif.ArtifactContent{Text: "password := \"hunter2\"\n"},
+				},
+			}}},
+		},
+	}
+	sarif.SetContentFingerprint(&baselineLog.Runs[0].Results[0])
+	baselineID, err := fs.WriteSARIF(ctx, baselineLog)
+	if err != nil {
+		t.Fatalf("seeding baseline: %v", err)
+	}
+
+	// Build a current log that duplicates the baseline's finding
+	// (should come out unchanged) and adds a new one.
+	current := sarif.NewLog("gavel", "0.1.0")
+	current.Runs[0].Results = []sarif.Result{
+		{
+			RuleID:  "bug-detection",
+			Level:   "error",
+			Message: sarif.Message{Text: "same"},
+			Locations: []sarif.Location{{PhysicalLocation: sarif.PhysicalLocation{
+				ArtifactLocation: sarif.ArtifactLocation{URI: "a.go"},
+				Region: sarif.Region{
+					StartLine: 42, EndLine: 42,
+					Snippet: &sarif.ArtifactContent{Text: "password := \"hunter2\"\n"},
+				},
+			}}},
+		},
+		{
+			RuleID:  "bug-detection",
+			Level:   "warning",
+			Message: sarif.Message{Text: "new"},
+			Locations: []sarif.Location{{PhysicalLocation: sarif.PhysicalLocation{
+				ArtifactLocation: sarif.ArtifactLocation{URI: "b.go"},
+				Region: sarif.Region{
+					StartLine: 1, EndLine: 1,
+					Snippet: &sarif.ArtifactContent{Text: "os.Remove(userPath)\n"},
+				},
+			}}},
+		},
+	}
+	for i := range current.Runs[0].Results {
+		sarif.SetContentFingerprint(&current.Runs[0].Results[i])
+	}
+
+	h := newTestHandlers(t, testConfig(), fs, dir)
+
+	counts, errResult := h.applyBaseline(ctx, current, baselineID)
+	if errResult != nil {
+		t.Fatalf("applyBaseline returned error result: %v", errResult.Content)
+	}
+
+	if current.Runs[0].AutomationDetails == nil || current.Runs[0].AutomationDetails.Guid == "" {
+		t.Error("expected AutomationDetails.Guid to be stamped on the current run")
+	}
+	if current.Runs[0].BaselineGuid != "prev-run-guid" {
+		t.Errorf("BaselineGuid = %q, want %q", current.Runs[0].BaselineGuid, "prev-run-guid")
+	}
+
+	if counts.New != 1 {
+		t.Errorf("counts.New = %d, want 1", counts.New)
+	}
+	if counts.Unchanged != 1 {
+		t.Errorf("counts.Unchanged = %d, want 1", counts.Unchanged)
+	}
+	if counts.Absent != 0 {
+		t.Errorf("counts.Absent = %d, want 0", counts.Absent)
+	}
+	if counts.Source != baselineID {
+		t.Errorf("counts.Source = %q, want %q", counts.Source, baselineID)
+	}
+}
+
+// TestApplyBaseline_NoBaselineStillStampsGUID verifies that calling
+// applyBaseline with an empty baseline ref stamps automation details
+// (so the next run can chain back to this one) but performs no
+// comparison.
+func TestApplyBaseline_NoBaselineStillStampsGUID(t *testing.T) {
+	dir := t.TempDir()
+	fs := store.NewFileStore(dir)
+
+	current := sarif.NewLog("gavel", "0.1.0")
+	h := newTestHandlers(t, testConfig(), fs, dir)
+
+	counts, errResult := h.applyBaseline(context.Background(), current, "")
+	if errResult != nil {
+		t.Fatalf("unexpected error result: %v", errResult.Content)
+	}
+	if counts != (baselineCounts{}) {
+		t.Errorf("expected zero counts when no baseline, got %+v", counts)
+	}
+	if current.Runs[0].AutomationDetails == nil || current.Runs[0].AutomationDetails.Guid == "" {
+		t.Error("expected AutomationDetails.Guid to be stamped even without a baseline")
+	}
+	if current.Runs[0].BaselineGuid != "" {
+		t.Errorf("expected empty BaselineGuid, got %q", current.Runs[0].BaselineGuid)
+	}
+}
+
+// TestApplyBaseline_MissingBaselineIDReturnsError verifies that a
+// missing baseline ID surfaces an MCP error result rather than silently
+// succeeding.
+func TestApplyBaseline_MissingBaselineIDReturnsError(t *testing.T) {
+	dir := t.TempDir()
+	fs := store.NewFileStore(dir)
+	current := sarif.NewLog("gavel", "0.1.0")
+
+	h := newTestHandlers(t, testConfig(), fs, dir)
+	_, errResult := h.applyBaseline(context.Background(), current, "does-not-exist")
+	if errResult == nil {
+		t.Fatal("expected error result for missing baseline id")
+	}
+	if !errResult.IsError {
+		t.Error("expected IsError=true on returned result")
+	}
+}

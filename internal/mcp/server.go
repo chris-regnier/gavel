@@ -90,6 +90,9 @@ func analyzeFileTool() mcp.Tool {
 		mcp.WithString("persona",
 			mcp.Description("Analysis persona: code-reviewer, architect, or security"),
 		),
+		mcp.WithString("baseline",
+			mcp.Description("Optional baseline to compare against: a stored result ID or a path to a sarif.json file. Each finding gets a baselineState (new|unchanged|absent)."),
+		),
 	)
 }
 
@@ -102,6 +105,9 @@ func analyzeDirectoryTool() mcp.Tool {
 		),
 		mcp.WithString("persona",
 			mcp.Description("Analysis persona: code-reviewer, architect, or security"),
+		),
+		mcp.WithString("baseline",
+			mcp.Description("Optional baseline to compare against: a stored result ID or a path to a sarif.json file. Each finding gets a baselineState (new|unchanged|absent)."),
 		),
 	)
 }
@@ -187,6 +193,9 @@ func analyzeDiffTool() mcp.Tool {
 		mcp.WithString("persona",
 			mcp.Description("Analysis persona: code-reviewer, architect, or security"),
 		),
+		mcp.WithString("baseline",
+			mcp.Description("Optional baseline to compare against: a stored result ID or a path to a sarif.json file. Each finding gets a baselineState (new|unchanged|absent)."),
+		),
 	)
 }
 
@@ -239,6 +248,48 @@ func architectureReviewPrompt() mcp.Prompt {
 	)
 }
 
+// baselineCounts summarizes how many results fell into each baselineState
+// bucket after CompareBaseline was applied. An empty value means no
+// baseline comparison was performed.
+type baselineCounts struct {
+	Source    string `json:"source"`
+	New       int    `json:"new"`
+	Unchanged int    `json:"unchanged"`
+	Absent    int    `json:"absent"`
+}
+
+// applyBaseline stamps automation details onto sarifLog and, when the
+// `baseline` tool parameter is set, loads that baseline and annotates
+// each result with a baselineState. Returns the bucket counts so the
+// handler can include them in its summary, or a CallToolResult error if
+// the baseline failed to load.
+func (h *handlers) applyBaseline(ctx context.Context, sarifLog *sarif.Log, baseline string) (baselineCounts, *mcp.CallToolResult) {
+	sarif.EnsureAutomationDetails(sarifLog)
+	if baseline == "" {
+		return baselineCounts{}, nil
+	}
+	baselineLog, err := store.LoadBaseline(ctx, h.cfg.Store, baseline)
+	if err != nil {
+		return baselineCounts{}, mcp.NewToolResultError(fmt.Sprintf("loading baseline %q: %v", baseline, err))
+	}
+	sarif.CompareBaseline(sarifLog, baselineLog)
+
+	counts := baselineCounts{Source: baseline}
+	if len(sarifLog.Runs) > 0 {
+		for _, r := range sarifLog.Runs[0].Results {
+			switch r.BaselineState {
+			case sarif.BaselineStateNew:
+				counts.New++
+			case sarif.BaselineStateUnchanged:
+				counts.Unchanged++
+			case sarif.BaselineStateAbsent:
+				counts.Absent++
+			}
+		}
+	}
+	return counts, nil
+}
+
 // --- Tool handlers ---
 
 func (h *handlers) handleAnalyzeFile(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -256,6 +307,8 @@ func (h *handlers) handleAnalyzeFile(ctx context.Context, request mcp.CallToolRe
 		persona = "code-reviewer"
 	}
 
+	baseline := request.GetString("baseline", "")
+
 	// Read the file
 	content, err := os.ReadFile(path)
 	if err != nil {
@@ -271,6 +324,11 @@ func (h *handlers) handleAnalyzeFile(ctx context.Context, request mcp.CallToolRe
 	// Build SARIF and store so judge can evaluate later
 	rules := buildRules(h.cfg.Config.Policies)
 	sarifLog := sarif.Assemble(results, rules, "file", persona)
+
+	baselineSummary, errResult := h.applyBaseline(ctx, sarifLog, baseline)
+	if errResult != nil {
+		return errResult, nil
+	}
 
 	supps, loadErr := suppression.Load(h.rootDir())
 	if loadErr != nil {
@@ -289,6 +347,9 @@ func (h *handlers) handleAnalyzeFile(ctx context.Context, request mcp.CallToolRe
 		"files":    1,
 		"persona":  persona,
 		"path":     path,
+	}
+	if baseline != "" {
+		summary["baseline"] = baselineSummary
 	}
 	out, err := json.MarshalIndent(summary, "", "  ")
 	if err != nil {
@@ -313,6 +374,8 @@ func (h *handlers) handleAnalyzeDirectory(ctx context.Context, request mcp.CallT
 		persona = "code-reviewer"
 	}
 
+	baseline := request.GetString("baseline", "")
+
 	// Read directory
 	handler := input.NewHandler()
 	artifacts, err := handler.ReadDirectory(dir)
@@ -334,6 +397,11 @@ func (h *handlers) handleAnalyzeDirectory(ctx context.Context, request mcp.CallT
 	rules := buildRules(h.cfg.Config.Policies)
 	sarifLog := sarif.Assemble(results, rules, "directory", persona)
 
+	baselineSummary, errResult := h.applyBaseline(ctx, sarifLog, baseline)
+	if errResult != nil {
+		return errResult, nil
+	}
+
 	supps, loadErr := suppression.Load(h.rootDir())
 	if loadErr != nil {
 		slog.Warn("failed to load suppressions", "err", loadErr)
@@ -350,6 +418,9 @@ func (h *handlers) handleAnalyzeDirectory(ctx context.Context, request mcp.CallT
 		"findings": len(results),
 		"files":    len(artifacts),
 		"persona":  persona,
+	}
+	if baseline != "" {
+		summary["baseline"] = baselineSummary
 	}
 	out, err := json.MarshalIndent(summary, "", "  ")
 	if err != nil {
@@ -488,6 +559,8 @@ func (h *handlers) handleAnalyzeDiff(ctx context.Context, request mcp.CallToolRe
 		persona = "code-reviewer"
 	}
 
+	baseline := request.GetString("baseline", "")
+
 	// Read the full file
 	content, err := os.ReadFile(path)
 	if err != nil {
@@ -574,6 +647,11 @@ func (h *handlers) handleAnalyzeDiff(ctx context.Context, request mcp.CallToolRe
 	rules := buildRules(h.cfg.Config.Policies)
 	sarifLog := sarif.Assemble(allResults, rules, "diff", persona)
 
+	baselineSummary, errResult := h.applyBaseline(ctx, sarifLog, baseline)
+	if errResult != nil {
+		return errResult, nil
+	}
+
 	supps, loadErr := suppression.Load(h.rootDir())
 	if loadErr != nil {
 		slog.Warn("failed to load suppressions", "err", loadErr)
@@ -592,6 +670,9 @@ func (h *handlers) handleAnalyzeDiff(ctx context.Context, request mcp.CallToolRe
 		"persona":       persona,
 		"changed_start": changedStart,
 		"changed_end":   changedEnd,
+	}
+	if baseline != "" {
+		summary["baseline"] = baselineSummary
 	}
 	out, err := json.MarshalIndent(summary, "", "  ")
 	if err != nil {
