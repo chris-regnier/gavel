@@ -60,6 +60,11 @@ func (s *AnalyzeService) Analyze(ctx context.Context, req AnalyzeRequest) (*Anal
 
 	sarifLog := sarif.Assemble(results, buildDescriptors(req.Config.Policies, req.Rules), scopeFromArtifacts(req.Artifacts), req.Config.Persona)
 
+	baselineSummary, err := s.applyBaseline(ctx, sarifLog, req.BaselineID)
+	if err != nil {
+		return nil, err
+	}
+
 	resultID, err := s.store.WriteSARIF(ctx, sarifLog)
 	if err != nil {
 		return nil, fmt.Errorf("storing SARIF: %w", err)
@@ -68,7 +73,39 @@ func (s *AnalyzeService) Analyze(ctx context.Context, req AnalyzeRequest) (*Anal
 	return &AnalyzeResult{
 		ResultID:      resultID,
 		TotalFindings: len(results),
+		Baseline:      baselineSummary,
 	}, nil
+}
+
+// applyBaseline stamps automation details onto sarifLog and, when
+// baselineID is non-empty, loads that baseline from the store and
+// annotates each result with a baselineState. Returns a BaselineSummary
+// with bucket counts when comparison ran, or nil when it didn't.
+func (s *AnalyzeService) applyBaseline(ctx context.Context, sarifLog *sarif.Log, baselineID string) (*BaselineSummary, error) {
+	sarif.EnsureAutomationDetails(sarifLog)
+	if baselineID == "" {
+		return nil, nil
+	}
+	baselineLog, err := s.store.ReadSARIF(ctx, baselineID)
+	if err != nil {
+		return nil, fmt.Errorf("loading baseline %q: %w", baselineID, err)
+	}
+	sarif.CompareBaseline(sarifLog, baselineLog)
+
+	summary := &BaselineSummary{Source: baselineID}
+	if len(sarifLog.Runs) > 0 {
+		for _, r := range sarifLog.Runs[0].Results {
+			switch r.BaselineState {
+			case sarif.BaselineStateNew:
+				summary.New++
+			case sarif.BaselineStateUnchanged:
+				summary.Unchanged++
+			case sarif.BaselineStateAbsent:
+				summary.Absent++
+			}
+		}
+	}
+	return summary, nil
 }
 
 // AnalyzeStream runs analysis progressively, emitting per-tier results on a channel.
@@ -150,6 +187,13 @@ func (s *AnalyzeService) AnalyzeStream(ctx context.Context, req AnalyzeRequest) 
 
 		// Store final SARIF
 		sarifLog := sarif.Assemble(allResults, buildDescriptors(req.Config.Policies, req.Rules), scopeFromArtifacts(req.Artifacts), req.Config.Persona)
+
+		baselineSummary, baselineErr := s.applyBaseline(ctx, sarifLog, req.BaselineID)
+		if baselineErr != nil {
+			errCh <- baselineErr
+			return
+		}
+
 		resultID, err := s.store.WriteSARIF(ctx, sarifLog)
 		if err != nil {
 			errCh <- fmt.Errorf("storing SARIF: %w", err)
@@ -159,6 +203,7 @@ func (s *AnalyzeService) AnalyzeStream(ctx context.Context, req AnalyzeRequest) 
 		resultCh <- AnalyzeResult{
 			ResultID:      resultID,
 			TotalFindings: len(allResults),
+			Baseline:      baselineSummary,
 		}
 	}()
 

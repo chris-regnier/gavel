@@ -16,6 +16,11 @@ type AnalyzeRequest struct {
 	Artifacts []input.Artifact
 	Config    config.Config
 	Rules     []rules.Rule
+	// BaselineID, if non-empty, identifies a previously stored SARIF
+	// result to compare against. Each finding in the new run will be
+	// annotated with a baselineState (new, unchanged, or absent).
+	// Empty disables baseline comparison.
+	BaselineID string
 }
 
 // TierResult represents results from a single analysis tier.
@@ -26,10 +31,21 @@ type TierResult struct {
 	Error     string         `json:"error,omitempty"`
 }
 
+// BaselineSummary breaks down how many results in an AnalyzeResult fell
+// into each baselineState bucket. It is zero-valued when baseline
+// comparison was not performed.
+type BaselineSummary struct {
+	Source    string `json:"source,omitempty"`
+	New       int    `json:"new"`
+	Unchanged int    `json:"unchanged"`
+	Absent    int    `json:"absent"`
+}
+
 // AnalyzeResult is the final summary after all tiers complete.
 type AnalyzeResult struct {
-	ResultID      string `json:"result_id"`
-	TotalFindings int    `json:"total_findings"`
+	ResultID      string           `json:"result_id"`
+	TotalFindings int              `json:"total_findings"`
+	Baseline      *BaselineSummary `json:"baseline,omitempty"`
 }
 
 // JudgeRequest is the transport-agnostic input for evaluation.

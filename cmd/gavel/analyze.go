@@ -267,7 +267,8 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 	// carries baselineState for downstream consumers to key off).
 	baselineNew, baselineUnchanged, baselineAbsent := 0, 0, 0
 	if flagBaseline != "" {
-		baselineLog, err := loadBaselineSARIF(ctx, flagBaseline, flagOutput)
+		baselineStore := store.NewFileStore(flagOutput)
+		baselineLog, err := store.LoadBaseline(ctx, baselineStore, flagBaseline)
 		if err != nil {
 			return fmt.Errorf("loading baseline %q: %w", flagBaseline, err)
 		}
@@ -379,26 +380,6 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// loadBaselineSARIF resolves the --baseline argument to a SARIF log. If ref
-// points at an existing file it is read directly; otherwise ref is treated
-// as a store result ID under storeDir. This lets CI point at a downloaded
-// artifact (`--baseline ./prev/sarif.json`) while local workflows can just
-// reference the previous run by ID.
-func loadBaselineSARIF(ctx context.Context, ref, storeDir string) (*sarif.Log, error) {
-	if info, err := os.Stat(ref); err == nil && !info.IsDir() {
-		data, err := os.ReadFile(ref)
-		if err != nil {
-			return nil, err
-		}
-		var log sarif.Log
-		if err := json.Unmarshal(data, &log); err != nil {
-			return nil, fmt.Errorf("decoding baseline SARIF: %w", err)
-		}
-		return &log, nil
-	}
-	fs := store.NewFileStore(storeDir)
-	return fs.ReadSARIF(ctx, ref)
-}
 
 // uploadResultsToCache uploads analysis results to the remote cache server
 func uploadResultsToCache(ctx context.Context, cfg *config.Config, cacheURL string, artifacts []input.Artifact, results []sarif.Result) error {

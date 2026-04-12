@@ -25,9 +25,10 @@ type Handlers struct {
 
 // analyzeRequestJSON is the JSON wire format for analyze requests.
 type analyzeRequestJSON struct {
-	Artifacts []artifactJSON `json:"artifacts"`
-	Config    config.Config  `json:"config"`
-	Rules     []rules.Rule   `json:"rules,omitempty"`
+	Artifacts  []artifactJSON `json:"artifacts"`
+	Config     config.Config  `json:"config"`
+	Rules      []rules.Rule   `json:"rules,omitempty"`
+	BaselineID string         `json:"baseline_id,omitempty"`
 }
 
 type artifactJSON struct {
@@ -90,9 +91,10 @@ func (h *Handlers) HandleAnalyze(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result, err := h.analyze.Analyze(r.Context(), service.AnalyzeRequest{
-		Artifacts: toArtifacts(req.Artifacts),
-		Config:    req.Config,
-		Rules:     req.Rules,
+		Artifacts:  toArtifacts(req.Artifacts),
+		Config:     req.Config,
+		Rules:      req.Rules,
+		BaselineID: req.BaselineID,
 	})
 	if err != nil {
 		slog.Error("analyze failed", "error", err, "tenant", middleware.TenantFromContext(r.Context()), "request_id", middleware.RequestIDFromContext(r.Context()))
@@ -123,9 +125,10 @@ func (h *Handlers) HandleAnalyzeStream(w http.ResponseWriter, r *http.Request) {
 	sse.SetHeaders()
 
 	tierCh, resultCh, errCh := h.analyze.AnalyzeStream(r.Context(), service.AnalyzeRequest{
-		Artifacts: toArtifacts(req.Artifacts),
-		Config:    req.Config,
-		Rules:     req.Rules,
+		Artifacts:  toArtifacts(req.Artifacts),
+		Config:     req.Config,
+		Rules:      req.Rules,
+		BaselineID: req.BaselineID,
 	})
 
 	// Stream tier results
