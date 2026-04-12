@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/chris-regnier/gavel/internal/sarif"
 )
@@ -69,38 +68,25 @@ func enrichResult(r *sarif.Result) {
 		r.Properties = make(map[string]any)
 	}
 
-	// Extract location info once.
+	// Compute partial fingerprint from ruleID, URI, startLine, and message.
+	// This is line-positional and breaks when lines shift.
 	uri := ""
 	startLine := 0
-	var snippet string
 	if len(r.Locations) > 0 {
 		loc := r.Locations[0]
 		uri = loc.PhysicalLocation.ArtifactLocation.URI
 		startLine = loc.PhysicalLocation.Region.StartLine
-		if loc.PhysicalLocation.Region.Snippet != nil {
-			snippet = loc.PhysicalLocation.Region.Snippet.Text
-		}
 	}
-
-	// Compute partial fingerprint from ruleID, URI, startLine, and message.
-	// This is line-positional and breaks when lines shift.
 	fingerprintInput := fmt.Sprintf("%s|%s|%d|%s", r.RuleID, uri, startLine, r.Message.Text)
 	hash := sha256.Sum256([]byte(fingerprintInput))
 	r.PartialFingerprints["primaryLocationLineHash"] = fmt.Sprintf("%x", hash[:16]) // first 32 hex chars (16 bytes)
 
-	// Compute content-based fingerprint that survives line shifts and
-	// whitespace-only reformatting. We hash the rule ID together with the
-	// snippet text after normalizing whitespace (trim each line, drop blank
-	// lines). When no snippet is available we skip the content fingerprint;
-	// the partialFingerprint above still provides a positional identity.
-	if normalized := normalizeSnippet(snippet); normalized != "" {
-		if r.Fingerprints == nil {
-			r.Fingerprints = make(map[string]string)
-		}
-		contentInput := r.RuleID + "\n" + normalized
-		contentHash := sha256.Sum256([]byte(contentInput))
-		r.Fingerprints["gavel/contentHash/v1"] = fmt.Sprintf("%x", contentHash[:16])
-	}
+	// Populate the content-based fingerprint (stable across line shifts and
+	// whitespace-only reformatting). Assemble() already calls this during
+	// SARIF construction; repeat it here so logs built by callers that skip
+	// Assemble — or that reach the formatter before fingerprint population —
+	// still get a content fingerprint.
+	sarif.SetContentFingerprint(r)
 
 	// Map level to security-severity score.
 	r.Properties["security-severity"] = securitySeverity(r.Level)
@@ -108,27 +94,6 @@ func enrichResult(r *sarif.Result) {
 	// Map tier to precision.
 	tier, _ := r.Properties["gavel/tier"].(string)
 	r.Properties["precision"] = tierPrecision(tier)
-}
-
-// normalizeSnippet returns a whitespace-normalized form of a code snippet
-// suitable for content-based fingerprinting. Each line is trimmed of leading
-// and trailing whitespace and blank lines are dropped, so reformatting that
-// only changes indentation or blank-line padding produces the same hash.
-// Returns "" if the snippet contains no non-whitespace content.
-func normalizeSnippet(s string) string {
-	if s == "" {
-		return ""
-	}
-	lines := strings.Split(s, "\n")
-	out := make([]string, 0, len(lines))
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" {
-			continue
-		}
-		out = append(out, trimmed)
-	}
-	return strings.Join(out, "\n")
 }
 
 // securitySeverity maps SARIF levels to GitHub Code Scanning security-severity scores.

@@ -10,11 +10,21 @@ type Log struct {
 }
 
 type Run struct {
-	Tool        Tool                   `json:"tool"`
-	Results     []Result               `json:"results"`
-	Taxonomies  []ToolComponent        `json:"taxonomies,omitempty"`
-	Invocations []Invocation           `json:"invocations,omitempty"`
-	Properties  map[string]interface{} `json:"properties,omitempty"`
+	Tool              Tool                   `json:"tool"`
+	Results           []Result               `json:"results"`
+	Taxonomies        []ToolComponent        `json:"taxonomies,omitempty"`
+	Invocations       []Invocation           `json:"invocations,omitempty"`
+	AutomationDetails *RunAutomationDetails  `json:"automationDetails,omitempty"`
+	BaselineGuid      string                 `json:"baselineGuid,omitempty"`
+	Properties        map[string]interface{} `json:"properties,omitempty"`
+}
+
+// RunAutomationDetails identifies a single analysis run, per SARIF 2.1.0
+// §3.17. The Guid is the stable identifier subsequent runs use to link back
+// to this one via Run.BaselineGuid.
+type RunAutomationDetails struct {
+	ID   string `json:"id,omitempty"`
+	Guid string `json:"guid,omitempty"`
 }
 
 type Invocation struct {
@@ -97,6 +107,7 @@ type Result struct {
 	Locations           []Location             `json:"locations,omitempty"`
 	Fingerprints        map[string]string      `json:"fingerprints,omitempty"`
 	PartialFingerprints map[string]string      `json:"partialFingerprints,omitempty"`
+	BaselineState       string                 `json:"baselineState,omitempty"`
 	Properties          map[string]interface{} `json:"properties,omitempty"`
 	Suppressions        []SARIFSuppression     `json:"suppressions,omitempty"`
 }

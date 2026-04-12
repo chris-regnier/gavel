@@ -174,3 +174,23 @@ func TestAssemble_NoTaxonomiesWhenNoRelationships(t *testing.T) {
 		t.Errorf("expected nil taxonomies, got %+v", log.Runs[0].Taxonomies)
 	}
 }
+
+func TestAssemble_PopulatesContentFingerprints(t *testing.T) {
+	results := []Result{
+		{
+			RuleID: "SEC001", Level: "error", Message: Message{Text: "finding"},
+			Locations: []Location{{PhysicalLocation: PhysicalLocation{
+				ArtifactLocation: ArtifactLocation{URI: "a.go"},
+				Region: Region{
+					StartLine: 10, EndLine: 10,
+					Snippet: &ArtifactContent{Text: "password := \"hunter2\"\n"},
+				},
+			}}},
+		},
+	}
+	log := Assemble(results, nil, "files", "code-reviewer")
+	r := log.Runs[0].Results[0]
+	if _, ok := r.Fingerprints[ContentFingerprintV1]; !ok {
+		t.Errorf("expected Assemble to populate %q; fingerprints=%v", ContentFingerprintV1, r.Fingerprints)
+	}
+}
