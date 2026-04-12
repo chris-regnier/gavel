@@ -95,6 +95,7 @@ type Result struct {
 	Level               string                 `json:"level"`
 	Message             Message                `json:"message"`
 	Locations           []Location             `json:"locations,omitempty"`
+	Fingerprints        map[string]string      `json:"fingerprints,omitempty"`
 	PartialFingerprints map[string]string      `json:"partialFingerprints,omitempty"`
 	Properties          map[string]interface{} `json:"properties,omitempty"`
 	Suppressions        []SARIFSuppression     `json:"suppressions,omitempty"`

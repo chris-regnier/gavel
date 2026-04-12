@@ -88,6 +88,121 @@ func TestSARIFFormatter_ValidJSON(t *testing.T) {
 	}
 }
 
+// snippetSARIFLog returns a SARIF log whose first result carries a snippet,
+// allowing tests to exercise the content-based fingerprint path.
+func snippetSARIFLog(ruleID, uri, snippetText string, startLine int) *sarif.Log {
+	log := testSARIFLog()
+	r := &log.Runs[0].Results[0]
+	r.RuleID = ruleID
+	r.Locations = []sarif.Location{{
+		PhysicalLocation: sarif.PhysicalLocation{
+			ArtifactLocation: sarif.ArtifactLocation{URI: uri},
+			Region: sarif.Region{
+				StartLine: startLine,
+				EndLine:   startLine,
+				Snippet:   &sarif.ArtifactContent{Text: snippetText},
+			},
+		},
+	}}
+	return log
+}
+
+func formatAndParse(t *testing.T, log *sarif.Log) sarif.Log {
+	t.Helper()
+	f := &SARIFFormatter{}
+	out, err := f.Format(&AnalysisOutput{SARIFLog: log})
+	if err != nil {
+		t.Fatalf("Format() returned error: %v", err)
+	}
+	var parsed sarif.Log
+	if err := json.Unmarshal(out, &parsed); err != nil {
+		t.Fatalf("output is not valid SARIF JSON: %v", err)
+	}
+	return parsed
+}
+
+func TestSARIFFormatter_HasContentFingerprint(t *testing.T) {
+	log := snippetSARIFLog("SEC001", "config/db.go", "password := \"hunter2\"\n", 42)
+	parsed := formatAndParse(t, log)
+
+	r := parsed.Runs[0].Results[0]
+	if r.Fingerprints == nil {
+		t.Fatal("expected fingerprints to be set")
+	}
+
+	hash, ok := r.Fingerprints["gavel/contentHash/v1"]
+	if !ok {
+		t.Fatal("expected fingerprints to contain 'gavel/contentHash/v1'")
+	}
+	if len(hash) != 32 {
+		t.Errorf("contentHash length = %d, want 32 hex chars; value = %q", len(hash), hash)
+	}
+}
+
+func TestSARIFFormatter_ContentFingerprint_StableAcrossLineShifts(t *testing.T) {
+	snippet := "password := \"hunter2\"\n"
+	a := formatAndParse(t, snippetSARIFLog("SEC001", "config/db.go", snippet, 42))
+	// Same snippet at a different line and a different file path; the content
+	// hash should ignore both because it depends only on rule + content.
+	b := formatAndParse(t, snippetSARIFLog("SEC001", "other/path.go", snippet, 99))
+
+	hashA := a.Runs[0].Results[0].Fingerprints["gavel/contentHash/v1"]
+	hashB := b.Runs[0].Results[0].Fingerprints["gavel/contentHash/v1"]
+	if hashA == "" || hashB == "" {
+		t.Fatalf("missing content fingerprints: a=%q b=%q", hashA, hashB)
+	}
+	if hashA != hashB {
+		t.Errorf("contentHash should be stable across line shifts; got %q vs %q", hashA, hashB)
+	}
+
+	// And the legacy partialFingerprint must shift, since startLine differs.
+	pfA := a.Runs[0].Results[0].PartialFingerprints["primaryLocationLineHash"]
+	pfB := b.Runs[0].Results[0].PartialFingerprints["primaryLocationLineHash"]
+	if pfA == pfB {
+		t.Errorf("partialFingerprint should differ when startLine/uri change; both = %q", pfA)
+	}
+}
+
+func TestSARIFFormatter_ContentFingerprint_StableAcrossWhitespace(t *testing.T) {
+	original := "if err != nil {\n    return err\n}\n"
+	reformatted := "if err != nil {\n\treturn err\n}\n\n" // tabs vs spaces, trailing blank line
+
+	a := formatAndParse(t, snippetSARIFLog("SEC001", "main.go", original, 10))
+	b := formatAndParse(t, snippetSARIFLog("SEC001", "main.go", reformatted, 10))
+
+	hashA := a.Runs[0].Results[0].Fingerprints["gavel/contentHash/v1"]
+	hashB := b.Runs[0].Results[0].Fingerprints["gavel/contentHash/v1"]
+	if hashA != hashB {
+		t.Errorf("contentHash should ignore whitespace-only reformatting; got %q vs %q", hashA, hashB)
+	}
+}
+
+func TestSARIFFormatter_ContentFingerprint_DiffersByRuleID(t *testing.T) {
+	snippet := "password := \"hunter2\"\n"
+	a := formatAndParse(t, snippetSARIFLog("SEC001", "config/db.go", snippet, 42))
+	b := formatAndParse(t, snippetSARIFLog("SEC002", "config/db.go", snippet, 42))
+
+	hashA := a.Runs[0].Results[0].Fingerprints["gavel/contentHash/v1"]
+	hashB := b.Runs[0].Results[0].Fingerprints["gavel/contentHash/v1"]
+	if hashA == hashB {
+		t.Errorf("contentHash should differ by rule ID; both = %q", hashA)
+	}
+}
+
+func TestSARIFFormatter_ContentFingerprint_OmittedWithoutSnippet(t *testing.T) {
+	// Default testSARIFLog() has a result without a snippet — the content
+	// fingerprint should be skipped entirely.
+	parsed := formatAndParse(t, testSARIFLog())
+	r := parsed.Runs[0].Results[0]
+	if _, ok := r.Fingerprints["gavel/contentHash/v1"]; ok {
+		t.Errorf("did not expect content fingerprint when snippet is absent; got %v", r.Fingerprints)
+	}
+	// PartialFingerprints should still be populated as before.
+	if _, ok := r.PartialFingerprints["primaryLocationLineHash"]; !ok {
+		t.Errorf("expected partialFingerprints to still be populated; got %v", r.PartialFingerprints)
+	}
+}
+
 func TestSARIFFormatter_HasPartialFingerprints(t *testing.T) {
 	f := &SARIFFormatter{}
 	result := &AnalysisOutput{SARIFLog: testSARIFLog()}
