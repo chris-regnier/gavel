@@ -208,3 +208,9 @@ task build:release      # All architectures for current OS
 - CGO must be enabled (BAML dependency requires it)
 - macOS builds require Xcode tools
 - Linux builds use system GCC
+
+**Pinned CI tooling:**
+
+`baml-cli` and `goimports` are installed at pinned versions in every workflow via the `./.github/actions/install-tools` composite action. CI and release builds must be reproducible — do NOT reintroduce `@latest` in any workflow.
+
+To upgrade a pin, edit the `default:` value of the relevant input in `.github/actions/install-tools/action.yml` (one-line change), then run `task generate && task check` locally. Keep `baml-cli-version` in sync with `github.com/boundaryml/baml` in `go.mod`, and `goimports-version` in sync with `golang.org/x/tools` in `go.sum`. See chris-regnier/gavel#88 for background.

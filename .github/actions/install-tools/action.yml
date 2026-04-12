@@ -1,0 +1,40 @@
+name: 'Install pinned Gavel dev tools'
+description: 'Installs baml-cli and goimports at pinned versions (single source of truth for all workflows).'
+
+# ---------------------------------------------------------------------------
+# Upgrade procedure
+# ---------------------------------------------------------------------------
+# Bumping a pin is intentionally a one-line change. To upgrade:
+#
+#   1. Edit the `default:` value for the relevant input below.
+#   2. Keep `baml-cli-version` in sync with the `github.com/boundaryml/baml`
+#      version pinned in `go.mod` so the CLI and the generated client stay
+#      compatible.
+#   3. Keep `goimports-version` in sync with the `golang.org/x/tools` version
+#      resolved in `go.sum` (goimports ships from the same module).
+#   4. Run `task generate && task check` locally, commit, and push.
+#
+# Do NOT reintroduce `@latest` here or in any workflow — reproducible release
+# builds depend on these pins. See chris-regnier/gavel#88.
+# ---------------------------------------------------------------------------
+
+inputs:
+  baml-cli-version:
+    description: 'BAML CLI version (must match github.com/boundaryml/baml in go.mod).'
+    required: false
+    default: 'v0.220.0'
+  goimports-version:
+    description: 'goimports version (must match golang.org/x/tools in go.sum).'
+    required: false
+    default: 'v0.40.0'
+
+runs:
+  using: composite
+  steps:
+    - name: Install BAML CLI (pinned)
+      shell: bash
+      run: go install "github.com/boundaryml/baml/baml-cli@${{ inputs.baml-cli-version }}"
+
+    - name: Install goimports (pinned)
+      shell: bash
+      run: go install "golang.org/x/tools/cmd/goimports@${{ inputs.goimports-version }}"
