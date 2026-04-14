@@ -18,15 +18,16 @@ type BAMLClient interface {
 
 // Finding represents a single finding returned by the BAML analysis.
 type Finding struct {
-	RuleID         string  `json:"ruleId"`
-	Level          string  `json:"level"`
-	Message        string  `json:"message"`
-	FilePath       string  `json:"filePath"`
-	StartLine      int     `json:"startLine"`
-	EndLine        int     `json:"endLine"`
-	Recommendation string  `json:"recommendation"`
-	Explanation    string  `json:"explanation"`
-	Confidence     float64 `json:"confidence"`
+	RuleID             string  `json:"ruleId"`
+	Level              string  `json:"level"`
+	Message            string  `json:"message"`
+	FilePath           string  `json:"filePath"`
+	StartLine          int     `json:"startLine"`
+	EndLine            int     `json:"endLine"`
+	Recommendation     string  `json:"recommendation"`
+	Explanation        string  `json:"explanation"`
+	Confidence         float64 `json:"confidence"`
+	FixReplacementText string  `json:"fixReplacementText,omitempty"`
 }
 
 // Analyzer orchestrates code analysis using a BAMLClient.
