@@ -182,6 +182,44 @@ tasks:
       - git push origin {{.VERSION}}
       - echo "✓ Tag {{.VERSION}} created and pushed. GitHub Actions will build the release."
 
+  release:dry-run:
+    desc: Rehearse the release pipeline locally without tagging, pushing, or creating a release
+    cmds:
+      - rm -rf dist
+      - mkdir -p dist
+      - echo "==> Running tests..."
+      - task: test
+      - echo "==> Building release binaries for current OS..."
+      - task: build:release
+      - |
+        echo "==> Generating changelog..."
+        PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+        if [ -n "$PREV_TAG" ]; then
+          echo "## Changes since $PREV_TAG" > dist/CHANGELOG.md
+          echo "" >> dist/CHANGELOG.md
+          git log $PREV_TAG..HEAD --pretty=format:"- %s (%h)" --no-merges >> dist/CHANGELOG.md
+        else
+          echo "## Initial Release" > dist/CHANGELOG.md
+        fi
+      - |
+        echo ""
+        echo "==> Dry-run complete. Artifacts in dist/:"
+        ls -lh dist/
+        echo ""
+        echo "==> Checksums:"
+        cat dist/checksums.txt
+        echo ""
+        echo "==> Changelog:"
+        cat dist/CHANGELOG.md
+        echo ""
+        VERSION=$(git describe --tags --always --dirty)
+        echo "==> Would run:"
+        echo "    gh release create $VERSION \\"
+        echo "      --title \"Gavel $VERSION\" \\"
+        echo "      --notes-file dist/CHANGELOG.md \\"
+        echo "      dist/*.tar.gz \\"
+        echo "      dist/checksums.txt"
+
   bench:build:
     desc: Build gavel-bench binary
     cmds:

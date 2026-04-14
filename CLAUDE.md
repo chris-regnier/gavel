@@ -10,6 +10,7 @@ task test           # go test ./... -v
 task lint           # go vet ./...
 task generate       # baml-cli generate (regenerates baml_client/ from baml_src/)
 task check          # full CI parity: generate + lint + test + cross-compile (run before pushing)
+task release:dry-run  # rehearse the release pipeline locally (no tag, no push, no gh release)
 
 # Run a single test
 go test ./internal/config/ -run TestMergeOverrides -v
@@ -202,6 +203,7 @@ git push origin v0.2.0
 ```bash
 task build              # Current platform only
 task build:release      # All architectures for current OS
+task release:dry-run    # Full release rehearsal (test + build + changelog, no publish)
 ```
 
 **Requirements:**
