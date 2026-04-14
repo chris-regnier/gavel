@@ -209,7 +209,7 @@ Each of the following becomes a separate GitHub issue on `chris-regnier/gavel`, 
 4. **Node 20 action deprecation.** Upgrade `actions/checkout`, `actions/setup-go`, `actions/upload-artifact`, `go-task/setup-task` to Node-24-compatible versions before the forced cutover.
 5. **Host-OS-independent release builds.** Either teach `task build:release` to build both OSes from one host (osxcross / zig cc), or migrate to native arm64 runners (`ubuntu-24.04-arm`) or GoReleaser so cross-compile pain disappears.
 6. **Partial-release failure handling.** Currently when one OS leg fails, the other leg's artifacts are uploaded and then discarded. Define a retry path (re-run failed job) or a safe-restart story that does not require deleting and re-pushing the tag.
-7. **Release dry-run task.** Add `task release:dry-run` that runs everything the release workflow would run, locally, without pushing a tag. Lets us rehearse changes to the pipeline safely.
+7. ~~**Release dry-run task.**~~ Implemented in #91. `task release:dry-run` runs tests, builds release binaries, generates a changelog, and shows what `gh release create` would run — all without tagging, pushing, or creating a release.
 
 Each issue body includes: the problem, why we deferred it from this cleanup, a brief acceptance criterion, and a link to this spec.
 
@@ -229,4 +229,4 @@ Each issue body includes: the problem, why we deferred it from this cleanup, a b
 - **`gh api` branch protection is shared state.** The user has approved this action explicitly, but the command will be displayed and confirmed once more at runtime, with current protection state fetched first, to avoid clobbering any unrelated settings that may have been added since.
 - **Check names are fragile.** `test (ubuntu-latest)` and `test (macos-latest)` are GitHub's auto-generated matrix display names. If the matrix key or values change, the required-check names change and branch protection silently stops enforcing. This risk is accepted for now; a follow-up could pin display names via `name:` on the job.
 - **`task check` on an M-series Mac runs darwin/arm64 twice (native + cross) and darwin/amd64 once.** Fine — it is still catching breakage, just not the minimum possible work. Optimizing this is out of scope.
-- **Rehearsal before tag cut.** This spec does not add a release dry-run (deferred to Option C issue 7). The first real verification of the fix will be re-cutting `v0.6.0` or `v0.6.1`. We accept that.
+- ~~**Rehearsal before tag cut.**~~ Resolved — `task release:dry-run` now provides local rehearsal (#91).
