@@ -10,9 +10,9 @@ import (
 )
 
 type mockBAMLClient struct {
-	findings   []Finding
-	err        error
-	lastCode   string // captures the code arg from the most recent call
+	findings []Finding
+	err      error
+	lastCode string // captures the code arg from the most recent call
 }
 
 func (m *mockBAMLClient) AnalyzeCode(ctx context.Context, code string, policies string, personaPrompt string, additionalContext string) ([]Finding, error) {
@@ -130,6 +130,108 @@ func TestAnalyzer_EmptyPathSkipsHeader(t *testing.T) {
 
 	if strings.HasPrefix(mock.lastCode, "// File:") {
 		t.Error("expected no file path header for empty path")
+	}
+}
+
+func TestAnalyzer_EmitsFixWhenReplacementPresent(t *testing.T) {
+	mock := &mockBAMLClient{
+		findings: []Finding{
+			{
+				RuleID:             "hardcoded-credentials",
+				Level:              "error",
+				Message:            "Hardcoded password",
+				FilePath:           "config.go",
+				StartLine:          42,
+				EndLine:            42,
+				Recommendation:     "Use an environment variable",
+				Confidence:         0.95,
+				FixReplacementText: `password := os.Getenv("DB_PASSWORD")`,
+			},
+		},
+	}
+
+	a := NewAnalyzer(mock)
+	artifacts := []input.Artifact{
+		{Path: "config.go", Content: "package main\n\n" + strings.Repeat("line\n", 50), Kind: input.KindFile},
+	}
+	policies := map[string]config.Policy{
+		"hardcoded-credentials": {
+			Severity:    "error",
+			Instruction: "No hardcoded credentials",
+			Enabled:     true,
+		},
+	}
+
+	results, err := a.Analyze(context.Background(), artifacts, policies, "test persona")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+
+	r := results[0]
+	if len(r.Fixes) != 1 {
+		t.Fatalf("expected 1 fix on result, got %d", len(r.Fixes))
+	}
+	fix := r.Fixes[0]
+	if fix.Description.Text != "Use an environment variable" {
+		t.Errorf("fix description should mirror recommendation, got %q", fix.Description.Text)
+	}
+	if len(fix.ArtifactChanges) != 1 {
+		t.Fatalf("expected 1 artifactChange, got %d", len(fix.ArtifactChanges))
+	}
+	ac := fix.ArtifactChanges[0]
+	if ac.ArtifactLocation.URI != "config.go" {
+		t.Errorf("expected artifactLocation URI 'config.go', got %q", ac.ArtifactLocation.URI)
+	}
+	if len(ac.Replacements) != 1 {
+		t.Fatalf("expected 1 replacement, got %d", len(ac.Replacements))
+	}
+	rep := ac.Replacements[0]
+	if rep.DeletedRegion.StartLine != 42 || rep.DeletedRegion.EndLine != 42 {
+		t.Errorf("deletedRegion should span finding region, got start=%d end=%d",
+			rep.DeletedRegion.StartLine, rep.DeletedRegion.EndLine)
+	}
+	if rep.InsertedContent == nil || rep.InsertedContent.Text != `password := os.Getenv("DB_PASSWORD")` {
+		t.Errorf("insertedContent not set correctly: %+v", rep.InsertedContent)
+	}
+}
+
+func TestAnalyzer_NoFixWhenReplacementEmpty(t *testing.T) {
+	mock := &mockBAMLClient{
+		findings: []Finding{
+			{
+				RuleID:             "structural-issue",
+				Level:              "note",
+				Message:            "Consider restructuring this module",
+				FilePath:           "pkg/foo.go",
+				StartLine:          5,
+				EndLine:            50,
+				Recommendation:     "Extract smaller functions",
+				Confidence:         0.6,
+				FixReplacementText: "", // no machine-applicable fix
+			},
+		},
+	}
+
+	a := NewAnalyzer(mock)
+	artifacts := []input.Artifact{
+		{Path: "pkg/foo.go", Content: strings.Repeat("line\n", 60), Kind: input.KindFile},
+	}
+	policies := map[string]config.Policy{
+		"structural-issue": {Severity: "note", Instruction: "Design feedback", Enabled: true},
+	}
+
+	results, err := a.Analyze(context.Background(), artifacts, policies, "test persona")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if len(results[0].Fixes) != 0 {
+		t.Errorf("expected no fixes when FixReplacementText is empty, got %d", len(results[0].Fixes))
 	}
 }
 
