@@ -55,7 +55,7 @@ jobs:
         with:
           name: dist-linux
           path: dist/
-          retention-days: 1
+          retention-days: 5
 
   build-macos:
     if: github.event_name != 'workflow_dispatch' || github.actor == 'chris-regnier'
@@ -89,7 +89,7 @@ jobs:
         with:
           name: dist-macos
           path: dist/
-          retention-days: 1
+          retention-days: 5
 
   release:
     if: github.event_name != 'workflow_dispatch' || github.actor == 'chris-regnier'
