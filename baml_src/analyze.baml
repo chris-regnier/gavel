@@ -8,6 +8,7 @@ class Finding {
   recommendation string @description("Suggested fix or action")
   explanation string @description("Longer reasoning about why this is an issue")
   confidence float @description("0.0 to 1.0, how confident you are in this finding")
+  fixReplacementText string? @description("Optional raw replacement text for lines startLine through endLine of this finding. Match the original indentation. Leave empty for vague or structural findings. Raw text only — no markdown code fences, no prose.")
 }
 
 function AnalyzeCode(
@@ -45,6 +46,12 @@ function AnalyzeCode(
     3. Provide a detailed explanation following your persona's tone
     4. Suggest a specific, actionable recommendation
     5. Assign an appropriate confidence level based on the guidance above
+    6. If you can express a machine-applicable fix, populate fixReplacementText with
+       the raw replacement text that should replace lines startLine through endLine
+       (inclusive). Preserve the original indentation of the flagged region so the
+       replacement can be applied as-is. Provide raw text only — no markdown code
+       fences, no prose. If the fix is vague or structural (e.g. "consider
+       restructuring this module"), leave fixReplacementText empty.
 
     Only report genuine issues. Quality over quantity.
 

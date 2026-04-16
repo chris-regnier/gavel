@@ -67,6 +67,10 @@ func (t *FindingClassView) PropertyConfidence() (ClassPropertyView, error) {
 	return t.inner.Property("confidence")
 }
 
+func (t *FindingClassView) PropertyFixReplacementText() (ClassPropertyView, error) {
+	return t.inner.Property("fixReplacementText")
+}
+
 func (t *TypeBuilder) Finding() (*FindingClassView, error) {
 	bld, err := t.inner.Class("Finding")
 	if err != nil {

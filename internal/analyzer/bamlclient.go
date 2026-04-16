@@ -150,16 +150,21 @@ func (c *BAMLLiveClient) analyzeWithOpenAI(ctx context.Context, code string, pol
 func convertFindings(bamlFindings []types.Finding) []Finding {
 	findings := make([]Finding, len(bamlFindings))
 	for i, f := range bamlFindings {
+		fixText := ""
+		if f.FixReplacementText != nil {
+			fixText = *f.FixReplacementText
+		}
 		findings[i] = Finding{
-			RuleID:         f.RuleId,
-			Level:          f.Level,
-			Message:        f.Message,
-			FilePath:       f.FilePath,
-			StartLine:      int(f.StartLine),
-			EndLine:        int(f.EndLine),
-			Recommendation: f.Recommendation,
-			Explanation:    f.Explanation,
-			Confidence:     f.Confidence,
+			RuleID:             f.RuleId,
+			Level:              f.Level,
+			Message:            f.Message,
+			FilePath:           f.FilePath,
+			StartLine:          int(f.StartLine),
+			EndLine:            int(f.EndLine),
+			Recommendation:     f.Recommendation,
+			Explanation:        f.Explanation,
+			Confidence:         f.Confidence,
+			FixReplacementText: fixText,
 		}
 	}
 	return findings

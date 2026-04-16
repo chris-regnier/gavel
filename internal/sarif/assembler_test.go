@@ -165,6 +165,55 @@ func TestAssemble_Taxonomies(t *testing.T) {
 	}
 }
 
+func TestAssemble_DedupPreservesFixes(t *testing.T) {
+	fix := Fix{
+		Description: Message{Text: "Replace magic constant"},
+		ArtifactChanges: []ArtifactChange{{
+			ArtifactLocation: ArtifactLocation{URI: "foo.go"},
+			Replacements: []Replacement{{
+				DeletedRegion:   Region{StartLine: 12, EndLine: 12},
+				InsertedContent: &ArtifactContent{Text: "MaxRetries"},
+			}},
+		}},
+	}
+
+	results := []Result{
+		{
+			RuleID:  "magic-number",
+			Level:   "warning",
+			Message: Message{Text: "issue"},
+			Locations: []Location{{PhysicalLocation: PhysicalLocation{
+				ArtifactLocation: ArtifactLocation{URI: "foo.go"},
+				Region:           Region{StartLine: 10, EndLine: 15},
+			}}},
+			Properties: map[string]interface{}{"gavel/confidence": 0.7},
+		},
+		{
+			RuleID:  "magic-number",
+			Level:   "warning",
+			Message: Message{Text: "issue (higher confidence)"},
+			Locations: []Location{{PhysicalLocation: PhysicalLocation{
+				ArtifactLocation: ArtifactLocation{URI: "foo.go"},
+				Region:           Region{StartLine: 12, EndLine: 18},
+			}}},
+			Properties: map[string]interface{}{"gavel/confidence": 0.95},
+			Fixes:      []Fix{fix},
+		},
+	}
+
+	log := Assemble(results, nil, "files", "code-reviewer")
+	if len(log.Runs[0].Results) != 1 {
+		t.Fatalf("expected dedup to 1 result, got %d", len(log.Runs[0].Results))
+	}
+	surviving := log.Runs[0].Results[0]
+	if len(surviving.Fixes) != 1 {
+		t.Fatalf("expected surviving result to keep its Fixes, got %d", len(surviving.Fixes))
+	}
+	if surviving.Fixes[0].ArtifactChanges[0].Replacements[0].InsertedContent.Text != "MaxRetries" {
+		t.Errorf("fix content not preserved through dedup: %+v", surviving.Fixes[0])
+	}
+}
+
 func TestAssemble_NoTaxonomiesWhenNoRelationships(t *testing.T) {
 	rules := []ReportingDescriptor{{ID: "R001"}}
 

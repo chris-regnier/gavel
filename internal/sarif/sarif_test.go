@@ -2,6 +2,7 @@ package sarif
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -203,4 +204,91 @@ func contains(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+func TestResult_FixMarshaling(t *testing.T) {
+	r := Result{
+		RuleID:  "hardcoded-credentials",
+		Level:   "error",
+		Message: Message{Text: "Hard-coded credential detected"},
+		Locations: []Location{{
+			PhysicalLocation: PhysicalLocation{
+				ArtifactLocation: ArtifactLocation{URI: "config.go"},
+				Region:           Region{StartLine: 42, EndLine: 42},
+			},
+		}},
+		Fixes: []Fix{{
+			Description: Message{Text: "Replace hardcoded credential with env var"},
+			ArtifactChanges: []ArtifactChange{{
+				ArtifactLocation: ArtifactLocation{URI: "config.go"},
+				Replacements: []Replacement{{
+					DeletedRegion: Region{StartLine: 42, EndLine: 42},
+					InsertedContent: &ArtifactContent{
+						Text: `os.Getenv("DB_PASSWORD")`,
+					},
+				}},
+			}},
+		}},
+	}
+
+	data, err := json.Marshal(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Round-trip through JSON to verify the shape.
+	var parsed Result
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(parsed.Fixes) != 1 {
+		t.Fatalf("expected 1 fix, got %d", len(parsed.Fixes))
+	}
+	fix := parsed.Fixes[0]
+	if fix.Description.Text != "Replace hardcoded credential with env var" {
+		t.Errorf("fix description not preserved: got %q", fix.Description.Text)
+	}
+	if len(fix.ArtifactChanges) != 1 {
+		t.Fatalf("expected 1 artifactChange, got %d", len(fix.ArtifactChanges))
+	}
+	ac := fix.ArtifactChanges[0]
+	if ac.ArtifactLocation.URI != "config.go" {
+		t.Errorf("artifactLocation URI not preserved: got %q", ac.ArtifactLocation.URI)
+	}
+	if len(ac.Replacements) != 1 {
+		t.Fatalf("expected 1 replacement, got %d", len(ac.Replacements))
+	}
+	rep := ac.Replacements[0]
+	if rep.DeletedRegion.StartLine != 42 || rep.DeletedRegion.EndLine != 42 {
+		t.Errorf("deletedRegion lines wrong: %+v", rep.DeletedRegion)
+	}
+	if rep.InsertedContent == nil || rep.InsertedContent.Text != `os.Getenv("DB_PASSWORD")` {
+		t.Errorf("insertedContent not preserved: %+v", rep.InsertedContent)
+	}
+
+	// Confirm SARIF-standard JSON field names appear in the serialized form.
+	s := string(data)
+	for _, want := range []string{`"fixes"`, `"artifactChanges"`, `"replacements"`, `"deletedRegion"`, `"insertedContent"`} {
+		if !strings.Contains(s, want) {
+			t.Errorf("serialized form missing field %s: %s", want, s)
+		}
+	}
+}
+
+func TestResult_OmitsFixesWhenEmpty(t *testing.T) {
+	r := Result{
+		RuleID:  "no-fix-rule",
+		Level:   "warning",
+		Message: Message{Text: "Advisory only"},
+	}
+
+	data, err := json.Marshal(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if strings.Contains(string(data), `"fixes"`) {
+		t.Errorf("expected fixes field to be omitted when empty, got: %s", string(data))
+	}
 }

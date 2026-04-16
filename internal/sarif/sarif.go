@@ -110,6 +110,7 @@ type Result struct {
 	BaselineState       string                 `json:"baselineState,omitempty"`
 	Properties          map[string]interface{} `json:"properties,omitempty"`
 	Suppressions        []SARIFSuppression     `json:"suppressions,omitempty"`
+	Fixes               []Fix                  `json:"fixes,omitempty"`
 }
 
 type SARIFSuppression struct {
@@ -153,6 +154,29 @@ type Region struct {
 
 type ArtifactContent struct {
 	Text string `json:"text"`
+}
+
+// Fix represents a proposed fix for a result, per SARIF 2.1.0 §3.55.
+// Downstream tools (LSP, GitHub Code Scanning, auto-fix bots) can apply
+// the replacements structurally to remediate the finding.
+type Fix struct {
+	Description     Message          `json:"description,omitempty"`
+	ArtifactChanges []ArtifactChange `json:"artifactChanges"`
+}
+
+// ArtifactChange represents a set of replacements applied to a single
+// artifact (source file), per SARIF 2.1.0 §3.56.
+type ArtifactChange struct {
+	ArtifactLocation ArtifactLocation `json:"artifactLocation"`
+	Replacements     []Replacement    `json:"replacements"`
+}
+
+// Replacement represents a single deletion-plus-insertion within an artifact,
+// per SARIF 2.1.0 §3.57. InsertedContent is optional — omitting it expresses
+// a pure deletion.
+type Replacement struct {
+	DeletedRegion   Region           `json:"deletedRegion"`
+	InsertedContent *ArtifactContent `json:"insertedContent,omitempty"`
 }
 
 func NewLog(toolName, toolVersion string) *Log {

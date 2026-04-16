@@ -21,15 +21,16 @@ import (
 )
 
 type Finding struct {
-	RuleId         string  `json:"ruleId"`
-	Level          string  `json:"level"`
-	Message        string  `json:"message"`
-	FilePath       string  `json:"filePath"`
-	StartLine      int64   `json:"startLine"`
-	EndLine        int64   `json:"endLine"`
-	Recommendation string  `json:"recommendation"`
-	Explanation    string  `json:"explanation"`
-	Confidence     float64 `json:"confidence"`
+	RuleId             string  `json:"ruleId"`
+	Level              string  `json:"level"`
+	Message            string  `json:"message"`
+	FilePath           string  `json:"filePath"`
+	StartLine          int64   `json:"startLine"`
+	EndLine            int64   `json:"endLine"`
+	Recommendation     string  `json:"recommendation"`
+	Explanation        string  `json:"explanation"`
+	Confidence         float64 `json:"confidence"`
+	FixReplacementText *string `json:"fixReplacementText"`
 }
 
 func (c *Finding) Decode(holder *cffi.CFFIValueClass, typeMap baml.TypeMap) {
@@ -73,6 +74,9 @@ func (c *Finding) Decode(holder *cffi.CFFIValueClass, typeMap baml.TypeMap) {
 		case "confidence":
 			c.Confidence = baml.Decode(valueHolder).Float()
 
+		case "fixReplacementText":
+			c.FixReplacementText = baml.Decode(valueHolder).Interface().(*string)
+
 		default:
 
 			panic(fmt.Sprintf("unexpected field: %s in class Finding", key))
@@ -102,6 +106,8 @@ func (c Finding) Encode() (*cffi.HostValue, error) {
 	fields["explanation"] = c.Explanation
 
 	fields["confidence"] = c.Confidence
+
+	fields["fixReplacementText"] = c.FixReplacementText
 
 	return baml.EncodeClass("Finding", fields, nil)
 }

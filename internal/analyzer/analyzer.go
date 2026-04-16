@@ -18,15 +18,16 @@ type BAMLClient interface {
 
 // Finding represents a single finding returned by the BAML analysis.
 type Finding struct {
-	RuleID         string  `json:"ruleId"`
-	Level          string  `json:"level"`
-	Message        string  `json:"message"`
-	FilePath       string  `json:"filePath"`
-	StartLine      int     `json:"startLine"`
-	EndLine        int     `json:"endLine"`
-	Recommendation string  `json:"recommendation"`
-	Explanation    string  `json:"explanation"`
-	Confidence     float64 `json:"confidence"`
+	RuleID             string  `json:"ruleId"`
+	Level              string  `json:"level"`
+	Message            string  `json:"message"`
+	FilePath           string  `json:"filePath"`
+	StartLine          int     `json:"startLine"`
+	EndLine            int     `json:"endLine"`
+	Recommendation     string  `json:"recommendation"`
+	Explanation        string  `json:"explanation"`
+	Confidence         float64 `json:"confidence"`
+	FixReplacementText string  `json:"fixReplacementText,omitempty"`
 }
 
 // Analyzer orchestrates code analysis using a BAMLClient.
@@ -131,17 +132,37 @@ func (a *Analyzer) Analyze(ctx context.Context, artifacts []input.Artifact, poli
 				}
 			}
 
-			allResults = append(allResults, sarif.Result{
-				RuleID:  f.RuleID,
-				Level:   f.Level,
-				Message: sarif.Message{Text: f.Message},
+			result := sarif.Result{
+				RuleID:    f.RuleID,
+				Level:     f.Level,
+				Message:   sarif.Message{Text: f.Message},
 				Locations: []sarif.Location{loc},
 				Properties: map[string]interface{}{
 					"gavel/recommendation": f.Recommendation,
 					"gavel/explanation":    f.Explanation,
 					"gavel/confidence":     f.Confidence,
 				},
-			})
+			}
+
+			if f.FixReplacementText != "" {
+				result.Fixes = []sarif.Fix{{
+					Description: sarif.Message{Text: f.Recommendation},
+					ArtifactChanges: []sarif.ArtifactChange{{
+						ArtifactLocation: sarif.ArtifactLocation{URI: path},
+						Replacements: []sarif.Replacement{{
+							DeletedRegion: sarif.Region{
+								StartLine: f.StartLine,
+								EndLine:   f.EndLine,
+							},
+							InsertedContent: &sarif.ArtifactContent{
+								Text: f.FixReplacementText,
+							},
+						}},
+					}},
+				}}
+			}
+
+			allResults = append(allResults, result)
 		}
 	}
 
