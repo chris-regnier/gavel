@@ -19,6 +19,7 @@ env:
 
 jobs:
   build-linux:
+    if: github.event_name != 'workflow_dispatch' || github.actor == 'chris-regnier'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -56,6 +57,7 @@ jobs:
           retention-days: 1
 
   build-macos:
+    if: github.event_name != 'workflow_dispatch' || github.actor == 'chris-regnier'
     runs-on: macos-latest
     steps:
       - name: Checkout
@@ -88,6 +90,7 @@ jobs:
           retention-days: 1
 
   release:
+    if: github.event_name != 'workflow_dispatch' || github.actor == 'chris-regnier'
     needs: [build-linux, build-macos]
     runs-on: ubuntu-latest
     steps:
