@@ -4,17 +4,28 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Git tag to release (e.g. v0.6.0)'
+        required: true
+        type: string
 
 permissions:
   contents: write
 
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+
 jobs:
   build-linux:
+    if: github.event_name != 'workflow_dispatch' || (github.actor == 'chris-regnier' && github.triggering_actor == 'chris-regnier')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v5
         with:
+          ref: ${{ env.TAG }}
           fetch-depth: 0
 
       - name: Set up Go
@@ -44,14 +55,16 @@ jobs:
         with:
           name: dist-linux
           path: dist/
-          retention-days: 1
+          retention-days: 5
 
   build-macos:
+    if: github.event_name != 'workflow_dispatch' || (github.actor == 'chris-regnier' && github.triggering_actor == 'chris-regnier')
     runs-on: macos-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v5
         with:
+          ref: ${{ env.TAG }}
           fetch-depth: 0
 
       - name: Set up Go
@@ -76,15 +89,17 @@ jobs:
         with:
           name: dist-macos
           path: dist/
-          retention-days: 1
+          retention-days: 5
 
   release:
+    if: github.event_name != 'workflow_dispatch' || (github.actor == 'chris-regnier' && github.triggering_actor == 'chris-regnier')
     needs: [build-linux, build-macos]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v5
         with:
+          ref: ${{ env.TAG }}
           fetch-depth: 0
 
       - name: Download Linux artifacts
@@ -127,8 +142,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create ${{ github.ref_name }} \
-            --title "Gavel ${{ github.ref_name }}" \
+          gh release create ${{ env.TAG }} \
+            --title "Gavel ${{ env.TAG }}" \
             --notes-file CHANGELOG.md \
             dist/*.tar.gz \
             dist/checksums.txt
