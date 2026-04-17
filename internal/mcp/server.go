@@ -19,6 +19,7 @@ import (
 	"github.com/chris-regnier/gavel/internal/config"
 	"github.com/chris-regnier/gavel/internal/evaluator"
 	"github.com/chris-regnier/gavel/internal/input"
+	"github.com/chris-regnier/gavel/internal/rules"
 	"github.com/chris-regnier/gavel/internal/sarif"
 	"github.com/chris-regnier/gavel/internal/store"
 	"github.com/chris-regnier/gavel/internal/suppression"
@@ -28,10 +29,11 @@ const version = "0.2.0"
 
 // ServerConfig holds configuration for the MCP server.
 type ServerConfig struct {
-	Config   *config.Config
-	Store    store.Store
-	RegoDir  string // Directory for custom Rego policies (empty = default embedded policy)
-	RootDir  string // Root directory for path validation (empty = cwd)
+	Config  *config.Config
+	Store   store.Store
+	RegoDir string       // Directory for custom Rego policies (empty = default embedded policy)
+	RootDir string       // Root directory for path validation (empty = cwd)
+	Rules   []rules.Rule // Loaded regex/AST rules for the instant analysis tier (nil = use embedded defaults)
 }
 
 // NewMCPServer creates a configured MCP server with all Gavel tools, resources, and prompts.
@@ -47,6 +49,7 @@ func NewMCPServer(cfg ServerConfig) *server.MCPServer {
 	h := &handlers{
 		cfg:    cfg,
 		client: analyzer.NewBAMLLiveClient(cfg.Config.Provider),
+		rules:  cfg.Rules,
 	}
 
 	// Register tools
@@ -76,6 +79,7 @@ func NewMCPServer(cfg ServerConfig) *server.MCPServer {
 type handlers struct {
 	cfg    ServerConfig
 	client analyzer.BAMLClient
+	rules  []rules.Rule
 }
 
 // --- Tool definitions ---

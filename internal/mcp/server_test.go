@@ -14,6 +14,7 @@ import (
 
 	"github.com/chris-regnier/gavel/internal/analyzer"
 	"github.com/chris-regnier/gavel/internal/config"
+	"github.com/chris-regnier/gavel/internal/rules"
 	"github.com/chris-regnier/gavel/internal/sarif"
 	"github.com/chris-regnier/gavel/internal/store"
 	"github.com/chris-regnier/gavel/internal/suppression"
@@ -60,17 +61,48 @@ func testStore(t *testing.T) store.Store {
 	return store.NewFileStore(dir)
 }
 
+// mockBAMLClient is a deterministic BAMLClient used in tests so the LLM
+// tier succeeds (returning a configurable slice of findings) without
+// making real network calls.
+type mockBAMLClient struct {
+	findings []analyzer.Finding
+	err      error
+}
+
+func (m *mockBAMLClient) AnalyzeCode(_ context.Context, _, _, _, _ string) ([]analyzer.Finding, error) {
+	return m.findings, m.err
+}
+
+// testHandlerOpts configures optional behavior for newTestHandlers.
+// Both fields are zero-valued by default, preserving existing call-site
+// behavior (live BAML client, no rules).
+type testHandlerOpts struct {
+	client analyzer.BAMLClient
+	rules  []rules.Rule
+}
+
 // newTestHandlers creates handlers with the same wiring as NewMCPServer,
-// so tests stay aligned with production registration.
-func newTestHandlers(t *testing.T, cfg *config.Config, fs store.Store, rootDir string) *handlers {
+// so tests stay aligned with production registration. Pass a
+// testHandlerOpts to inject a mock BAML client or preloaded rules.
+func newTestHandlers(t *testing.T, cfg *config.Config, fs store.Store, rootDir string, opts ...testHandlerOpts) *handlers {
 	t.Helper()
+	var o testHandlerOpts
+	if len(opts) > 0 {
+		o = opts[0]
+	}
+	client := o.client
+	if client == nil {
+		client = analyzer.NewBAMLLiveClient(cfg.Provider)
+	}
 	return &handlers{
 		cfg: ServerConfig{
 			Config:  cfg,
 			Store:   fs,
 			RootDir: rootDir,
+			Rules:   o.rules,
 		},
-		client: analyzer.NewBAMLLiveClient(cfg.Provider),
+		client: client,
+		rules:  o.rules,
 	}
 }
 
