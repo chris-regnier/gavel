@@ -1003,8 +1003,13 @@ func (h *handlers) runAnalysis(ctx context.Context, artifacts []input.Artifact, 
 		}
 	}
 
-	a := analyzer.NewAnalyzer(h.client)
-	return a.Analyze(ctx, artifacts, h.cfg.Config.Policies, personaPrompt)
+	opts := []analyzer.TieredAnalyzerOption{}
+	if len(h.rules) > 0 {
+		opts = append(opts, analyzer.WithInstantPatterns(h.rules))
+	}
+
+	ta := analyzer.NewTieredAnalyzer(h.client, opts...)
+	return ta.Analyze(ctx, artifacts, h.cfg.Config.Policies, personaPrompt)
 }
 
 // validatePath checks that the resolved path is within the configured root directory
