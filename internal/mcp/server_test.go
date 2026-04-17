@@ -944,6 +944,69 @@ func TestUnsuppressFindingTool(t *testing.T) {
 	assert.Empty(t, supps)
 }
 
+// TestAnalyzeFileTool_InstantRulesFire verifies that regex rules from
+// ServerConfig.Rules fire via handleAnalyzeFile alongside the LLM tier.
+// Regression test for #105.
+func TestAnalyzeFileTool_InstantRulesFire(t *testing.T) {
+	tmpDir := t.TempDir()
+	testFile := filepath.Join(tmpDir, "creds.go")
+	// Matches built-in rule S2068 (hardcoded-credentials).
+	require.NoError(t, os.WriteFile(testFile, []byte(`package main
+
+var password = "hunter2hunter2"
+`), 0644))
+
+	cfg := testConfig()
+	fs := testStore(t)
+
+	defaultRules, err := rules.DefaultRules()
+	require.NoError(t, err)
+
+	h := newTestHandlers(t, cfg, fs, tmpDir, testHandlerOpts{
+		client: &mockBAMLClient{},
+		rules:  defaultRules,
+	})
+
+	ctx := context.Background()
+	req := mcpgo.CallToolRequest{}
+	req.Params.Name = "analyze_file"
+	req.Params.Arguments = map[string]any{"path": testFile}
+
+	result, err := h.handleAnalyzeFile(ctx, req)
+	require.NoError(t, err)
+	require.False(t, result.IsError, "expected success: %+v", result)
+
+	text := result.Content[0].(mcpgo.TextContent).Text
+	var summary map[string]interface{}
+	require.NoError(t, json.Unmarshal([]byte(text), &summary))
+
+	id, ok := summary["id"].(string)
+	require.True(t, ok, "summary missing id: %s", text)
+
+	sarifLog, err := fs.ReadSARIF(ctx, id)
+	require.NoError(t, err)
+	require.Len(t, sarifLog.Runs, 1)
+
+	var foundS2068 bool
+	for _, r := range sarifLog.Runs[0].Results {
+		if r.RuleID == "S2068" {
+			foundS2068 = true
+			break
+		}
+	}
+	assert.True(t, foundS2068, "expected S2068 finding, got results: %+v", sarifLog.Runs[0].Results)
+
+	// Rule descriptor must appear in tool.driver.rules.
+	var descriptorS2068 bool
+	for _, d := range sarifLog.Runs[0].Tool.Driver.Rules {
+		if d.ID == "S2068" {
+			descriptorS2068 = true
+			break
+		}
+	}
+	assert.True(t, descriptorS2068, "expected S2068 rule descriptor in tool.driver.rules")
+}
+
 // --- analyze_diff tests ---
 
 func TestAnalyzeDiffToolRegistered(t *testing.T) {
