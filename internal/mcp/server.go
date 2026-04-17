@@ -601,9 +601,14 @@ func (h *handlers) handleAnalyzeDiff(ctx context.Context, request mcp.CallToolRe
 	scopedLines := lines[scopeStart-1 : scopeEnd]
 	scopedContent := strings.Join(scopedLines, "\n")
 
-	// Run instant tier on full file, filter findings to changed lines
+	// Run instant tier on full file, filter findings to changed lines.
+	// Pass loaded rules so custom rules fire alongside embedded defaults.
 	fullArtifact := input.Artifact{Path: path, Content: string(content), Kind: input.KindFile}
-	ta := analyzer.NewTieredAnalyzer(h.client)
+	instantOpts := []analyzer.TieredAnalyzerOption{}
+	if len(h.rules) > 0 {
+		instantOpts = append(instantOpts, analyzer.WithInstantPatterns(h.rules))
+	}
+	ta := analyzer.NewTieredAnalyzer(h.client, instantOpts...)
 	instantResults := ta.RunPatternMatching(fullArtifact)
 
 	var filteredInstant []sarif.Result
