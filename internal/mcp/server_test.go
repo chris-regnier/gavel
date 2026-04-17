@@ -699,21 +699,21 @@ func TestReadResultTemplate(t *testing.T) {
 	}
 }
 
-func TestBuildRules(t *testing.T) {
+func TestBuildDescriptors(t *testing.T) {
 	policies := map[string]config.Policy{
 		"rule1": {Enabled: true, Description: "desc1", Severity: "warning"},
 		"rule2": {Enabled: false, Description: "desc2", Severity: "error"},
 		"rule3": {Enabled: true, Description: "desc3", Severity: "note"},
 	}
 
-	rules := buildRules(policies)
+	descriptors := buildDescriptors(policies, nil)
 
-	if len(rules) != 2 {
-		t.Errorf("expected 2 enabled rules, got %d", len(rules))
+	if len(descriptors) != 2 {
+		t.Errorf("expected 2 enabled rules, got %d", len(descriptors))
 	}
 
 	ruleIDs := make(map[string]bool)
-	for _, r := range rules {
+	for _, r := range descriptors {
 		ruleIDs[r.ID] = true
 	}
 

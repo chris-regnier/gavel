@@ -326,8 +326,8 @@ func (h *handlers) handleAnalyzeFile(ctx context.Context, request mcp.CallToolRe
 	}
 
 	// Build SARIF and store so judge can evaluate later
-	rules := buildRules(h.cfg.Config.Policies)
-	sarifLog := sarif.Assemble(results, rules, "file", persona)
+	descriptors := buildDescriptors(h.cfg.Config.Policies, h.rules)
+	sarifLog := sarif.Assemble(results, descriptors, "file", persona)
 
 	baselineSummary, errResult := h.applyBaseline(ctx, sarifLog, baseline)
 	if errResult != nil {
@@ -398,8 +398,8 @@ func (h *handlers) handleAnalyzeDirectory(ctx context.Context, request mcp.CallT
 	}
 
 	// Build SARIF and store
-	rules := buildRules(h.cfg.Config.Policies)
-	sarifLog := sarif.Assemble(results, rules, "directory", persona)
+	descriptors := buildDescriptors(h.cfg.Config.Policies, h.rules)
+	sarifLog := sarif.Assemble(results, descriptors, "directory", persona)
 
 	baselineSummary, errResult := h.applyBaseline(ctx, sarifLog, baseline)
 	if errResult != nil {
@@ -653,8 +653,8 @@ func (h *handlers) handleAnalyzeDiff(ctx context.Context, request mcp.CallToolRe
 	allResults := append(filteredInstant, filteredComprehensive...)
 
 	// Build SARIF, apply suppressions, store, return summary
-	rules := buildRules(h.cfg.Config.Policies)
-	sarifLog := sarif.Assemble(allResults, rules, "diff", persona)
+	descriptors := buildDescriptors(h.cfg.Config.Policies, h.rules)
+	sarifLog := sarif.Assemble(allResults, descriptors, "diff", persona)
 
 	baselineSummary, errResult := h.applyBaseline(ctx, sarifLog, baseline)
 	if errResult != nil {
@@ -1073,16 +1073,22 @@ func (h *handlers) validatePath(path string) error {
 	return nil
 }
 
-func buildRules(policies map[string]config.Policy) []sarif.ReportingDescriptor {
-	var rules []sarif.ReportingDescriptor
+// buildDescriptors assembles SARIF reportingDescriptors from both enabled
+// policies and loaded rules. Rule descriptors carry help/helpUri populated
+// from the rule's remediation, CWE, and reference metadata.
+func buildDescriptors(policies map[string]config.Policy, loadedRules []rules.Rule) []sarif.ReportingDescriptor {
+	var descriptors []sarif.ReportingDescriptor
 	for name, p := range policies {
 		if p.Enabled {
-			rules = append(rules, sarif.ReportingDescriptor{
+			descriptors = append(descriptors, sarif.ReportingDescriptor{
 				ID:               name,
 				ShortDescription: sarif.Message{Text: p.Description},
 				DefaultConfig:    &sarif.ReportingConfiguration{Level: p.Severity},
 			})
 		}
 	}
-	return rules
+	for _, r := range loadedRules {
+		descriptors = append(descriptors, r.ToSARIFDescriptor())
+	}
+	return descriptors
 }
