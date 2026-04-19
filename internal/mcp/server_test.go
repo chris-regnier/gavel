@@ -1007,6 +1007,123 @@ var password = "hunter2hunter2"
 	assert.True(t, descriptorS2068, "expected S2068 rule descriptor in tool.driver.rules")
 }
 
+// TestAnalyzeDirectoryTool_CustomRulesFire verifies that custom rules
+// provided via ServerConfig.Rules (not the embedded defaults) fire via
+// handleAnalyzeDirectory. Regression test for #105.
+func TestAnalyzeDirectoryTool_CustomRulesFire(t *testing.T) {
+	tmpDir := t.TempDir()
+	target := filepath.Join(tmpDir, "note.go")
+	require.NoError(t, os.WriteFile(target, []byte(`package main
+
+// TODO_CUSTOM: refactor this before merge
+func x() {}
+`), 0644))
+
+	customRuleYAML := []byte(`rules:
+  - id: "CUSTOM001"
+    name: "todo-custom-marker"
+    category: "maintainability"
+    pattern: "TODO_CUSTOM"
+    level: "warning"
+    confidence: 0.9
+    message: "Custom TODO_CUSTOM marker present"
+`)
+	rf, err := rules.ParseRuleFile(customRuleYAML)
+	require.NoError(t, err)
+	require.Len(t, rf.Rules, 1)
+
+	cfg := testConfig()
+	fs := testStore(t)
+	h := newTestHandlers(t, cfg, fs, tmpDir, testHandlerOpts{
+		client: &mockBAMLClient{},
+		rules:  rf.Rules,
+	})
+
+	ctx := context.Background()
+	req := mcpgo.CallToolRequest{}
+	req.Params.Name = "analyze_directory"
+	req.Params.Arguments = map[string]any{"path": tmpDir}
+
+	result, err := h.handleAnalyzeDirectory(ctx, req)
+	require.NoError(t, err)
+	require.False(t, result.IsError, "expected success: %+v", result)
+
+	text := result.Content[0].(mcpgo.TextContent).Text
+	var summary map[string]interface{}
+	require.NoError(t, json.Unmarshal([]byte(text), &summary))
+
+	id, ok := summary["id"].(string)
+	require.True(t, ok)
+
+	sarifLog, err := fs.ReadSARIF(ctx, id)
+	require.NoError(t, err)
+	require.Len(t, sarifLog.Runs, 1)
+
+	var foundCustom bool
+	for _, r := range sarifLog.Runs[0].Results {
+		if r.RuleID == "CUSTOM001" {
+			foundCustom = true
+			break
+		}
+	}
+	assert.True(t, foundCustom, "expected CUSTOM001 finding, got: %+v", sarifLog.Runs[0].Results)
+}
+
+// TestAnalyzeDiffTool_InstantRulesFire verifies that instant-tier rules
+// fire via handleAnalyzeDiff on changed-line ranges. Regression test for #105.
+func TestAnalyzeDiffTool_InstantRulesFire(t *testing.T) {
+	tmpDir := t.TempDir()
+	testFile := filepath.Join(tmpDir, "creds.go")
+	require.NoError(t, os.WriteFile(testFile, []byte(`package main
+
+var password = "hunter2hunter2"
+`), 0644))
+
+	cfg := testConfig()
+	fs := testStore(t)
+
+	defaultRules, err := rules.DefaultRules()
+	require.NoError(t, err)
+
+	h := newTestHandlers(t, cfg, fs, tmpDir, testHandlerOpts{
+		client: &mockBAMLClient{},
+		rules:  defaultRules,
+	})
+
+	ctx := context.Background()
+	req := mcpgo.CallToolRequest{}
+	req.Params.Name = "analyze_diff"
+	req.Params.Arguments = map[string]any{
+		"path":       testFile,
+		"line_start": float64(3),
+		"line_end":   float64(3),
+	}
+
+	result, err := h.handleAnalyzeDiff(ctx, req)
+	require.NoError(t, err)
+	require.False(t, result.IsError, "expected success: %+v", result)
+
+	text := result.Content[0].(mcpgo.TextContent).Text
+	var summary map[string]interface{}
+	require.NoError(t, json.Unmarshal([]byte(text), &summary))
+
+	id, ok := summary["id"].(string)
+	require.True(t, ok)
+
+	sarifLog, err := fs.ReadSARIF(ctx, id)
+	require.NoError(t, err)
+	require.Len(t, sarifLog.Runs, 1)
+
+	var foundS2068 bool
+	for _, r := range sarifLog.Runs[0].Results {
+		if r.RuleID == "S2068" {
+			foundS2068 = true
+			break
+		}
+	}
+	assert.True(t, foundS2068, "expected S2068 finding from instant tier, got: %+v", sarifLog.Runs[0].Results)
+}
+
 // --- analyze_diff tests ---
 
 func TestAnalyzeDiffToolRegistered(t *testing.T) {
