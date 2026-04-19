@@ -13,6 +13,7 @@ import (
 
 	"github.com/chris-regnier/gavel/internal/config"
 	gavelmcp "github.com/chris-regnier/gavel/internal/mcp"
+	"github.com/chris-regnier/gavel/internal/rules"
 	"github.com/chris-regnier/gavel/internal/store"
 )
 
@@ -21,6 +22,7 @@ var (
 	mcpProjectConfig string
 	mcpOutputDir     string
 	mcpRegoDir       string
+	mcpRulesDir      string
 )
 
 func init() {
@@ -60,6 +62,7 @@ Prompts:
 	cmd.Flags().StringVar(&mcpProjectConfig, "project-config", ".gavel/policies.yaml", "Project-level config file")
 	cmd.Flags().StringVar(&mcpOutputDir, "output", ".gavel/results", "Output directory for results")
 	cmd.Flags().StringVar(&mcpRegoDir, "rego-dir", "", "Directory containing custom Rego policies (default: embedded policy)")
+	cmd.Flags().StringVar(&mcpRulesDir, "rules-dir", "", "Directory containing custom rule YAML files (default: sibling 'rules/' directory of --project-config)")
 
 	return cmd
 }
@@ -91,11 +94,30 @@ func runMCP(cmd *cobra.Command, args []string) error {
 	// Create file store
 	fs := store.NewFileStore(mcpOutputDir)
 
+	// Load rules (embedded defaults + user overrides + project overrides),
+	// mirroring the CLI's tier-merging behavior.
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("getting home directory: %w", err)
+	}
+	userRulesDir := filepath.Join(home, ".config", "gavel", "rules")
+
+	projectRulesDir := mcpRulesDir
+	if projectRulesDir == "" {
+		projectRulesDir = filepath.Join(filepath.Dir(mcpProjectConfig), "rules")
+	}
+
+	loadedRules, err := rules.LoadRules(userRulesDir, projectRulesDir)
+	if err != nil {
+		return fmt.Errorf("loading rules: %w", err)
+	}
+
 	// Create MCP server
 	mcpServer := gavelmcp.NewMCPServer(gavelmcp.ServerConfig{
 		Config:  cfg,
 		Store:   fs,
 		RegoDir: mcpRegoDir,
+		Rules:   loadedRules,
 	})
 
 	// Serve over stdio
