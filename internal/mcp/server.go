@@ -19,6 +19,7 @@ import (
 	"github.com/chris-regnier/gavel/internal/config"
 	"github.com/chris-regnier/gavel/internal/evaluator"
 	"github.com/chris-regnier/gavel/internal/input"
+	"github.com/chris-regnier/gavel/internal/rules"
 	"github.com/chris-regnier/gavel/internal/sarif"
 	"github.com/chris-regnier/gavel/internal/store"
 	"github.com/chris-regnier/gavel/internal/suppression"
@@ -28,10 +29,11 @@ const version = "0.2.0"
 
 // ServerConfig holds configuration for the MCP server.
 type ServerConfig struct {
-	Config   *config.Config
-	Store    store.Store
-	RegoDir  string // Directory for custom Rego policies (empty = default embedded policy)
-	RootDir  string // Root directory for path validation (empty = cwd)
+	Config  *config.Config
+	Store   store.Store
+	RegoDir string       // Directory for custom Rego policies (empty = default embedded policy)
+	RootDir string       // Root directory for path validation (empty = cwd)
+	Rules   []rules.Rule // Loaded regex/AST rules for the instant analysis tier (nil = use embedded defaults)
 }
 
 // NewMCPServer creates a configured MCP server with all Gavel tools, resources, and prompts.
@@ -47,6 +49,7 @@ func NewMCPServer(cfg ServerConfig) *server.MCPServer {
 	h := &handlers{
 		cfg:    cfg,
 		client: analyzer.NewBAMLLiveClient(cfg.Config.Provider),
+		rules:  cfg.Rules,
 	}
 
 	// Register tools
@@ -76,6 +79,7 @@ func NewMCPServer(cfg ServerConfig) *server.MCPServer {
 type handlers struct {
 	cfg    ServerConfig
 	client analyzer.BAMLClient
+	rules  []rules.Rule
 }
 
 // --- Tool definitions ---
@@ -322,8 +326,8 @@ func (h *handlers) handleAnalyzeFile(ctx context.Context, request mcp.CallToolRe
 	}
 
 	// Build SARIF and store so judge can evaluate later
-	rules := buildRules(h.cfg.Config.Policies)
-	sarifLog := sarif.Assemble(results, rules, "file", persona)
+	descriptors := buildDescriptors(h.cfg.Config.Policies, h.rules)
+	sarifLog := sarif.Assemble(results, descriptors, "file", persona)
 
 	baselineSummary, errResult := h.applyBaseline(ctx, sarifLog, baseline)
 	if errResult != nil {
@@ -394,8 +398,8 @@ func (h *handlers) handleAnalyzeDirectory(ctx context.Context, request mcp.CallT
 	}
 
 	// Build SARIF and store
-	rules := buildRules(h.cfg.Config.Policies)
-	sarifLog := sarif.Assemble(results, rules, "directory", persona)
+	descriptors := buildDescriptors(h.cfg.Config.Policies, h.rules)
+	sarifLog := sarif.Assemble(results, descriptors, "directory", persona)
 
 	baselineSummary, errResult := h.applyBaseline(ctx, sarifLog, baseline)
 	if errResult != nil {
@@ -597,9 +601,14 @@ func (h *handlers) handleAnalyzeDiff(ctx context.Context, request mcp.CallToolRe
 	scopedLines := lines[scopeStart-1 : scopeEnd]
 	scopedContent := strings.Join(scopedLines, "\n")
 
-	// Run instant tier on full file, filter findings to changed lines
+	// Run instant tier on full file, filter findings to changed lines.
+	// Pass loaded rules so custom rules fire alongside embedded defaults.
 	fullArtifact := input.Artifact{Path: path, Content: string(content), Kind: input.KindFile}
-	ta := analyzer.NewTieredAnalyzer(h.client)
+	instantOpts := []analyzer.TieredAnalyzerOption{}
+	if len(h.rules) > 0 {
+		instantOpts = append(instantOpts, analyzer.WithInstantPatterns(h.rules))
+	}
+	ta := analyzer.NewTieredAnalyzer(h.client, instantOpts...)
 	instantResults := ta.RunPatternMatching(fullArtifact)
 
 	var filteredInstant []sarif.Result
@@ -644,8 +653,8 @@ func (h *handlers) handleAnalyzeDiff(ctx context.Context, request mcp.CallToolRe
 	allResults := append(filteredInstant, filteredComprehensive...)
 
 	// Build SARIF, apply suppressions, store, return summary
-	rules := buildRules(h.cfg.Config.Policies)
-	sarifLog := sarif.Assemble(allResults, rules, "diff", persona)
+	descriptors := buildDescriptors(h.cfg.Config.Policies, h.rules)
+	sarifLog := sarif.Assemble(allResults, descriptors, "diff", persona)
 
 	baselineSummary, errResult := h.applyBaseline(ctx, sarifLog, baseline)
 	if errResult != nil {
@@ -999,8 +1008,13 @@ func (h *handlers) runAnalysis(ctx context.Context, artifacts []input.Artifact, 
 		}
 	}
 
-	a := analyzer.NewAnalyzer(h.client)
-	return a.Analyze(ctx, artifacts, h.cfg.Config.Policies, personaPrompt)
+	opts := []analyzer.TieredAnalyzerOption{}
+	if len(h.rules) > 0 {
+		opts = append(opts, analyzer.WithInstantPatterns(h.rules))
+	}
+
+	ta := analyzer.NewTieredAnalyzer(h.client, opts...)
+	return ta.Analyze(ctx, artifacts, h.cfg.Config.Policies, personaPrompt)
 }
 
 // validatePath checks that the resolved path is within the configured root directory
@@ -1059,16 +1073,22 @@ func (h *handlers) validatePath(path string) error {
 	return nil
 }
 
-func buildRules(policies map[string]config.Policy) []sarif.ReportingDescriptor {
-	var rules []sarif.ReportingDescriptor
+// buildDescriptors assembles SARIF reportingDescriptors from both enabled
+// policies and loaded rules. Rule descriptors carry help/helpUri populated
+// from the rule's remediation, CWE, and reference metadata.
+func buildDescriptors(policies map[string]config.Policy, loadedRules []rules.Rule) []sarif.ReportingDescriptor {
+	var descriptors []sarif.ReportingDescriptor
 	for name, p := range policies {
 		if p.Enabled {
-			rules = append(rules, sarif.ReportingDescriptor{
+			descriptors = append(descriptors, sarif.ReportingDescriptor{
 				ID:               name,
 				ShortDescription: sarif.Message{Text: p.Description},
 				DefaultConfig:    &sarif.ReportingConfiguration{Level: p.Severity},
 			})
 		}
 	}
-	return rules
+	for _, r := range loadedRules {
+		descriptors = append(descriptors, r.ToSARIFDescriptor())
+	}
+	return descriptors
 }

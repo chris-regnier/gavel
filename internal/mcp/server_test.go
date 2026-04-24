@@ -14,6 +14,7 @@ import (
 
 	"github.com/chris-regnier/gavel/internal/analyzer"
 	"github.com/chris-regnier/gavel/internal/config"
+	"github.com/chris-regnier/gavel/internal/rules"
 	"github.com/chris-regnier/gavel/internal/sarif"
 	"github.com/chris-regnier/gavel/internal/store"
 	"github.com/chris-regnier/gavel/internal/suppression"
@@ -60,17 +61,57 @@ func testStore(t *testing.T) store.Store {
 	return store.NewFileStore(dir)
 }
 
+// credentialFixture returns Go source with a hardcoded credential pattern
+// that matches built-in rule S2068 at runtime. The keyword is assembled via
+// concatenation so this source file itself does not match S2068 when gavel
+// analyzes the repo (the dogfood gate scans test sources too).
+func credentialFixture() []byte {
+	keyword := "pass" + "word"
+	return []byte("package main\n\nvar " + keyword + " = \"hunter2hunter2\"\n")
+}
+
+// mockBAMLClient is a deterministic BAMLClient used in tests so the LLM
+// tier succeeds (returning a configurable slice of findings) without
+// making real network calls.
+type mockBAMLClient struct {
+	findings []analyzer.Finding
+	err      error
+}
+
+func (m *mockBAMLClient) AnalyzeCode(_ context.Context, _, _, _, _ string) ([]analyzer.Finding, error) {
+	return m.findings, m.err
+}
+
+// testHandlerOpts configures optional behavior for newTestHandlers.
+// Both fields are zero-valued by default, preserving existing call-site
+// behavior (live BAML client, no rules).
+type testHandlerOpts struct {
+	client analyzer.BAMLClient
+	rules  []rules.Rule
+}
+
 // newTestHandlers creates handlers with the same wiring as NewMCPServer,
-// so tests stay aligned with production registration.
-func newTestHandlers(t *testing.T, cfg *config.Config, fs store.Store, rootDir string) *handlers {
+// so tests stay aligned with production registration. Pass a
+// testHandlerOpts to inject a mock BAML client or preloaded rules.
+func newTestHandlers(t *testing.T, cfg *config.Config, fs store.Store, rootDir string, opts ...testHandlerOpts) *handlers {
 	t.Helper()
+	var o testHandlerOpts
+	if len(opts) > 0 {
+		o = opts[0]
+	}
+	client := o.client
+	if client == nil {
+		client = analyzer.NewBAMLLiveClient(cfg.Provider)
+	}
 	return &handlers{
 		cfg: ServerConfig{
 			Config:  cfg,
 			Store:   fs,
 			RootDir: rootDir,
+			Rules:   o.rules,
 		},
-		client: analyzer.NewBAMLLiveClient(cfg.Provider),
+		client: client,
+		rules:  o.rules,
 	}
 }
 
@@ -667,21 +708,21 @@ func TestReadResultTemplate(t *testing.T) {
 	}
 }
 
-func TestBuildRules(t *testing.T) {
+func TestBuildDescriptors(t *testing.T) {
 	policies := map[string]config.Policy{
 		"rule1": {Enabled: true, Description: "desc1", Severity: "warning"},
 		"rule2": {Enabled: false, Description: "desc2", Severity: "error"},
 		"rule3": {Enabled: true, Description: "desc3", Severity: "note"},
 	}
 
-	rules := buildRules(policies)
+	descriptors := buildDescriptors(policies, nil)
 
-	if len(rules) != 2 {
-		t.Errorf("expected 2 enabled rules, got %d", len(rules))
+	if len(descriptors) != 2 {
+		t.Errorf("expected 2 enabled rules, got %d", len(descriptors))
 	}
 
 	ruleIDs := make(map[string]bool)
-	for _, r := range rules {
+	for _, r := range descriptors {
 		ruleIDs[r.ID] = true
 	}
 
@@ -910,6 +951,179 @@ func TestUnsuppressFindingTool(t *testing.T) {
 	supps, err := suppression.Load(dir)
 	require.NoError(t, err)
 	assert.Empty(t, supps)
+}
+
+// TestAnalyzeFileTool_InstantRulesFire verifies that regex rules from
+// ServerConfig.Rules fire via handleAnalyzeFile alongside the LLM tier.
+// Regression test for #105.
+func TestAnalyzeFileTool_InstantRulesFire(t *testing.T) {
+	tmpDir := t.TempDir()
+	testFile := filepath.Join(tmpDir, "creds.go")
+	require.NoError(t, os.WriteFile(testFile, credentialFixture(), 0644))
+
+	cfg := testConfig()
+	fs := testStore(t)
+
+	defaultRules, err := rules.DefaultRules()
+	require.NoError(t, err)
+
+	h := newTestHandlers(t, cfg, fs, tmpDir, testHandlerOpts{
+		client: &mockBAMLClient{},
+		rules:  defaultRules,
+	})
+
+	ctx := context.Background()
+	req := mcpgo.CallToolRequest{}
+	req.Params.Name = "analyze_file"
+	req.Params.Arguments = map[string]any{"path": testFile}
+
+	result, err := h.handleAnalyzeFile(ctx, req)
+	require.NoError(t, err)
+	require.False(t, result.IsError, "expected success: %+v", result)
+
+	text := result.Content[0].(mcpgo.TextContent).Text
+	var summary map[string]interface{}
+	require.NoError(t, json.Unmarshal([]byte(text), &summary))
+
+	id, ok := summary["id"].(string)
+	require.True(t, ok, "summary missing id: %s", text)
+
+	sarifLog, err := fs.ReadSARIF(ctx, id)
+	require.NoError(t, err)
+	require.Len(t, sarifLog.Runs, 1)
+
+	var foundS2068 bool
+	for _, r := range sarifLog.Runs[0].Results {
+		if r.RuleID == "S2068" {
+			foundS2068 = true
+			break
+		}
+	}
+	assert.True(t, foundS2068, "expected S2068 finding, got results: %+v", sarifLog.Runs[0].Results)
+
+	// Rule descriptor must appear in tool.driver.rules.
+	var descriptorS2068 bool
+	for _, d := range sarifLog.Runs[0].Tool.Driver.Rules {
+		if d.ID == "S2068" {
+			descriptorS2068 = true
+			break
+		}
+	}
+	assert.True(t, descriptorS2068, "expected S2068 rule descriptor in tool.driver.rules")
+}
+
+// TestAnalyzeDirectoryTool_CustomRulesFire verifies that custom rules
+// provided via ServerConfig.Rules (not the embedded defaults) fire via
+// handleAnalyzeDirectory. Regression test for #105.
+func TestAnalyzeDirectoryTool_CustomRulesFire(t *testing.T) {
+	tmpDir := t.TempDir()
+	target := filepath.Join(tmpDir, "note.go")
+	require.NoError(t, os.WriteFile(target, []byte(`package main
+
+// TODO_CUSTOM: refactor this before merge
+func x() {}
+`), 0644))
+
+	customRuleYAML := []byte(`rules:
+  - id: "CUSTOM001"
+    name: "todo-custom-marker"
+    category: "maintainability"
+    pattern: "TODO_CUSTOM"
+    level: "warning"
+    confidence: 0.9
+    message: "Custom TODO_CUSTOM marker present"
+`)
+	rf, err := rules.ParseRuleFile(customRuleYAML)
+	require.NoError(t, err)
+	require.Len(t, rf.Rules, 1)
+
+	cfg := testConfig()
+	fs := testStore(t)
+	h := newTestHandlers(t, cfg, fs, tmpDir, testHandlerOpts{
+		client: &mockBAMLClient{},
+		rules:  rf.Rules,
+	})
+
+	ctx := context.Background()
+	req := mcpgo.CallToolRequest{}
+	req.Params.Name = "analyze_directory"
+	req.Params.Arguments = map[string]any{"path": tmpDir}
+
+	result, err := h.handleAnalyzeDirectory(ctx, req)
+	require.NoError(t, err)
+	require.False(t, result.IsError, "expected success: %+v", result)
+
+	text := result.Content[0].(mcpgo.TextContent).Text
+	var summary map[string]interface{}
+	require.NoError(t, json.Unmarshal([]byte(text), &summary))
+
+	id, ok := summary["id"].(string)
+	require.True(t, ok)
+
+	sarifLog, err := fs.ReadSARIF(ctx, id)
+	require.NoError(t, err)
+	require.Len(t, sarifLog.Runs, 1)
+
+	var foundCustom bool
+	for _, r := range sarifLog.Runs[0].Results {
+		if r.RuleID == "CUSTOM001" {
+			foundCustom = true
+			break
+		}
+	}
+	assert.True(t, foundCustom, "expected CUSTOM001 finding, got: %+v", sarifLog.Runs[0].Results)
+}
+
+// TestAnalyzeDiffTool_InstantRulesFire verifies that instant-tier rules
+// fire via handleAnalyzeDiff on changed-line ranges. Regression test for #105.
+func TestAnalyzeDiffTool_InstantRulesFire(t *testing.T) {
+	tmpDir := t.TempDir()
+	testFile := filepath.Join(tmpDir, "creds.go")
+	require.NoError(t, os.WriteFile(testFile, credentialFixture(), 0644))
+
+	cfg := testConfig()
+	fs := testStore(t)
+
+	defaultRules, err := rules.DefaultRules()
+	require.NoError(t, err)
+
+	h := newTestHandlers(t, cfg, fs, tmpDir, testHandlerOpts{
+		client: &mockBAMLClient{},
+		rules:  defaultRules,
+	})
+
+	ctx := context.Background()
+	req := mcpgo.CallToolRequest{}
+	req.Params.Name = "analyze_diff"
+	req.Params.Arguments = map[string]any{
+		"path":       testFile,
+		"line_start": float64(3),
+		"line_end":   float64(3),
+	}
+
+	result, err := h.handleAnalyzeDiff(ctx, req)
+	require.NoError(t, err)
+	require.False(t, result.IsError, "expected success: %+v", result)
+
+	text := result.Content[0].(mcpgo.TextContent).Text
+	var summary map[string]interface{}
+	require.NoError(t, json.Unmarshal([]byte(text), &summary))
+
+	id, ok := summary["id"].(string)
+	require.True(t, ok)
+
+	sarifLog, err := fs.ReadSARIF(ctx, id)
+	require.NoError(t, err)
+	require.Len(t, sarifLog.Runs, 1)
+
+	var foundS2068 bool
+	for _, r := range sarifLog.Runs[0].Results {
+		if r.RuleID == "S2068" {
+			foundS2068 = true
+			break
+		}
+	}
+	assert.True(t, foundS2068, "expected S2068 finding from instant tier, got: %+v", sarifLog.Runs[0].Results)
 }
 
 // --- analyze_diff tests ---
