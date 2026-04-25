@@ -168,6 +168,52 @@ func TestTieredAnalyzer_ComprehensiveTier(t *testing.T) {
 	}
 }
 
+func TestTieredAnalyzer_CodeFlows_OnlyOnComprehensive(t *testing.T) {
+	flowFinding := Finding{
+		RuleID:     "sql-injection",
+		Level:      "error",
+		Message:    "Tainted input flows into SQL query",
+		FilePath:   "db/query.go",
+		StartLine:  45,
+		EndLine:    45,
+		Confidence: 0.9,
+		CodeFlows: []CodeFlow{
+			{
+				Steps: []FlowStep{
+					{FilePath: "handler.go", StartLine: 23, Message: "input read"},
+					{FilePath: "db/query.go", StartLine: 45, Message: "into SQL"},
+				},
+			},
+		},
+	}
+	fastMock := &tieredMockClient{findings: []Finding{flowFinding}}
+	comprehensiveMock := &tieredMockClient{findings: []Finding{flowFinding}}
+
+	ta := NewTieredAnalyzer(comprehensiveMock, WithFastClient(fastMock), WithInstantEnabled(false))
+
+	artifacts := []input.Artifact{{Path: "db/query.go", Content: "package db", Kind: input.KindFile}}
+	policies := map[string]config.Policy{"sql-injection": {Instruction: "no sqli", Enabled: true}}
+
+	saw := map[Tier]int{}
+	for result := range ta.AnalyzeProgressive(context.Background(), artifacts, policies, "persona") {
+		if result.Error != nil {
+			t.Fatalf("tier %v error: %v", result.Tier, result.Error)
+		}
+		for _, r := range result.Results {
+			if len(r.CodeFlows) > 0 {
+				saw[result.Tier]++
+			}
+		}
+	}
+
+	if saw[TierFast] != 0 {
+		t.Errorf("fast tier should not emit codeFlows, saw %d results with flows", saw[TierFast])
+	}
+	if saw[TierComprehensive] != 1 {
+		t.Errorf("comprehensive tier should emit codeFlows on the lone result, saw %d", saw[TierComprehensive])
+	}
+}
+
 func TestTieredAnalyzer_FastTier(t *testing.T) {
 	fastMock := &tieredMockClient{
 		findings: []Finding{{RuleID: "fast-finding", Level: "warning", Message: "Fast check"}},

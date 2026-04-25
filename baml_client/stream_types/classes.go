@@ -20,6 +20,54 @@ import (
 	"github.com/boundaryml/baml/engine/language_client_go/pkg/cffi"
 )
 
+type CodeFlow struct {
+	Message *string    `json:"message"`
+	Steps   []FlowStep `json:"steps"`
+}
+
+func (c *CodeFlow) Decode(holder *cffi.CFFIValueClass, typeMap baml.TypeMap) {
+	typeName := holder.Name
+	if typeName.Namespace != cffi.CFFITypeNamespace_STREAM_TYPES {
+		panic(fmt.Sprintf("expected cffi.CFFITypeNamespace_STREAM_TYPES, got %s", string(typeName.Namespace.String())))
+	}
+	if typeName.Name != "CodeFlow" {
+		panic(fmt.Sprintf("expected CodeFlow, got %s", typeName.Name))
+	}
+
+	for _, field := range holder.Fields {
+		key := field.Key
+		valueHolder := field.Value
+		switch key {
+
+		case "message":
+			c.Message = baml.Decode(valueHolder).Interface().(*string)
+
+		case "steps":
+			c.Steps = baml.Decode(valueHolder).Interface().([]FlowStep)
+
+		default:
+
+			panic(fmt.Sprintf("unexpected field: %s in class CodeFlow", key))
+
+		}
+	}
+
+}
+
+func (c CodeFlow) Encode() (*cffi.HostValue, error) {
+	fields := map[string]any{}
+
+	fields["message"] = c.Message
+
+	fields["steps"] = c.Steps
+
+	return baml.EncodeClass("CodeFlow", fields, nil)
+}
+
+func (c CodeFlow) BamlTypeName() string {
+	return "CodeFlow"
+}
+
 type Finding struct {
 	RuleId             *string            `json:"ruleId"`
 	Level              *string            `json:"level"`
@@ -32,6 +80,7 @@ type Finding struct {
 	Confidence         *float64           `json:"confidence"`
 	FixReplacementText *string            `json:"fixReplacementText"`
 	RelatedLocations   *[]RelatedLocation `json:"relatedLocations"`
+	CodeFlows          *[]CodeFlow        `json:"codeFlows"`
 }
 
 func (c *Finding) Decode(holder *cffi.CFFIValueClass, typeMap baml.TypeMap) {
@@ -81,6 +130,9 @@ func (c *Finding) Decode(holder *cffi.CFFIValueClass, typeMap baml.TypeMap) {
 		case "relatedLocations":
 			c.RelatedLocations = baml.Decode(valueHolder).Interface().(*[]RelatedLocation)
 
+		case "codeFlows":
+			c.CodeFlows = baml.Decode(valueHolder).Interface().(*[]CodeFlow)
+
 		default:
 
 			panic(fmt.Sprintf("unexpected field: %s in class Finding", key))
@@ -115,11 +167,73 @@ func (c Finding) Encode() (*cffi.HostValue, error) {
 
 	fields["relatedLocations"] = c.RelatedLocations
 
+	fields["codeFlows"] = c.CodeFlows
+
 	return baml.EncodeClass("Finding", fields, nil)
 }
 
 func (c Finding) BamlTypeName() string {
 	return "Finding"
+}
+
+type FlowStep struct {
+	FilePath  *string `json:"filePath"`
+	StartLine *int64  `json:"startLine"`
+	EndLine   *int64  `json:"endLine"`
+	Message   *string `json:"message"`
+}
+
+func (c *FlowStep) Decode(holder *cffi.CFFIValueClass, typeMap baml.TypeMap) {
+	typeName := holder.Name
+	if typeName.Namespace != cffi.CFFITypeNamespace_STREAM_TYPES {
+		panic(fmt.Sprintf("expected cffi.CFFITypeNamespace_STREAM_TYPES, got %s", string(typeName.Namespace.String())))
+	}
+	if typeName.Name != "FlowStep" {
+		panic(fmt.Sprintf("expected FlowStep, got %s", typeName.Name))
+	}
+
+	for _, field := range holder.Fields {
+		key := field.Key
+		valueHolder := field.Value
+		switch key {
+
+		case "filePath":
+			c.FilePath = baml.Decode(valueHolder).Interface().(*string)
+
+		case "startLine":
+			c.StartLine = baml.Decode(valueHolder).Interface().(*int64)
+
+		case "endLine":
+			c.EndLine = baml.Decode(valueHolder).Interface().(*int64)
+
+		case "message":
+			c.Message = baml.Decode(valueHolder).Interface().(*string)
+
+		default:
+
+			panic(fmt.Sprintf("unexpected field: %s in class FlowStep", key))
+
+		}
+	}
+
+}
+
+func (c FlowStep) Encode() (*cffi.HostValue, error) {
+	fields := map[string]any{}
+
+	fields["filePath"] = c.FilePath
+
+	fields["startLine"] = c.StartLine
+
+	fields["endLine"] = c.EndLine
+
+	fields["message"] = c.Message
+
+	return baml.EncodeClass("FlowStep", fields, nil)
+}
+
+func (c FlowStep) BamlTypeName() string {
+	return "FlowStep"
 }
 
 type GeneratedConfig struct {

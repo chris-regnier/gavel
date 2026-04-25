@@ -5,6 +5,18 @@ class RelatedLocation {
   message string? @description("Brief explanation of why this location is related (e.g. 'Unsanitized input originates here')")
 }
 
+class FlowStep {
+  filePath string @description("Path to the file containing this step in the flow")
+  startLine int @description("Line number for this step")
+  endLine int? @description("Optional end line for this step")
+  message string @description("What happens at this step (e.g. 'User input read from request body', 'Concatenated into SQL query string')")
+}
+
+class CodeFlow {
+  message string? @description("Optional one-sentence summary of the entire flow (e.g. 'Tainted user input reaches SQL query without sanitization')")
+  steps FlowStep[] @description("Ordered sequence of locations forming the data or control flow path. Each step describes one hop from source to sink. At least two steps required for the flow to be useful.")
+}
+
 class Finding {
   ruleId string @description("The policy name this finding relates to")
   level string @description("One of: error, warning, note, none")
@@ -17,6 +29,7 @@ class Finding {
   confidence float @description("0.0 to 1.0, how confident you are in this finding")
   fixReplacementText string? @description("Optional raw replacement text for lines startLine through endLine of this finding. Match the original indentation. Leave empty for vague or structural findings. Raw text only — no markdown code fences, no prose.")
   relatedLocations RelatedLocation[]? @description("Other code locations that meaningfully relate to this finding (e.g. data origin for a taint sink, the definition of a vulnerable callee, a related call site). Omit for self-contained findings. Quality over quantity — only include locations that genuinely help triage.")
+  codeFlows CodeFlow[]? @description("Ordered data- or control-flow paths showing how the issue arises step-by-step (e.g. user input → propagation → sink). Populate only for findings where the multi-step path is essential to understand the issue (typically taint-style security findings) and you can identify each hop with confidence. Omit for self-contained findings, single-line bugs, or when steps would be speculative.")
 }
 
 function AnalyzeCode(
@@ -65,6 +78,15 @@ function AnalyzeCode(
        a related call site), populate relatedLocations with each location and a
        brief message explaining the relationship. Omit relatedLocations for
        findings that are self-contained at a single location.
+    8. If the issue is fundamentally a multi-step data or control flow (most
+       commonly: tainted input flowing to a dangerous sink), populate codeFlows
+       with the ordered hops the value takes. Each step needs a real file path
+       and line number plus a short message describing what happens there
+       ("user input read", "passed without sanitization", "concatenated into
+       SQL"). Only emit a flow when you can identify each hop with confidence
+       — leave codeFlows empty for self-contained findings, speculative paths,
+       or anything you cannot trace. A flow with fewer than two steps is not
+       useful; omit it.
 
     Only report genuine issues. Quality over quantity.
 

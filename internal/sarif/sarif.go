@@ -106,12 +106,34 @@ type Result struct {
 	Message             Message                `json:"message"`
 	Locations           []Location             `json:"locations,omitempty"`
 	RelatedLocations    []Location             `json:"relatedLocations,omitempty"`
+	CodeFlows           []CodeFlow             `json:"codeFlows,omitempty"`
 	Fingerprints        map[string]string      `json:"fingerprints,omitempty"`
 	PartialFingerprints map[string]string      `json:"partialFingerprints,omitempty"`
 	BaselineState       string                 `json:"baselineState,omitempty"`
 	Properties          map[string]interface{} `json:"properties,omitempty"`
 	Suppressions        []SARIFSuppression     `json:"suppressions,omitempty"`
 	Fixes               []Fix                  `json:"fixes,omitempty"`
+}
+
+// CodeFlow represents a SARIF codeFlow (§3.36): an ordered sequence of
+// threadFlows describing how an issue arises step-by-step (e.g. tainted
+// input → propagation → sink). SARIF viewers like GitHub Code Scanning and
+// VS Code render each step as a navigable trace.
+type CodeFlow struct {
+	Message     *Message     `json:"message,omitempty"`
+	ThreadFlows []ThreadFlow `json:"threadFlows"`
+}
+
+// ThreadFlow represents a SARIF threadFlow (§3.37): an ordered list of
+// locations executed within a single thread of analysis.
+type ThreadFlow struct {
+	Locations []ThreadFlowLocation `json:"locations"`
+}
+
+// ThreadFlowLocation represents a SARIF threadFlowLocation (§3.38): a single
+// hop in a threadFlow, wrapping the location reached at this step.
+type ThreadFlowLocation struct {
+	Location *Location `json:"location,omitempty"`
 }
 
 type SARIFSuppression struct {

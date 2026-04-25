@@ -236,6 +236,171 @@ func TestAnalyzer_OmitsRelatedLocationsWhenEmpty(t *testing.T) {
 	}
 }
 
+func taintFlowFinding() Finding {
+	return Finding{
+		RuleID:    "sql-injection",
+		Level:     "error",
+		Message:   "Tainted input flows into SQL query",
+		FilePath:  "db/query.go",
+		StartLine: 45,
+		EndLine:   45,
+		CodeFlows: []CodeFlow{
+			{
+				Message: "User input → unsanitized concatenation",
+				Steps: []FlowStep{
+					{
+						FilePath:  "handler.go",
+						StartLine: 23,
+						Message:   "User input read from request body",
+					},
+					{
+						FilePath:  "handler.go",
+						StartLine: 31,
+						EndLine:   33,
+						Message:   "Passed to buildQuery without sanitization",
+					},
+					{
+						FilePath:  "db/query.go",
+						StartLine: 45,
+						Message:   "Concatenated into SQL query string",
+					},
+				},
+			},
+		},
+		Confidence: 0.9,
+	}
+}
+
+func TestAnalyzer_EmitsCodeFlowsWhenEnabled(t *testing.T) {
+	mock := &mockBAMLClient{findings: []Finding{taintFlowFinding()}}
+
+	a := NewAnalyzer(mock, WithCodeFlowsEnabled(true))
+	results, err := a.Analyze(
+		context.Background(),
+		[]input.Artifact{{Path: "db/query.go", Content: "package db\n", Kind: input.KindFile}},
+		map[string]config.Policy{"sql-injection": {Severity: "error", Instruction: "no sqli", Enabled: true}},
+		"persona",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+
+	flows := results[0].CodeFlows
+	if len(flows) != 1 {
+		t.Fatalf("expected 1 codeFlow, got %d", len(flows))
+	}
+	if flows[0].Message == nil || flows[0].Message.Text != "User input → unsanitized concatenation" {
+		t.Errorf("flow message: got %+v", flows[0].Message)
+	}
+	if len(flows[0].ThreadFlows) != 1 {
+		t.Fatalf("expected 1 threadFlow, got %d", len(flows[0].ThreadFlows))
+	}
+	steps := flows[0].ThreadFlows[0].Locations
+	if len(steps) != 3 {
+		t.Fatalf("expected 3 steps, got %d", len(steps))
+	}
+
+	if steps[0].Location.PhysicalLocation.ArtifactLocation.URI != "handler.go" {
+		t.Errorf("step 0 URI: got %q", steps[0].Location.PhysicalLocation.ArtifactLocation.URI)
+	}
+	if steps[0].Location.PhysicalLocation.Region.StartLine != 23 {
+		t.Errorf("step 0 startLine: got %d", steps[0].Location.PhysicalLocation.Region.StartLine)
+	}
+	if steps[0].Location.Message == nil || steps[0].Location.Message.Text != "User input read from request body" {
+		t.Errorf("step 0 message: got %+v", steps[0].Location.Message)
+	}
+	if steps[1].Location.PhysicalLocation.Region.EndLine != 33 {
+		t.Errorf("step 1 endLine: got %d", steps[1].Location.PhysicalLocation.Region.EndLine)
+	}
+	if steps[2].Location.PhysicalLocation.ArtifactLocation.URI != "db/query.go" {
+		t.Errorf("step 2 URI: got %q", steps[2].Location.PhysicalLocation.ArtifactLocation.URI)
+	}
+}
+
+func TestAnalyzer_OmitsCodeFlowsWhenDisabled(t *testing.T) {
+	mock := &mockBAMLClient{findings: []Finding{taintFlowFinding()}}
+
+	// Default: codeFlows disabled (fast/local-tier behavior).
+	a := NewAnalyzer(mock)
+	results, err := a.Analyze(
+		context.Background(),
+		[]input.Artifact{{Path: "db/query.go", Content: "package db\n", Kind: input.KindFile}},
+		map[string]config.Policy{"sql-injection": {Severity: "error", Instruction: "no sqli", Enabled: true}},
+		"persona",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].CodeFlows != nil {
+		t.Errorf("expected nil CodeFlows when option disabled, got %+v", results[0].CodeFlows)
+	}
+}
+
+func TestAnalyzer_CodeFlowsDropsInvalidStepsAndShortFlows(t *testing.T) {
+	mock := &mockBAMLClient{
+		findings: []Finding{{
+			RuleID:    "rule",
+			Level:     "warning",
+			Message:   "msg",
+			FilePath:  "f.go",
+			StartLine: 1,
+			EndLine:   1,
+			CodeFlows: []CodeFlow{
+				{
+					// Two valid steps survive after dropping the two invalid ones.
+					Steps: []FlowStep{
+						{FilePath: "a.go", StartLine: 5, Message: "kept"},
+						{FilePath: "", StartLine: 7, Message: "dropped: empty path"},
+						{FilePath: "b.go", StartLine: 0, Message: "dropped: zero line"},
+						{FilePath: "c.go", StartLine: 9, Message: "kept"},
+					},
+				},
+				{
+					// Drops to one valid step → entire flow dropped.
+					Steps: []FlowStep{
+						{FilePath: "x.go", StartLine: 1, Message: "kept"},
+						{FilePath: "", StartLine: 2, Message: "dropped"},
+					},
+				},
+				{
+					// Empty steps → flow dropped.
+					Steps: nil,
+				},
+			},
+		}},
+	}
+
+	a := NewAnalyzer(mock, WithCodeFlowsEnabled(true))
+	results, err := a.Analyze(
+		context.Background(),
+		[]input.Artifact{{Path: "f.go", Content: "x", Kind: input.KindFile}},
+		map[string]config.Policy{"rule": {Severity: "warning", Instruction: "x", Enabled: true}},
+		"persona",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	flows := results[0].CodeFlows
+	if len(flows) != 1 {
+		t.Fatalf("expected 1 surviving flow, got %d", len(flows))
+	}
+	steps := flows[0].ThreadFlows[0].Locations
+	if len(steps) != 2 {
+		t.Fatalf("expected 2 surviving steps, got %d", len(steps))
+	}
+	if steps[0].Location.PhysicalLocation.ArtifactLocation.URI != "a.go" ||
+		steps[1].Location.PhysicalLocation.ArtifactLocation.URI != "c.go" {
+		t.Errorf("unexpected surviving step ordering: %+v", steps)
+	}
+}
+
 func TestAnalyzer_EmitsFixWhenReplacementPresent(t *testing.T) {
 	mock := &mockBAMLClient{
 		findings: []Finding{

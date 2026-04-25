@@ -29,6 +29,7 @@ type Finding struct {
 	Confidence         float64           `json:"confidence"`
 	FixReplacementText string            `json:"fixReplacementText,omitempty"`
 	RelatedLocations   []RelatedLocation `json:"relatedLocations,omitempty"`
+	CodeFlows          []CodeFlow        `json:"codeFlows,omitempty"`
 }
 
 // RelatedLocation describes a code location that is meaningfully related to a
@@ -42,10 +43,29 @@ type RelatedLocation struct {
 	Message   string `json:"message,omitempty"`
 }
 
+// CodeFlow represents an ordered data- or control-flow path across one or
+// more locations, describing how a finding arises step-by-step (e.g. tainted
+// input → propagation → sink). Mapped to SARIF `codeFlows` (§3.36) during
+// result assembly.
+type CodeFlow struct {
+	Message string     `json:"message,omitempty"`
+	Steps   []FlowStep `json:"steps"`
+}
+
+// FlowStep is a single hop in a CodeFlow, mapped to a SARIF
+// threadFlowLocation (§3.38) during result assembly.
+type FlowStep struct {
+	FilePath  string `json:"filePath"`
+	StartLine int    `json:"startLine"`
+	EndLine   int    `json:"endLine,omitempty"`
+	Message   string `json:"message,omitempty"`
+}
+
 // Analyzer orchestrates code analysis using a BAMLClient.
 type Analyzer struct {
 	client            BAMLClient
 	additionalContext string
+	codeFlowsEnabled  bool
 
 	// Cached function index for logical location enrichment. Avoids
 	// re-parsing and re-traversing the same file when Analyze is called
@@ -63,6 +83,15 @@ type AnalyzerOption func(*Analyzer)
 func WithAdditionalContext(ctx string) AnalyzerOption {
 	return func(a *Analyzer) {
 		a.additionalContext = ctx
+	}
+}
+
+// WithCodeFlowsEnabled controls whether LLM-supplied code flows are emitted on
+// SARIF results. Disabled by default because fast/local models tend to produce
+// speculative or shallow flow paths; the comprehensive tier opts in.
+func WithCodeFlowsEnabled(enabled bool) AnalyzerOption {
+	return func(a *Analyzer) {
+		a.codeFlowsEnabled = enabled
 	}
 }
 
@@ -160,6 +189,12 @@ func (a *Analyzer) Analyze(ctx context.Context, artifacts []input.Artifact, poli
 				result.RelatedLocations = related
 			}
 
+			if a.codeFlowsEnabled {
+				if flows := buildCodeFlows(f.CodeFlows); len(flows) > 0 {
+					result.CodeFlows = flows
+				}
+			}
+
 			if f.FixReplacementText != "" {
 				result.Fixes = []sarif.Fix{{
 					Description: sarif.Message{Text: f.Recommendation},
@@ -195,6 +230,55 @@ func (a *Analyzer) getOrBuildIndex(path string, source []byte) *astcheck.Functio
 	a.cachedPath = path
 	a.cachedIdx = idx
 	return idx
+}
+
+// buildCodeFlows converts internal CodeFlow entries into SARIF CodeFlow
+// values suitable for Result.CodeFlows. Steps without a file path or with a
+// non-positive start line are dropped (they cannot be displayed). Flows that
+// end up with fewer than two valid steps are dropped entirely — a single-step
+// "flow" tells the reviewer nothing they couldn't read from the primary
+// location.
+func buildCodeFlows(flows []CodeFlow) []sarif.CodeFlow {
+	if len(flows) == 0 {
+		return nil
+	}
+	out := make([]sarif.CodeFlow, 0, len(flows))
+	for _, f := range flows {
+		locs := make([]sarif.ThreadFlowLocation, 0, len(f.Steps))
+		for _, s := range f.Steps {
+			if s.FilePath == "" || s.StartLine <= 0 {
+				continue
+			}
+			region := sarif.Region{StartLine: s.StartLine}
+			if s.EndLine > 0 {
+				region.EndLine = s.EndLine
+			}
+			loc := &sarif.Location{
+				PhysicalLocation: sarif.PhysicalLocation{
+					ArtifactLocation: sarif.ArtifactLocation{URI: s.FilePath},
+					Region:           region,
+				},
+			}
+			if s.Message != "" {
+				loc.Message = &sarif.Message{Text: s.Message}
+			}
+			locs = append(locs, sarif.ThreadFlowLocation{Location: loc})
+		}
+		if len(locs) < 2 {
+			continue
+		}
+		flow := sarif.CodeFlow{
+			ThreadFlows: []sarif.ThreadFlow{{Locations: locs}},
+		}
+		if f.Message != "" {
+			flow.Message = &sarif.Message{Text: f.Message}
+		}
+		out = append(out, flow)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // buildRelatedLocations converts internal RelatedLocation entries into SARIF

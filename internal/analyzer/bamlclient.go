@@ -166,9 +166,44 @@ func convertFindings(bamlFindings []types.Finding) []Finding {
 			Confidence:         f.Confidence,
 			FixReplacementText: fixText,
 			RelatedLocations:   convertRelatedLocations(f.RelatedLocations),
+			CodeFlows:          convertCodeFlows(f.CodeFlows),
 		}
 	}
 	return findings
+}
+
+func convertCodeFlows(bamlFlows *[]types.CodeFlow) []CodeFlow {
+	if bamlFlows == nil || len(*bamlFlows) == 0 {
+		return nil
+	}
+	out := make([]CodeFlow, 0, len(*bamlFlows))
+	for _, f := range *bamlFlows {
+		flow := CodeFlow{Steps: convertFlowSteps(f.Steps)}
+		if f.Message != nil {
+			flow.Message = *f.Message
+		}
+		out = append(out, flow)
+	}
+	return out
+}
+
+func convertFlowSteps(bamlSteps []types.FlowStep) []FlowStep {
+	if len(bamlSteps) == 0 {
+		return nil
+	}
+	out := make([]FlowStep, 0, len(bamlSteps))
+	for _, s := range bamlSteps {
+		step := FlowStep{
+			FilePath:  s.FilePath,
+			StartLine: int(s.StartLine),
+			Message:   s.Message,
+		}
+		if s.EndLine != nil {
+			step.EndLine = int(*s.EndLine)
+		}
+		out = append(out, step)
+	}
+	return out
 }
 
 func convertRelatedLocations(bamlRels *[]types.RelatedLocation) []RelatedLocation {

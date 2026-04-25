@@ -15,6 +15,42 @@ package type_builder
 
 import baml "github.com/boundaryml/baml/engine/language_client_go/pkg"
 
+type CodeFlowClassView struct {
+	inner baml.ClassBuilder
+}
+
+func (t *CodeFlowClassView) ListProperties() ([]ClassPropertyView, error) {
+	result, err := t.inner.ListProperties()
+	if err != nil {
+		return nil, err
+	}
+	builders := make([]ClassPropertyView, len(result))
+	for i, p := range result {
+		builders[i] = p
+	}
+	return builders, nil
+}
+
+func (t *CodeFlowClassView) PropertyMessage() (ClassPropertyView, error) {
+	return t.inner.Property("message")
+}
+
+func (t *CodeFlowClassView) PropertySteps() (ClassPropertyView, error) {
+	return t.inner.Property("steps")
+}
+
+func (t *TypeBuilder) CodeFlow() (*CodeFlowClassView, error) {
+	bld, err := t.inner.Class("CodeFlow")
+	if err != nil {
+		return nil, err
+	}
+	return &CodeFlowClassView{inner: bld}, nil
+}
+
+func (t *CodeFlowClassView) Type() (baml.Type, error) {
+	return t.inner.Type()
+}
+
 type FindingClassView struct {
 	inner baml.ClassBuilder
 }
@@ -75,6 +111,10 @@ func (t *FindingClassView) PropertyRelatedLocations() (ClassPropertyView, error)
 	return t.inner.Property("relatedLocations")
 }
 
+func (t *FindingClassView) PropertyCodeFlows() (ClassPropertyView, error) {
+	return t.inner.Property("codeFlows")
+}
+
 func (t *TypeBuilder) Finding() (*FindingClassView, error) {
 	bld, err := t.inner.Class("Finding")
 	if err != nil {
@@ -84,6 +124,50 @@ func (t *TypeBuilder) Finding() (*FindingClassView, error) {
 }
 
 func (t *FindingClassView) Type() (baml.Type, error) {
+	return t.inner.Type()
+}
+
+type FlowStepClassView struct {
+	inner baml.ClassBuilder
+}
+
+func (t *FlowStepClassView) ListProperties() ([]ClassPropertyView, error) {
+	result, err := t.inner.ListProperties()
+	if err != nil {
+		return nil, err
+	}
+	builders := make([]ClassPropertyView, len(result))
+	for i, p := range result {
+		builders[i] = p
+	}
+	return builders, nil
+}
+
+func (t *FlowStepClassView) PropertyFilePath() (ClassPropertyView, error) {
+	return t.inner.Property("filePath")
+}
+
+func (t *FlowStepClassView) PropertyStartLine() (ClassPropertyView, error) {
+	return t.inner.Property("startLine")
+}
+
+func (t *FlowStepClassView) PropertyEndLine() (ClassPropertyView, error) {
+	return t.inner.Property("endLine")
+}
+
+func (t *FlowStepClassView) PropertyMessage() (ClassPropertyView, error) {
+	return t.inner.Property("message")
+}
+
+func (t *TypeBuilder) FlowStep() (*FlowStepClassView, error) {
+	bld, err := t.inner.Class("FlowStep")
+	if err != nil {
+		return nil, err
+	}
+	return &FlowStepClassView{inner: bld}, nil
+}
+
+func (t *FlowStepClassView) Type() (baml.Type, error) {
 	return t.inner.Type()
 }
 

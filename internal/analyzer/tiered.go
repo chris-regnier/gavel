@@ -592,7 +592,7 @@ func (ta *TieredAnalyzer) runComprehensiveTier(ctx context.Context, art input.Ar
 
 	ta.comprehensiveCalls.Add(1)
 
-	analyzer := ta.newAnalyzerForClient(ta.comprehensiveClient)
+	analyzer := ta.newAnalyzerForClient(ta.comprehensiveClient, WithCodeFlowsEnabled(true))
 	results, err := analyzer.Analyze(ctx, []input.Artifact{art}, policies, personaPrompt)
 	duration := time.Since(start)
 
@@ -748,11 +748,14 @@ func (ta *TieredAnalyzer) Stats() TieredAnalyzerStats {
 
 // newAnalyzerForClient creates an Analyzer for the given client, forwarding
 // any TieredAnalyzer-level options (such as additionalContext for diff enrichment).
-func (ta *TieredAnalyzer) newAnalyzerForClient(client BAMLClient) *Analyzer {
+// extraOpts are appended after the forwarded options so callers can layer on
+// tier-specific behavior (e.g. enabling code flows only for the comprehensive tier).
+func (ta *TieredAnalyzer) newAnalyzerForClient(client BAMLClient, extraOpts ...AnalyzerOption) *Analyzer {
 	var opts []AnalyzerOption
 	if ta.additionalContext != "" {
 		opts = append(opts, WithAdditionalContext(ta.additionalContext))
 	}
+	opts = append(opts, extraOpts...)
 	return NewAnalyzer(client, opts...)
 }
 

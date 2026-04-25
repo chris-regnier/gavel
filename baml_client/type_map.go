@@ -21,8 +21,12 @@ import (
 )
 
 var typeMap = map[string]reflect.Type{
+	"TYPES.CodeFlow":                       reflect.TypeOf(types.CodeFlow{}),
+	"STREAM_TYPES.CodeFlow":                reflect.TypeOf(stream_types.CodeFlow{}),
 	"TYPES.Finding":                        reflect.TypeOf(types.Finding{}),
 	"STREAM_TYPES.Finding":                 reflect.TypeOf(stream_types.Finding{}),
+	"TYPES.FlowStep":                       reflect.TypeOf(types.FlowStep{}),
+	"STREAM_TYPES.FlowStep":                reflect.TypeOf(stream_types.FlowStep{}),
 	"TYPES.GeneratedConfig":                reflect.TypeOf(types.GeneratedConfig{}),
 	"STREAM_TYPES.GeneratedConfig":         reflect.TypeOf(stream_types.GeneratedConfig{}),
 	"TYPES.GeneratedPersona":               reflect.TypeOf(types.GeneratedPersona{}),
