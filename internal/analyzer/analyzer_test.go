@@ -133,6 +133,109 @@ func TestAnalyzer_EmptyPathSkipsHeader(t *testing.T) {
 	}
 }
 
+func TestAnalyzer_EmitsRelatedLocations(t *testing.T) {
+	mock := &mockBAMLClient{
+		findings: []Finding{
+			{
+				RuleID:    "sql-injection",
+				Level:     "error",
+				Message:   "Unsanitized input concatenated into SQL",
+				FilePath:  "db/query.go",
+				StartLine: 45,
+				EndLine:   45,
+				RelatedLocations: []RelatedLocation{
+					{
+						FilePath:  "handler.go",
+						StartLine: 23,
+						EndLine:   23,
+						Message:   "Unsanitized input originates here",
+					},
+					{
+						FilePath:  "handler.go",
+						StartLine: 31,
+						Message:   "Passed to buildQuery without sanitization",
+					},
+					// Dropped: missing file path.
+					{StartLine: 12, Message: "should be dropped"},
+					// Dropped: non-positive start line.
+					{FilePath: "elsewhere.go", StartLine: 0},
+				},
+				Confidence: 0.9,
+			},
+		},
+	}
+
+	a := NewAnalyzer(mock)
+	artifacts := []input.Artifact{
+		{Path: "db/query.go", Content: "package db\n", Kind: input.KindFile},
+	}
+	policies := map[string]config.Policy{
+		"sql-injection": {Severity: "error", Instruction: "No SQL injection", Enabled: true},
+	}
+
+	results, err := a.Analyze(context.Background(), artifacts, policies, "persona")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+
+	r := results[0]
+	if len(r.RelatedLocations) != 2 {
+		t.Fatalf("expected 2 valid related locations (invalid entries dropped), got %d", len(r.RelatedLocations))
+	}
+
+	first := r.RelatedLocations[0]
+	if first.PhysicalLocation.ArtifactLocation.URI != "handler.go" {
+		t.Errorf("first related location URI: got %q", first.PhysicalLocation.ArtifactLocation.URI)
+	}
+	if first.PhysicalLocation.Region.StartLine != 23 || first.PhysicalLocation.Region.EndLine != 23 {
+		t.Errorf("first related location region: got start=%d end=%d",
+			first.PhysicalLocation.Region.StartLine, first.PhysicalLocation.Region.EndLine)
+	}
+	if first.Message == nil || first.Message.Text != "Unsanitized input originates here" {
+		t.Errorf("first related location message: got %+v", first.Message)
+	}
+
+	second := r.RelatedLocations[1]
+	if second.PhysicalLocation.Region.StartLine != 31 {
+		t.Errorf("second related location startLine: got %d", second.PhysicalLocation.Region.StartLine)
+	}
+	if second.PhysicalLocation.Region.EndLine != 0 {
+		t.Errorf("second related location should have no endLine, got %d", second.PhysicalLocation.Region.EndLine)
+	}
+}
+
+func TestAnalyzer_OmitsRelatedLocationsWhenEmpty(t *testing.T) {
+	mock := &mockBAMLClient{
+		findings: []Finding{{
+			RuleID:    "rule",
+			Level:     "warning",
+			Message:   "msg",
+			FilePath:  "f.go",
+			StartLine: 1,
+			EndLine:   1,
+		}},
+	}
+	a := NewAnalyzer(mock)
+	results, err := a.Analyze(
+		context.Background(),
+		[]input.Artifact{{Path: "f.go", Content: "x", Kind: input.KindFile}},
+		map[string]config.Policy{"rule": {Severity: "warning", Instruction: "x", Enabled: true}},
+		"persona",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].RelatedLocations != nil {
+		t.Errorf("expected nil RelatedLocations when none provided, got %+v", results[0].RelatedLocations)
+	}
+}
+
 func TestAnalyzer_EmitsFixWhenReplacementPresent(t *testing.T) {
 	mock := &mockBAMLClient{
 		findings: []Finding{

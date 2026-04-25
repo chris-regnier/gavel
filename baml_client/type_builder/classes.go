@@ -71,6 +71,10 @@ func (t *FindingClassView) PropertyFixReplacementText() (ClassPropertyView, erro
 	return t.inner.Property("fixReplacementText")
 }
 
+func (t *FindingClassView) PropertyRelatedLocations() (ClassPropertyView, error) {
+	return t.inner.Property("relatedLocations")
+}
+
 func (t *TypeBuilder) Finding() (*FindingClassView, error) {
 	bld, err := t.inner.Class("Finding")
 	if err != nil {
@@ -336,5 +340,49 @@ func (t *TypeBuilder) GeneratedRule() (*GeneratedRuleClassView, error) {
 }
 
 func (t *GeneratedRuleClassView) Type() (baml.Type, error) {
+	return t.inner.Type()
+}
+
+type RelatedLocationClassView struct {
+	inner baml.ClassBuilder
+}
+
+func (t *RelatedLocationClassView) ListProperties() ([]ClassPropertyView, error) {
+	result, err := t.inner.ListProperties()
+	if err != nil {
+		return nil, err
+	}
+	builders := make([]ClassPropertyView, len(result))
+	for i, p := range result {
+		builders[i] = p
+	}
+	return builders, nil
+}
+
+func (t *RelatedLocationClassView) PropertyFilePath() (ClassPropertyView, error) {
+	return t.inner.Property("filePath")
+}
+
+func (t *RelatedLocationClassView) PropertyStartLine() (ClassPropertyView, error) {
+	return t.inner.Property("startLine")
+}
+
+func (t *RelatedLocationClassView) PropertyEndLine() (ClassPropertyView, error) {
+	return t.inner.Property("endLine")
+}
+
+func (t *RelatedLocationClassView) PropertyMessage() (ClassPropertyView, error) {
+	return t.inner.Property("message")
+}
+
+func (t *TypeBuilder) RelatedLocation() (*RelatedLocationClassView, error) {
+	bld, err := t.inner.Class("RelatedLocation")
+	if err != nil {
+		return nil, err
+	}
+	return &RelatedLocationClassView{inner: bld}, nil
+}
+
+func (t *RelatedLocationClassView) Type() (baml.Type, error) {
 	return t.inner.Type()
 }

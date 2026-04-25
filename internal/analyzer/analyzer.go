@@ -18,16 +18,28 @@ type BAMLClient interface {
 
 // Finding represents a single finding returned by the BAML analysis.
 type Finding struct {
-	RuleID             string  `json:"ruleId"`
-	Level              string  `json:"level"`
-	Message            string  `json:"message"`
-	FilePath           string  `json:"filePath"`
-	StartLine          int     `json:"startLine"`
-	EndLine            int     `json:"endLine"`
-	Recommendation     string  `json:"recommendation"`
-	Explanation        string  `json:"explanation"`
-	Confidence         float64 `json:"confidence"`
-	FixReplacementText string  `json:"fixReplacementText,omitempty"`
+	RuleID             string            `json:"ruleId"`
+	Level              string            `json:"level"`
+	Message            string            `json:"message"`
+	FilePath           string            `json:"filePath"`
+	StartLine          int               `json:"startLine"`
+	EndLine            int               `json:"endLine"`
+	Recommendation     string            `json:"recommendation"`
+	Explanation        string            `json:"explanation"`
+	Confidence         float64           `json:"confidence"`
+	FixReplacementText string            `json:"fixReplacementText,omitempty"`
+	RelatedLocations   []RelatedLocation `json:"relatedLocations,omitempty"`
+}
+
+// RelatedLocation describes a code location that is meaningfully related to a
+// Finding (e.g. the origin of unsanitized input that flows into the flagged
+// region, or the definition of a vulnerable callee). Mapped to SARIF
+// `relatedLocations` (§3.27.22) during result assembly.
+type RelatedLocation struct {
+	FilePath  string `json:"filePath"`
+	StartLine int    `json:"startLine"`
+	EndLine   int    `json:"endLine,omitempty"`
+	Message   string `json:"message,omitempty"`
 }
 
 // Analyzer orchestrates code analysis using a BAMLClient.
@@ -144,6 +156,10 @@ func (a *Analyzer) Analyze(ctx context.Context, artifacts []input.Artifact, poli
 				},
 			}
 
+			if related := buildRelatedLocations(f.RelatedLocations); len(related) > 0 {
+				result.RelatedLocations = related
+			}
+
 			if f.FixReplacementText != "" {
 				result.Fixes = []sarif.Fix{{
 					Description: sarif.Message{Text: f.Recommendation},
@@ -179,4 +195,37 @@ func (a *Analyzer) getOrBuildIndex(path string, source []byte) *astcheck.Functio
 	a.cachedPath = path
 	a.cachedIdx = idx
 	return idx
+}
+
+// buildRelatedLocations converts internal RelatedLocation entries into SARIF
+// Location values suitable for Result.RelatedLocations. Entries without a file
+// path or start line are dropped — they cannot be displayed by SARIF viewers.
+func buildRelatedLocations(rels []RelatedLocation) []sarif.Location {
+	if len(rels) == 0 {
+		return nil
+	}
+	locs := make([]sarif.Location, 0, len(rels))
+	for _, r := range rels {
+		if r.FilePath == "" || r.StartLine <= 0 {
+			continue
+		}
+		region := sarif.Region{StartLine: r.StartLine}
+		if r.EndLine > 0 {
+			region.EndLine = r.EndLine
+		}
+		loc := sarif.Location{
+			PhysicalLocation: sarif.PhysicalLocation{
+				ArtifactLocation: sarif.ArtifactLocation{URI: r.FilePath},
+				Region:           region,
+			},
+		}
+		if r.Message != "" {
+			loc.Message = &sarif.Message{Text: r.Message}
+		}
+		locs = append(locs, loc)
+	}
+	if len(locs) == 0 {
+		return nil
+	}
+	return locs
 }

@@ -33,4 +33,6 @@ var typeMap = map[string]reflect.Type{
 	"STREAM_TYPES.GeneratedProviderConfig": reflect.TypeOf(stream_types.GeneratedProviderConfig{}),
 	"TYPES.GeneratedRule":                  reflect.TypeOf(types.GeneratedRule{}),
 	"STREAM_TYPES.GeneratedRule":           reflect.TypeOf(stream_types.GeneratedRule{}),
+	"TYPES.RelatedLocation":                reflect.TypeOf(types.RelatedLocation{}),
+	"STREAM_TYPES.RelatedLocation":         reflect.TypeOf(stream_types.RelatedLocation{}),
 }
