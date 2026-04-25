@@ -50,6 +50,17 @@ jobs:
       - name: Build Linux binaries
         run: task build:release
 
+      - name: Smoke test native binary
+        run: |
+          case "$(uname -m)" in
+            x86_64) ARCH=x86_64 ;;
+            aarch64|arm64) ARCH=arm64 ;;
+            *) echo "Unsupported arch: $(uname -m)" >&2; exit 1 ;;
+          esac
+          BIN="dist/gavel_Linux_${ARCH}"
+          echo "Running ${BIN} --version"
+          "${BIN}" --version
+
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v7
         with:
@@ -83,6 +94,17 @@ jobs:
 
       - name: Build macOS binaries
         run: task build:release
+
+      - name: Smoke test native binary
+        run: |
+          case "$(uname -m)" in
+            x86_64) ARCH=x86_64 ;;
+            arm64|aarch64) ARCH=arm64 ;;
+            *) echo "Unsupported arch: $(uname -m)" >&2; exit 1 ;;
+          esac
+          BIN="dist/gavel_Darwin_${ARCH}"
+          echo "Running ${BIN} --version"
+          "${BIN}" --version
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v7

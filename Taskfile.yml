@@ -192,6 +192,21 @@ tasks:
       - echo "==> Building release binaries for current OS..."
       - task: build:release
       - |
+        echo "==> Smoke testing native binary..."
+        case "$(uname -s)" in
+          Linux) OS=Linux ;;
+          Darwin) OS=Darwin ;;
+          *) echo "Unsupported OS: $(uname -s)" >&2; exit 1 ;;
+        esac
+        case "$(uname -m)" in
+          x86_64) ARCH=x86_64 ;;
+          arm64|aarch64) ARCH=arm64 ;;
+          *) echo "Unsupported arch: $(uname -m)" >&2; exit 1 ;;
+        esac
+        BIN="dist/gavel_${OS}_${ARCH}"
+        echo "Running ${BIN} --version"
+        "${BIN}" --version
+      - |
         echo "==> Generating changelog..."
         PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
         if [ -n "$PREV_TAG" ]; then
