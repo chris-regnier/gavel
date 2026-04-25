@@ -20,7 +20,7 @@ import (
 	"github.com/chris-regnier/gavel/internal/evaluator"
 	"github.com/chris-regnier/gavel/internal/input"
 	"github.com/chris-regnier/gavel/internal/rules"
-	"github.com/chris-regnier/gavel/internal/sarif"
+	"github.com/chris-regnier/gavel/internal/service"
 	"github.com/chris-regnier/gavel/internal/store"
 	"github.com/chris-regnier/gavel/internal/suppression"
 )
@@ -46,10 +46,17 @@ func NewMCPServer(cfg ServerConfig) *server.MCPServer {
 		server.WithPromptCapabilities(true),
 	)
 
+	// Build the BAML client once at startup (matching previous behavior)
+	// and feed it to the AnalyzeService via a factory closure so the same
+	// client serves every analyze_* tool call.
+	client := analyzer.NewBAMLLiveClient(cfg.Config.Provider)
+	analyzeSvc := service.NewAnalyzeService(cfg.Store).WithClientFactory(
+		func(_ config.ProviderConfig) analyzer.BAMLClient { return client },
+	)
+
 	h := &handlers{
-		cfg:    cfg,
-		client: analyzer.NewBAMLLiveClient(cfg.Config.Provider),
-		rules:  cfg.Rules,
+		cfg:        cfg,
+		analyzeSvc: analyzeSvc,
 	}
 
 	// Register tools
@@ -76,10 +83,11 @@ func NewMCPServer(cfg ServerConfig) *server.MCPServer {
 }
 
 // handlers holds the server config and implements all tool/resource/prompt handlers.
+// All analyze_* tools route through analyzeSvc so MCP, CLI, and the HTTP
+// service share a single orchestration entrypoint (see issue #106).
 type handlers struct {
-	cfg    ServerConfig
-	client analyzer.BAMLClient
-	rules  []rules.Rule
+	cfg        ServerConfig
+	analyzeSvc *service.AnalyzeService
 }
 
 // --- Tool definitions ---
@@ -252,48 +260,6 @@ func architectureReviewPrompt() mcp.Prompt {
 	)
 }
 
-// baselineCounts summarizes how many results fell into each baselineState
-// bucket after CompareBaseline was applied. An empty value means no
-// baseline comparison was performed.
-type baselineCounts struct {
-	Source    string `json:"source"`
-	New       int    `json:"new"`
-	Unchanged int    `json:"unchanged"`
-	Absent    int    `json:"absent"`
-}
-
-// applyBaseline stamps automation details onto sarifLog and, when the
-// `baseline` tool parameter is set, loads that baseline and annotates
-// each result with a baselineState. Returns the bucket counts so the
-// handler can include them in its summary, or a CallToolResult error if
-// the baseline failed to load.
-func (h *handlers) applyBaseline(ctx context.Context, sarifLog *sarif.Log, baseline string) (baselineCounts, *mcp.CallToolResult) {
-	sarif.EnsureAutomationDetails(sarifLog)
-	if baseline == "" {
-		return baselineCounts{}, nil
-	}
-	baselineLog, err := store.LoadBaseline(ctx, h.cfg.Store, baseline)
-	if err != nil {
-		return baselineCounts{}, mcp.NewToolResultError(fmt.Sprintf("loading baseline %q: %v", baseline, err))
-	}
-	sarif.CompareBaseline(sarifLog, baselineLog)
-
-	counts := baselineCounts{Source: baseline}
-	if len(sarifLog.Runs) > 0 {
-		for _, r := range sarifLog.Runs[0].Results {
-			switch r.BaselineState {
-			case sarif.BaselineStateNew:
-				counts.New++
-			case sarif.BaselineStateUnchanged:
-				counts.Unchanged++
-			case sarif.BaselineStateAbsent:
-				counts.Absent++
-			}
-		}
-	}
-	return counts, nil
-}
-
 // --- Tool handlers ---
 
 func (h *handlers) handleAnalyzeFile(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -306,61 +272,34 @@ func (h *handlers) handleAnalyzeFile(ctx context.Context, request mcp.CallToolRe
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	persona := request.GetString("persona", h.cfg.Config.Persona)
-	if persona == "" {
-		persona = "code-reviewer"
-	}
-
+	persona := h.resolvePersona(request)
 	baseline := request.GetString("baseline", "")
 
-	// Read the file
 	content, err := os.ReadFile(path)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("reading file: %v", err)), nil
 	}
 
-	// Run analysis
-	results, err := h.runAnalysis(ctx, []input.Artifact{{Path: path, Content: string(content)}}, persona)
+	req := h.analyzeRequest(persona, baseline, []input.Artifact{
+		{Path: path, Content: string(content), Kind: input.KindFile},
+	})
+
+	result, err := h.analyzeSvc.Analyze(ctx, req)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("analysis failed: %v", err)), nil
 	}
 
-	// Build SARIF and store so judge can evaluate later
-	descriptors := buildDescriptors(h.cfg.Config.Policies, h.rules)
-	sarifLog := sarif.Assemble(results, descriptors, "file", persona)
-
-	baselineSummary, errResult := h.applyBaseline(ctx, sarifLog, baseline)
-	if errResult != nil {
-		return errResult, nil
-	}
-
-	supps, loadErr := suppression.Load(h.rootDir())
-	if loadErr != nil {
-		slog.Warn("failed to load suppressions", "err", loadErr)
-	}
-	suppression.Apply(supps, sarifLog)
-
-	id, err := h.cfg.Store.WriteSARIF(ctx, sarifLog)
-	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("storing results: %v", err)), nil
-	}
-
 	summary := map[string]interface{}{
-		"id":       id,
-		"findings": len(results),
+		"id":       result.ResultID,
+		"findings": result.TotalFindings,
 		"files":    1,
 		"persona":  persona,
 		"path":     path,
 	}
 	if baseline != "" {
-		summary["baseline"] = baselineSummary
+		summary["baseline"] = result.Baseline
 	}
-	out, err := json.MarshalIndent(summary, "", "  ")
-	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("marshaling summary: %v", err)), nil
-	}
-
-	return mcp.NewToolResultText(string(out)), nil
+	return marshalSummary(summary)
 }
 
 func (h *handlers) handleAnalyzeDirectory(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -373,14 +312,9 @@ func (h *handlers) handleAnalyzeDirectory(ctx context.Context, request mcp.CallT
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	persona := request.GetString("persona", h.cfg.Config.Persona)
-	if persona == "" {
-		persona = "code-reviewer"
-	}
-
+	persona := h.resolvePersona(request)
 	baseline := request.GetString("baseline", "")
 
-	// Read directory
 	handler := input.NewHandler()
 	artifacts, err := handler.ReadDirectory(dir)
 	if err != nil {
@@ -391,47 +325,23 @@ func (h *handlers) handleAnalyzeDirectory(ctx context.Context, request mcp.CallT
 		return mcp.NewToolResultText("No supported files found in directory."), nil
 	}
 
-	// Run analysis
-	results, err := h.runAnalysis(ctx, artifacts, persona)
+	req := h.analyzeRequest(persona, baseline, artifacts)
+
+	result, err := h.analyzeSvc.Analyze(ctx, req)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("analysis failed: %v", err)), nil
 	}
 
-	// Build SARIF and store
-	descriptors := buildDescriptors(h.cfg.Config.Policies, h.rules)
-	sarifLog := sarif.Assemble(results, descriptors, "directory", persona)
-
-	baselineSummary, errResult := h.applyBaseline(ctx, sarifLog, baseline)
-	if errResult != nil {
-		return errResult, nil
-	}
-
-	supps, loadErr := suppression.Load(h.rootDir())
-	if loadErr != nil {
-		slog.Warn("failed to load suppressions", "err", loadErr)
-	}
-	suppression.Apply(supps, sarifLog)
-
-	id, err := h.cfg.Store.WriteSARIF(ctx, sarifLog)
-	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("storing results: %v", err)), nil
-	}
-
 	summary := map[string]interface{}{
-		"id":       id,
-		"findings": len(results),
+		"id":       result.ResultID,
+		"findings": result.TotalFindings,
 		"files":    len(artifacts),
 		"persona":  persona,
 	}
 	if baseline != "" {
-		summary["baseline"] = baselineSummary
+		summary["baseline"] = result.Baseline
 	}
-	out, err := json.MarshalIndent(summary, "", "  ")
-	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("marshaling summary: %v", err)), nil
-	}
-
-	return mcp.NewToolResultText(string(out)), nil
+	return marshalSummary(summary)
 }
 
 func (h *handlers) handleJudge(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -558,20 +468,14 @@ func (h *handlers) handleAnalyzeDiff(ctx context.Context, request mcp.CallToolRe
 		return mcp.NewToolResultError("line_start must be <= line_end"), nil
 	}
 
-	persona := request.GetString("persona", h.cfg.Config.Persona)
-	if persona == "" {
-		persona = "code-reviewer"
-	}
-
+	persona := h.resolvePersona(request)
 	baseline := request.GetString("baseline", "")
 
-	// Read the full file
 	content, err := os.ReadFile(path)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("reading file: %v", err)), nil
 	}
 
-	// Determine changed line range
 	var changedStart, changedEnd int
 	if hasDiff {
 		changedStart, changedEnd = extractChangedLines(diffText)
@@ -583,112 +487,34 @@ func (h *handlers) handleAnalyzeDiff(ctx context.Context, request mcp.CallToolRe
 		changedEnd = lineEnd
 	}
 
-	lines := strings.Split(string(content), "\n")
-	totalLines := len(lines)
-
-	// Extract scoped content with 10-line context window
-	contextWindow := 10
-	scopeStart := changedStart - contextWindow
-	if scopeStart < 1 {
-		scopeStart = 1
-	}
-	scopeEnd := changedEnd + contextWindow
-	if scopeEnd > totalLines {
-		scopeEnd = totalLines
+	cfg := h.configWithPersona(persona)
+	scopedReq := service.ScopedAnalyzeRequest{
+		Artifact:       input.Artifact{Path: path, Content: string(content), Kind: input.KindFile},
+		ChangedStart:   changedStart,
+		ChangedEnd:     changedEnd,
+		Config:         cfg,
+		Rules:          h.cfg.Rules,
+		BaselineID:     baseline,
+		SuppressionDir: h.rootDir(),
 	}
 
-	// Build scoped content (scopeStart and scopeEnd are 1-indexed)
-	scopedLines := lines[scopeStart-1 : scopeEnd]
-	scopedContent := strings.Join(scopedLines, "\n")
-
-	// Run instant tier on full file, filter findings to changed lines.
-	// Pass loaded rules so custom rules fire alongside embedded defaults.
-	fullArtifact := input.Artifact{Path: path, Content: string(content), Kind: input.KindFile}
-	instantOpts := []analyzer.TieredAnalyzerOption{}
-	if len(h.rules) > 0 {
-		instantOpts = append(instantOpts, analyzer.WithInstantPatterns(h.rules))
-	}
-	ta := analyzer.NewTieredAnalyzer(h.client, instantOpts...)
-	instantResults := ta.RunPatternMatching(fullArtifact)
-
-	var filteredInstant []sarif.Result
-	for _, r := range instantResults {
-		if len(r.Locations) > 0 {
-			region := r.Locations[0].PhysicalLocation.Region
-			if region.StartLine >= changedStart && region.StartLine <= changedEnd {
-				filteredInstant = append(filteredInstant, r)
-			}
-		}
-	}
-
-	// Run comprehensive tier on scoped content
-	scopedArtifact := []input.Artifact{{Path: path, Content: scopedContent, Kind: input.KindFile}}
-	comprehensiveResults, err := h.runAnalysis(ctx, scopedArtifact, persona)
+	result, err := h.analyzeSvc.AnalyzeScoped(ctx, scopedReq)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("analysis failed: %v", err)), nil
 	}
 
-	// Adjust comprehensive tier line numbers (add scopeStart offset)
-	// The LLM sees scopedContent starting at line 1, but it's actually at scopeStart
-	offset := scopeStart - 1
-	for i := range comprehensiveResults {
-		if len(comprehensiveResults[i].Locations) > 0 {
-			comprehensiveResults[i].Locations[0].PhysicalLocation.Region.StartLine += offset
-			comprehensiveResults[i].Locations[0].PhysicalLocation.Region.EndLine += offset
-		}
-	}
-
-	// Filter comprehensive results to changed lines
-	var filteredComprehensive []sarif.Result
-	for _, r := range comprehensiveResults {
-		if len(r.Locations) > 0 {
-			region := r.Locations[0].PhysicalLocation.Region
-			if region.StartLine >= changedStart && region.StartLine <= changedEnd {
-				filteredComprehensive = append(filteredComprehensive, r)
-			}
-		}
-	}
-
-	// Combine all filtered results
-	allResults := append(filteredInstant, filteredComprehensive...)
-
-	// Build SARIF, apply suppressions, store, return summary
-	descriptors := buildDescriptors(h.cfg.Config.Policies, h.rules)
-	sarifLog := sarif.Assemble(allResults, descriptors, "diff", persona)
-
-	baselineSummary, errResult := h.applyBaseline(ctx, sarifLog, baseline)
-	if errResult != nil {
-		return errResult, nil
-	}
-
-	supps, loadErr := suppression.Load(h.rootDir())
-	if loadErr != nil {
-		slog.Warn("failed to load suppressions", "err", loadErr)
-	}
-	suppression.Apply(supps, sarifLog)
-
-	id, err := h.cfg.Store.WriteSARIF(ctx, sarifLog)
-	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("storing results: %v", err)), nil
-	}
-
 	summary := map[string]interface{}{
-		"id":            id,
-		"findings":      len(allResults),
+		"id":            result.ResultID,
+		"findings":      result.TotalFindings,
 		"path":          path,
 		"persona":       persona,
 		"changed_start": changedStart,
 		"changed_end":   changedEnd,
 	}
 	if baseline != "" {
-		summary["baseline"] = baselineSummary
+		summary["baseline"] = result.Baseline
 	}
-	out, err := json.MarshalIndent(summary, "", "  ")
-	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("marshaling summary: %v", err)), nil
-	}
-
-	return mcp.NewToolResultText(string(out)), nil
+	return marshalSummary(summary)
 }
 
 // extractChangedLines parses a unified diff and returns the overall range of changed lines.
@@ -992,29 +818,47 @@ func (h *handlers) buildAnalysisPrompt(request mcp.GetPromptRequest, persona, in
 
 // --- Helpers ---
 
-func (h *handlers) runAnalysis(ctx context.Context, artifacts []input.Artifact, persona string) ([]sarif.Result, error) {
-	personaPrompt, err := analyzer.GetPersonaPrompt(ctx, persona)
+// resolvePersona returns the persona to use for a tool call: the
+// `persona` arg if supplied, then the configured persona, then the
+// hardcoded "code-reviewer" default. Mirrors the behavior of every
+// analyze_* MCP handler.
+func (h *handlers) resolvePersona(request mcp.CallToolRequest) string {
+	persona := request.GetString("persona", h.cfg.Config.Persona)
+	if persona == "" {
+		persona = "code-reviewer"
+	}
+	return persona
+}
+
+// configWithPersona returns a copy of the server config with Persona
+// overridden so the AnalyzeService picks up the per-tool-call selection.
+func (h *handlers) configWithPersona(persona string) config.Config {
+	cfg := *h.cfg.Config
+	cfg.Persona = persona
+	return cfg
+}
+
+// analyzeRequest builds an AnalyzeRequest from the server config plus
+// per-call inputs. Suppressions are wired through so the service stamps
+// matching .gavel/suppressions.yaml entries before storage.
+func (h *handlers) analyzeRequest(persona, baseline string, artifacts []input.Artifact) service.AnalyzeRequest {
+	return service.AnalyzeRequest{
+		Artifacts:      artifacts,
+		Config:         h.configWithPersona(persona),
+		Rules:          h.cfg.Rules,
+		BaselineID:     baseline,
+		SuppressionDir: h.rootDir(),
+	}
+}
+
+// marshalSummary serializes summary as indented JSON wrapped in an MCP
+// tool result, mapping marshal errors to MCP error results.
+func marshalSummary(summary map[string]interface{}) (*mcp.CallToolResult, error) {
+	out, err := json.MarshalIndent(summary, "", "  ")
 	if err != nil {
-		return nil, fmt.Errorf("loading persona %s: %w", persona, err)
+		return mcp.NewToolResultError(fmt.Sprintf("marshaling summary: %v", err)), nil
 	}
-
-	// Append applicability filter if enabled (default).
-	// Prose personas get a writing-appropriate filter; code personas get the original.
-	if h.cfg.Config.StrictFilter {
-		if analyzer.IsProsePersona(persona) {
-			personaPrompt += analyzer.ProseApplicabilityFilterPrompt
-		} else {
-			personaPrompt += analyzer.ApplicabilityFilterPrompt
-		}
-	}
-
-	opts := []analyzer.TieredAnalyzerOption{}
-	if len(h.rules) > 0 {
-		opts = append(opts, analyzer.WithInstantPatterns(h.rules))
-	}
-
-	ta := analyzer.NewTieredAnalyzer(h.client, opts...)
-	return ta.Analyze(ctx, artifacts, h.cfg.Config.Policies, personaPrompt)
+	return mcp.NewToolResultText(string(out)), nil
 }
 
 // validatePath checks that the resolved path is within the configured root directory
@@ -1071,24 +915,4 @@ func (h *handlers) validatePath(path string) error {
 	}
 
 	return nil
-}
-
-// buildDescriptors assembles SARIF reportingDescriptors from both enabled
-// policies and loaded rules. Rule descriptors carry help/helpUri populated
-// from the rule's remediation, CWE, and reference metadata.
-func buildDescriptors(policies map[string]config.Policy, loadedRules []rules.Rule) []sarif.ReportingDescriptor {
-	var descriptors []sarif.ReportingDescriptor
-	for name, p := range policies {
-		if p.Enabled {
-			descriptors = append(descriptors, sarif.ReportingDescriptor{
-				ID:               name,
-				ShortDescription: sarif.Message{Text: p.Description},
-				DefaultConfig:    &sarif.ReportingConfiguration{Level: p.Severity},
-			})
-		}
-	}
-	for _, r := range loadedRules {
-		descriptors = append(descriptors, r.ToSARIFDescriptor())
-	}
-	return descriptors
 }

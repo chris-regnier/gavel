@@ -16,6 +16,7 @@ import (
 	"github.com/chris-regnier/gavel/internal/config"
 	"github.com/chris-regnier/gavel/internal/rules"
 	"github.com/chris-regnier/gavel/internal/sarif"
+	"github.com/chris-regnier/gavel/internal/service"
 	"github.com/chris-regnier/gavel/internal/store"
 	"github.com/chris-regnier/gavel/internal/suppression"
 	"github.com/stretchr/testify/assert"
@@ -103,6 +104,9 @@ func newTestHandlers(t *testing.T, cfg *config.Config, fs store.Store, rootDir s
 	if client == nil {
 		client = analyzer.NewBAMLLiveClient(cfg.Provider)
 	}
+	analyzeSvc := service.NewAnalyzeService(fs).WithClientFactory(
+		func(_ config.ProviderConfig) analyzer.BAMLClient { return client },
+	)
 	return &handlers{
 		cfg: ServerConfig{
 			Config:  cfg,
@@ -110,8 +114,7 @@ func newTestHandlers(t *testing.T, cfg *config.Config, fs store.Store, rootDir s
 			RootDir: rootDir,
 			Rules:   o.rules,
 		},
-		client: client,
-		rules:  o.rules,
+		analyzeSvc: analyzeSvc,
 	}
 }
 
@@ -708,35 +711,6 @@ func TestReadResultTemplate(t *testing.T) {
 	}
 }
 
-func TestBuildDescriptors(t *testing.T) {
-	policies := map[string]config.Policy{
-		"rule1": {Enabled: true, Description: "desc1", Severity: "warning"},
-		"rule2": {Enabled: false, Description: "desc2", Severity: "error"},
-		"rule3": {Enabled: true, Description: "desc3", Severity: "note"},
-	}
-
-	descriptors := buildDescriptors(policies, nil)
-
-	if len(descriptors) != 2 {
-		t.Errorf("expected 2 enabled rules, got %d", len(descriptors))
-	}
-
-	ruleIDs := make(map[string]bool)
-	for _, r := range descriptors {
-		ruleIDs[r.ID] = true
-	}
-
-	if !ruleIDs["rule1"] {
-		t.Error("missing rule1")
-	}
-	if ruleIDs["rule2"] {
-		t.Error("rule2 should not be included (disabled)")
-	}
-	if !ruleIDs["rule3"] {
-		t.Error("missing rule3")
-	}
-}
-
 func TestValidatePath_InsideRoot(t *testing.T) {
 	root := t.TempDir()
 	h := &handlers{cfg: ServerConfig{RootDir: root}}
@@ -1196,8 +1170,8 @@ func TestExtractChangedLines(t *testing.T) {
 			wantEnd:   16,
 		},
 		{
-			name: "multiple hunks",
-			diff: "@@ -5,3 +5,4 @@ header\n+line\n @@ -20,2 +21,5 @@ other\n+more\n",
+			name:      "multiple hunks",
+			diff:      "@@ -5,3 +5,4 @@ header\n+line\n @@ -20,2 +21,5 @@ other\n+more\n",
 			wantStart: 5,
 			wantEnd:   25,
 		},
@@ -1218,141 +1192,59 @@ func TestExtractChangedLines(t *testing.T) {
 	}
 }
 
-// TestApplyBaseline_StampsAutomationAndCompares is a unit test for the
-// shared applyBaseline helper used by every MCP analyze_* handler. It
-// seeds the store with a baseline run, calls applyBaseline, and asserts
-// that the current log is linked to the baseline GUID and that its
-// results carry baselineState buckets.
-func TestApplyBaseline_StampsAutomationAndCompares(t *testing.T) {
-	dir := t.TempDir()
-	fs := store.NewFileStore(dir)
+// TestAnalyzeFileTool_BaselinePropagates is a handler-level integration
+// test that exercises the baseline wiring: seed a baseline SARIF in the
+// store, call analyze_file, and verify the summary's baseline counts
+// reflect the comparison performed by AnalyzeService. The unit-level
+// baseline plumbing is covered by service tests; this test guards the
+// MCP-to-service handoff.
+func TestAnalyzeFileTool_BaselinePropagates(t *testing.T) {
+	tmpDir := t.TempDir()
+	testFile := filepath.Join(tmpDir, "creds.go")
+	require.NoError(t, os.WriteFile(testFile, credentialFixture(), 0644))
+
+	cfg := testConfig()
+	fs := store.NewFileStore(filepath.Join(tmpDir, ".gavel", "results"))
 	ctx := context.Background()
 
-	// Seed a baseline SARIF in the store with one error-level finding
-	// whose content will match a finding in the current run.
+	// Seed a baseline SARIF that does NOT contain the S2068 finding so
+	// the rule fires "new" on this run.
 	baselineLog := sarif.NewLog("gavel", "0.1.0")
 	baselineLog.Runs[0].AutomationDetails = &sarif.RunAutomationDetails{Guid: "prev-run-guid"}
-	baselineLog.Runs[0].Results = []sarif.Result{
-		{
-			RuleID:  "bug-detection",
-			Level:   "error",
-			Message: sarif.Message{Text: "pre-existing"},
-			Locations: []sarif.Location{{PhysicalLocation: sarif.PhysicalLocation{
-				ArtifactLocation: sarif.ArtifactLocation{URI: "a.go"},
-				Region: sarif.Region{
-					StartLine: 10, EndLine: 10,
-					Snippet: &sarif.ArtifactContent{Text: "password := \"hunter2\"\n"},
-				},
-			}}},
-		},
-	}
-	sarif.SetContentFingerprint(&baselineLog.Runs[0].Results[0])
 	baselineID, err := fs.WriteSARIF(ctx, baselineLog)
-	if err != nil {
-		t.Fatalf("seeding baseline: %v", err)
+	require.NoError(t, err)
+
+	defaultRules, err := rules.DefaultRules()
+	require.NoError(t, err)
+	h := newTestHandlers(t, cfg, fs, tmpDir, testHandlerOpts{
+		client: &mockBAMLClient{},
+		rules:  defaultRules,
+	})
+
+	req := mcpgo.CallToolRequest{}
+	req.Params.Name = "analyze_file"
+	req.Params.Arguments = map[string]any{
+		"path":     testFile,
+		"baseline": baselineID,
 	}
 
-	// Build a current log that duplicates the baseline's finding
-	// (should come out unchanged) and adds a new one.
-	current := sarif.NewLog("gavel", "0.1.0")
-	current.Runs[0].Results = []sarif.Result{
-		{
-			RuleID:  "bug-detection",
-			Level:   "error",
-			Message: sarif.Message{Text: "same"},
-			Locations: []sarif.Location{{PhysicalLocation: sarif.PhysicalLocation{
-				ArtifactLocation: sarif.ArtifactLocation{URI: "a.go"},
-				Region: sarif.Region{
-					StartLine: 42, EndLine: 42,
-					Snippet: &sarif.ArtifactContent{Text: "password := \"hunter2\"\n"},
-				},
-			}}},
-		},
-		{
-			RuleID:  "bug-detection",
-			Level:   "warning",
-			Message: sarif.Message{Text: "new"},
-			Locations: []sarif.Location{{PhysicalLocation: sarif.PhysicalLocation{
-				ArtifactLocation: sarif.ArtifactLocation{URI: "b.go"},
-				Region: sarif.Region{
-					StartLine: 1, EndLine: 1,
-					Snippet: &sarif.ArtifactContent{Text: "os.Remove(userPath)\n"},
-				},
-			}}},
-		},
-	}
-	for i := range current.Runs[0].Results {
-		sarif.SetContentFingerprint(&current.Runs[0].Results[i])
-	}
+	result, err := h.handleAnalyzeFile(ctx, req)
+	require.NoError(t, err)
+	require.False(t, result.IsError, "expected success: %+v", result)
 
-	h := newTestHandlers(t, testConfig(), fs, dir)
+	text := result.Content[0].(mcpgo.TextContent).Text
+	var summary map[string]interface{}
+	require.NoError(t, json.Unmarshal([]byte(text), &summary))
 
-	counts, errResult := h.applyBaseline(ctx, current, baselineID)
-	if errResult != nil {
-		t.Fatalf("applyBaseline returned error result: %v", errResult.Content)
-	}
+	baseline, ok := summary["baseline"].(map[string]interface{})
+	require.True(t, ok, "expected baseline summary in response: %s", text)
+	assert.Equal(t, baselineID, baseline["source"])
+	assert.GreaterOrEqual(t, baseline["new"].(float64), float64(1), "expected at least one new finding")
 
-	if current.Runs[0].AutomationDetails == nil || current.Runs[0].AutomationDetails.Guid == "" {
-		t.Error("expected AutomationDetails.Guid to be stamped on the current run")
-	}
-	if current.Runs[0].BaselineGuid != "prev-run-guid" {
-		t.Errorf("BaselineGuid = %q, want %q", current.Runs[0].BaselineGuid, "prev-run-guid")
-	}
-
-	if counts.New != 1 {
-		t.Errorf("counts.New = %d, want 1", counts.New)
-	}
-	if counts.Unchanged != 1 {
-		t.Errorf("counts.Unchanged = %d, want 1", counts.Unchanged)
-	}
-	if counts.Absent != 0 {
-		t.Errorf("counts.Absent = %d, want 0", counts.Absent)
-	}
-	if counts.Source != baselineID {
-		t.Errorf("counts.Source = %q, want %q", counts.Source, baselineID)
-	}
-}
-
-// TestApplyBaseline_NoBaselineStillStampsGUID verifies that calling
-// applyBaseline with an empty baseline ref stamps automation details
-// (so the next run can chain back to this one) but performs no
-// comparison.
-func TestApplyBaseline_NoBaselineStillStampsGUID(t *testing.T) {
-	dir := t.TempDir()
-	fs := store.NewFileStore(dir)
-
-	current := sarif.NewLog("gavel", "0.1.0")
-	h := newTestHandlers(t, testConfig(), fs, dir)
-
-	counts, errResult := h.applyBaseline(context.Background(), current, "")
-	if errResult != nil {
-		t.Fatalf("unexpected error result: %v", errResult.Content)
-	}
-	if counts != (baselineCounts{}) {
-		t.Errorf("expected zero counts when no baseline, got %+v", counts)
-	}
-	if current.Runs[0].AutomationDetails == nil || current.Runs[0].AutomationDetails.Guid == "" {
-		t.Error("expected AutomationDetails.Guid to be stamped even without a baseline")
-	}
-	if current.Runs[0].BaselineGuid != "" {
-		t.Errorf("expected empty BaselineGuid, got %q", current.Runs[0].BaselineGuid)
-	}
-}
-
-// TestApplyBaseline_MissingBaselineIDReturnsError verifies that a
-// missing baseline ID surfaces an MCP error result rather than silently
-// succeeding.
-func TestApplyBaseline_MissingBaselineIDReturnsError(t *testing.T) {
-	dir := t.TempDir()
-	fs := store.NewFileStore(dir)
-	current := sarif.NewLog("gavel", "0.1.0")
-
-	h := newTestHandlers(t, testConfig(), fs, dir)
-	_, errResult := h.applyBaseline(context.Background(), current, "does-not-exist")
-	if errResult == nil {
-		t.Fatal("expected error result for missing baseline id")
-	}
-	if !errResult.IsError {
-		t.Error("expected IsError=true on returned result")
-	}
+	id, ok := summary["id"].(string)
+	require.True(t, ok)
+	stored, err := fs.ReadSARIF(ctx, id)
+	require.NoError(t, err)
+	require.Len(t, stored.Runs, 1)
+	assert.Equal(t, "prev-run-guid", stored.Runs[0].BaselineGuid, "stored run should chain back to baseline guid")
 }

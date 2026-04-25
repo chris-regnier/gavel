@@ -2,14 +2,20 @@ package service
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/chris-regnier/gavel/internal/analyzer"
 	"github.com/chris-regnier/gavel/internal/config"
 	"github.com/chris-regnier/gavel/internal/input"
+	"github.com/chris-regnier/gavel/internal/rules"
 	"github.com/chris-regnier/gavel/internal/sarif"
 	"github.com/chris-regnier/gavel/internal/store"
+	"github.com/chris-regnier/gavel/internal/suppression"
 )
 
 // mockStore implements store.Store for testing.
@@ -50,6 +56,22 @@ func (m *mockStore) List(_ context.Context) ([]string, error) {
 type mockBAMLClient struct{}
 
 func (m *mockBAMLClient) AnalyzeCode(_ context.Context, _ string, _ string, _ string, _ string) ([]analyzer.Finding, error) {
+	return nil, nil
+}
+
+// promptCapturingClient records the personaPrompt argument seen by
+// AnalyzeCode so tests can assert that StrictFilter (and other
+// prompt-affecting settings) flow through the service. The BAMLClient
+// signature is (ctx, code, policies, personaPrompt, additionalContext).
+type promptCapturingClient struct {
+	mu      sync.Mutex
+	prompts []string
+}
+
+func (m *promptCapturingClient) AnalyzeCode(_ context.Context, _ string, _ string, personaPrompt string, _ string) ([]analyzer.Finding, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.prompts = append(m.prompts, personaPrompt)
 	return nil, nil
 }
 
@@ -269,5 +291,213 @@ func TestAnalyzeService_AnalyzeStream(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	default:
+	}
+}
+
+// TestAnalyzeService_StrictFilterAppendsApplicabilityPrompt verifies
+// that the configured StrictFilter appends the code-flavored
+// applicability filter on the persona prompt for non-prose personas,
+// and that the marker is absent when StrictFilter is disabled.
+func TestAnalyzeService_StrictFilterAppendsApplicabilityPrompt(t *testing.T) {
+	const filterMarker = "===== APPLICABILITY FILTER ====="
+
+	cases := []struct {
+		name         string
+		persona      string
+		strictFilter bool
+		wantMarker   bool
+	}{
+		{name: "code persona with strict filter", persona: "code-reviewer", strictFilter: true, wantMarker: true},
+		{name: "code persona without strict filter", persona: "code-reviewer", strictFilter: false, wantMarker: false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			capture := &promptCapturingClient{}
+			svc := NewAnalyzeService(&mockStore{}).WithClientFactory(func(_ config.ProviderConfig) analyzer.BAMLClient {
+				return capture
+			})
+
+			_, err := svc.Analyze(context.Background(), AnalyzeRequest{
+				Artifacts: []input.Artifact{{Path: "test.go", Content: "package main\n", Kind: input.KindFile}},
+				Config: config.Config{
+					Provider:     config.ProviderConfig{Name: "test"},
+					Persona:      tc.persona,
+					StrictFilter: tc.strictFilter,
+					Policies: map[string]config.Policy{
+						"bug-detection": {Enabled: true, Description: "Find bugs", Severity: "warning"},
+					},
+				},
+			})
+			if err != nil {
+				t.Fatalf("Analyze: %v", err)
+			}
+			capture.mu.Lock()
+			defer capture.mu.Unlock()
+			if len(capture.prompts) == 0 {
+				t.Fatal("expected at least one prompt to be captured")
+			}
+			prompt := capture.prompts[0]
+			has := strings.Contains(prompt, filterMarker)
+			if has != tc.wantMarker {
+				t.Errorf("filter marker present = %v, want %v\nprompt:\n%s", has, tc.wantMarker, prompt)
+			}
+		})
+	}
+}
+
+// TestAnalyzeService_SuppressionsApplied verifies that SuppressionDir
+// causes matching .gavel/suppressions.yaml entries to be stamped on
+// SARIF results before storage.
+func TestAnalyzeService_SuppressionsApplied(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".gavel"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := suppression.Save(dir, []suppression.Suppression{
+		{RuleID: "S2068", Reason: "test fixture", Source: "test", Created: time.Now().UTC()},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	defaultRules, err := rules.DefaultRules()
+	if err != nil {
+		t.Fatalf("DefaultRules: %v", err)
+	}
+
+	// Use a credential pattern that fires S2068 in the instant tier.
+	keyword := "pass" + "word"
+	src := "package main\n\nvar " + keyword + " = \"hunter2hunter2\"\n"
+
+	ms := &mockStore{}
+	svc := NewAnalyzeService(ms).WithClientFactory(func(_ config.ProviderConfig) analyzer.BAMLClient {
+		return &mockBAMLClient{}
+	})
+
+	result, err := svc.Analyze(context.Background(), AnalyzeRequest{
+		Artifacts: []input.Artifact{{Path: filepath.Join(dir, "creds.go"), Content: src, Kind: input.KindFile}},
+		Config: config.Config{
+			Provider: config.ProviderConfig{Name: "test"},
+			Persona:  "code-reviewer",
+			Policies: map[string]config.Policy{
+				"bug-detection": {Enabled: true, Description: "Find bugs", Severity: "warning"},
+			},
+		},
+		Rules:          defaultRules,
+		SuppressionDir: dir,
+	})
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	if result.Suppressed == 0 {
+		t.Errorf("expected at least one suppressed result, got %d", result.Suppressed)
+	}
+	if ms.writtenSARIF == nil || len(ms.writtenSARIF.Runs) == 0 {
+		t.Fatal("expected SARIF to be written")
+	}
+	stampedAny := false
+	for _, r := range ms.writtenSARIF.Runs[0].Results {
+		if r.RuleID == "S2068" && len(r.Suppressions) > 0 {
+			stampedAny = true
+			break
+		}
+	}
+	if !stampedAny {
+		t.Error("expected S2068 result to carry a SARIF suppression entry")
+	}
+}
+
+// TestAnalyzeService_AnalyzeScoped verifies that AnalyzeScoped runs
+// the instant tier on the full file but only keeps findings whose line
+// falls inside the requested changed range. The credential fixture is
+// arranged so the rule fires on line 3; we ask for [3,3] (kept) and
+// [10,10] (filtered out) and assert the difference.
+func TestAnalyzeService_AnalyzeScoped(t *testing.T) {
+	defaultRules, err := rules.DefaultRules()
+	if err != nil {
+		t.Fatalf("DefaultRules: %v", err)
+	}
+
+	keyword := "pass" + "word"
+	src := "package main\n\nvar " + keyword + " = \"hunter2hunter2\"\n\n\n\n\n\n\n\n\n\n"
+
+	cases := []struct {
+		name        string
+		start, end  int
+		expectFires bool
+	}{
+		{"changed range covers credential", 3, 3, true},
+		{"changed range elsewhere", 10, 10, false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ms := &mockStore{}
+			svc := NewAnalyzeService(ms).WithClientFactory(func(_ config.ProviderConfig) analyzer.BAMLClient {
+				return &mockBAMLClient{}
+			})
+
+			result, err := svc.AnalyzeScoped(context.Background(), ScopedAnalyzeRequest{
+				Artifact:     input.Artifact{Path: "creds.go", Content: src, Kind: input.KindFile},
+				ChangedStart: tc.start,
+				ChangedEnd:   tc.end,
+				Config: config.Config{
+					Provider: config.ProviderConfig{Name: "test"},
+					Persona:  "code-reviewer",
+					Policies: map[string]config.Policy{
+						"bug-detection": {Enabled: true, Description: "Find bugs", Severity: "warning"},
+					},
+				},
+				Rules: defaultRules,
+			})
+			if err != nil {
+				t.Fatalf("AnalyzeScoped: %v", err)
+			}
+
+			fires := false
+			if ms.writtenSARIF != nil && len(ms.writtenSARIF.Runs) > 0 {
+				for _, r := range ms.writtenSARIF.Runs[0].Results {
+					if r.RuleID == "S2068" {
+						fires = true
+						break
+					}
+				}
+			}
+			if fires != tc.expectFires {
+				t.Errorf("S2068 fired = %v, want %v (TotalFindings=%d)", fires, tc.expectFires, result.TotalFindings)
+			}
+		})
+	}
+}
+
+// TestBuildDescriptors covers the policy-vs-rule descriptor assembly
+// shared by every entrypoint. Disabled policies are omitted; loaded
+// rules are appended.
+func TestBuildDescriptors(t *testing.T) {
+	policies := map[string]config.Policy{
+		"rule1": {Enabled: true, Description: "desc1", Severity: "warning"},
+		"rule2": {Enabled: false, Description: "desc2", Severity: "error"},
+		"rule3": {Enabled: true, Description: "desc3", Severity: "note"},
+	}
+
+	descriptors := BuildDescriptors(policies, nil)
+
+	if len(descriptors) != 2 {
+		t.Errorf("expected 2 enabled rules, got %d", len(descriptors))
+	}
+
+	ruleIDs := make(map[string]bool)
+	for _, r := range descriptors {
+		ruleIDs[r.ID] = true
+	}
+
+	if !ruleIDs["rule1"] {
+		t.Error("missing rule1")
+	}
+	if ruleIDs["rule2"] {
+		t.Error("rule2 should not be included (disabled)")
+	}
+	if !ruleIDs["rule3"] {
+		t.Error("missing rule3")
 	}
 }

@@ -19,8 +19,39 @@ type AnalyzeRequest struct {
 	// BaselineID, if non-empty, identifies a previously stored SARIF
 	// result to compare against. Each finding in the new run will be
 	// annotated with a baselineState (new, unchanged, or absent).
-	// Empty disables baseline comparison.
+	// May also be a path to a sarif.json file. Empty disables baseline
+	// comparison.
 	BaselineID string
+	// SuppressionDir, if non-empty, points at the project root that
+	// contains .gavel/suppressions.yaml. The service will load and
+	// stamp matching suppressions on the SARIF results before storing.
+	// Empty disables suppression handling entirely.
+	SuppressionDir string
+}
+
+// ScopedAnalyzeRequest describes a scoped diff analysis: the instant
+// tier runs against the full file artifact, the comprehensive tier
+// runs against a content window around the changed lines, and findings
+// outside the changed range are filtered out before assembly.
+type ScopedAnalyzeRequest struct {
+	// Artifact is the full file. Its Content drives the instant tier
+	// directly; the comprehensive tier sees a windowed slice around
+	// [ChangedStart, ChangedEnd].
+	Artifact input.Artifact
+	// ChangedStart and ChangedEnd are 1-indexed line numbers describing
+	// the changed region. Findings whose StartLine falls outside this
+	// range are filtered out.
+	ChangedStart int
+	ChangedEnd   int
+	// ContextWindow is the number of lines on either side of the
+	// changed region included in the comprehensive-tier scope. Zero
+	// uses the default (10).
+	ContextWindow int
+	Config        config.Config
+	Rules         []rules.Rule
+	// BaselineID and SuppressionDir behave identically to AnalyzeRequest.
+	BaselineID     string
+	SuppressionDir string
 }
 
 // TierResult represents results from a single analysis tier.
@@ -43,9 +74,13 @@ type BaselineSummary struct {
 
 // AnalyzeResult is the final summary after all tiers complete.
 type AnalyzeResult struct {
-	ResultID      string           `json:"result_id"`
-	TotalFindings int              `json:"total_findings"`
-	Baseline      *BaselineSummary `json:"baseline,omitempty"`
+	ResultID      string `json:"result_id"`
+	TotalFindings int    `json:"total_findings"`
+	// Suppressed counts results that ended up with at least one
+	// SARIF suppression entry stamped by .gavel/suppressions.yaml.
+	// Zero when SuppressionDir was empty.
+	Suppressed int              `json:"suppressed,omitempty"`
+	Baseline   *BaselineSummary `json:"baseline,omitempty"`
 }
 
 // JudgeRequest is the transport-agnostic input for evaluation.

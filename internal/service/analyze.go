@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/chris-regnier/gavel/internal/analyzer"
@@ -11,6 +13,7 @@ import (
 	"github.com/chris-regnier/gavel/internal/rules"
 	"github.com/chris-regnier/gavel/internal/sarif"
 	"github.com/chris-regnier/gavel/internal/store"
+	"github.com/chris-regnier/gavel/internal/suppression"
 )
 
 // ClientFactory creates a BAMLClient from provider config.
@@ -40,30 +43,25 @@ func (s *AnalyzeService) WithClientFactory(f ClientFactory) *AnalyzeService {
 
 // Analyze runs all tiers synchronously and stores the SARIF result.
 func (s *AnalyzeService) Analyze(ctx context.Context, req AnalyzeRequest) (*AnalyzeResult, error) {
-	client := s.clientFactory(req.Config.Provider)
-
-	personaPrompt, err := analyzer.GetPersonaPrompt(ctx, req.Config.Persona)
+	personaPrompt, err := buildPersonaPrompt(ctx, req.Config)
 	if err != nil {
-		return nil, fmt.Errorf("getting persona prompt: %w", err)
+		return nil, err
 	}
 
-	opts := []analyzer.TieredAnalyzerOption{}
-	if len(req.Rules) > 0 {
-		opts = append(opts, analyzer.WithInstantPatterns(req.Rules))
-	}
-
-	ta := analyzer.NewTieredAnalyzer(client, opts...)
+	ta := analyzer.NewTieredAnalyzer(s.clientFactory(req.Config.Provider), tieredOptions(req.Rules)...)
 	results, err := ta.Analyze(ctx, req.Artifacts, req.Config.Policies, personaPrompt)
 	if err != nil {
 		return nil, fmt.Errorf("analyzing: %w", err)
 	}
 
-	sarifLog := sarif.Assemble(results, buildDescriptors(req.Config.Policies, req.Rules), scopeFromArtifacts(req.Artifacts), req.Config.Persona)
+	sarifLog := sarif.Assemble(results, BuildDescriptors(req.Config.Policies, req.Rules), scopeFromArtifacts(req.Artifacts), req.Config.Persona)
 
 	baselineSummary, err := s.applyBaseline(ctx, sarifLog, req.BaselineID)
 	if err != nil {
 		return nil, err
 	}
+
+	suppressedCount := applySuppressions(sarifLog, req.SuppressionDir)
 
 	resultID, err := s.store.WriteSARIF(ctx, sarifLog)
 	if err != nil {
@@ -72,27 +70,97 @@ func (s *AnalyzeService) Analyze(ctx context.Context, req AnalyzeRequest) (*Anal
 
 	return &AnalyzeResult{
 		ResultID:      resultID,
-		TotalFindings: len(results),
+		TotalFindings: countFindings(sarifLog),
+		Suppressed:    suppressedCount,
+		Baseline:      baselineSummary,
+	}, nil
+}
+
+// AnalyzeScoped runs a diff-style scoped analysis: the instant tier
+// runs against the full file artifact while the comprehensive tier
+// runs against a window around the changed lines. Findings outside
+// the changed-line range are filtered out before assembly. This is the
+// shared entrypoint used by MCP's analyze_diff tool.
+func (s *AnalyzeService) AnalyzeScoped(ctx context.Context, req ScopedAnalyzeRequest) (*AnalyzeResult, error) {
+	if req.ChangedStart <= 0 || req.ChangedEnd <= 0 || req.ChangedStart > req.ChangedEnd {
+		return nil, fmt.Errorf("invalid changed range [%d, %d]", req.ChangedStart, req.ChangedEnd)
+	}
+
+	personaPrompt, err := buildPersonaPrompt(ctx, req.Config)
+	if err != nil {
+		return nil, err
+	}
+
+	ta := analyzer.NewTieredAnalyzer(s.clientFactory(req.Config.Provider), tieredOptions(req.Rules)...)
+
+	// Instant tier on the full file, then filter to the changed range.
+	fullArtifact := input.Artifact{Path: req.Artifact.Path, Content: req.Artifact.Content, Kind: input.KindFile}
+	instantResults := filterByLineRange(ta.RunPatternMatching(fullArtifact), req.ChangedStart, req.ChangedEnd)
+
+	// Comprehensive tier on a window around the changed range.
+	contextWindow := req.ContextWindow
+	if contextWindow <= 0 {
+		contextWindow = 10
+	}
+	scopedContent, scopeStart := windowedContent(req.Artifact.Content, req.ChangedStart, req.ChangedEnd, contextWindow)
+	scopedArtifact := []input.Artifact{{Path: req.Artifact.Path, Content: scopedContent, Kind: input.KindFile}}
+	comprehensiveResults, err := ta.Analyze(ctx, scopedArtifact, req.Config.Policies, personaPrompt)
+	if err != nil {
+		return nil, fmt.Errorf("analyzing: %w", err)
+	}
+
+	// The LLM saw the scope starting at line 1; shift back to the
+	// real file line numbers, then drop anything outside the changed
+	// range. The instant tier already used real line numbers.
+	offset := scopeStart - 1
+	for i := range comprehensiveResults {
+		if len(comprehensiveResults[i].Locations) > 0 {
+			comprehensiveResults[i].Locations[0].PhysicalLocation.Region.StartLine += offset
+			comprehensiveResults[i].Locations[0].PhysicalLocation.Region.EndLine += offset
+		}
+	}
+	comprehensiveResults = filterByLineRange(comprehensiveResults, req.ChangedStart, req.ChangedEnd)
+
+	allResults := append(instantResults, comprehensiveResults...)
+	sarifLog := sarif.Assemble(allResults, BuildDescriptors(req.Config.Policies, req.Rules), "diff", req.Config.Persona)
+
+	baselineSummary, err := s.applyBaseline(ctx, sarifLog, req.BaselineID)
+	if err != nil {
+		return nil, err
+	}
+
+	suppressedCount := applySuppressions(sarifLog, req.SuppressionDir)
+
+	resultID, err := s.store.WriteSARIF(ctx, sarifLog)
+	if err != nil {
+		return nil, fmt.Errorf("storing SARIF: %w", err)
+	}
+
+	return &AnalyzeResult{
+		ResultID:      resultID,
+		TotalFindings: countFindings(sarifLog),
+		Suppressed:    suppressedCount,
 		Baseline:      baselineSummary,
 	}, nil
 }
 
 // applyBaseline stamps automation details onto sarifLog and, when
-// baselineID is non-empty, loads that baseline from the store and
-// annotates each result with a baselineState. Returns a BaselineSummary
-// with bucket counts when comparison ran, or nil when it didn't.
-func (s *AnalyzeService) applyBaseline(ctx context.Context, sarifLog *sarif.Log, baselineID string) (*BaselineSummary, error) {
+// baselineRef is non-empty, loads that baseline (by stored ID or file
+// path) and annotates each result with a baselineState. Returns a
+// BaselineSummary with bucket counts when comparison ran, or nil when
+// it didn't.
+func (s *AnalyzeService) applyBaseline(ctx context.Context, sarifLog *sarif.Log, baselineRef string) (*BaselineSummary, error) {
 	sarif.EnsureAutomationDetails(sarifLog)
-	if baselineID == "" {
+	if baselineRef == "" {
 		return nil, nil
 	}
-	baselineLog, err := s.store.ReadSARIF(ctx, baselineID)
+	baselineLog, err := store.LoadBaseline(ctx, s.store, baselineRef)
 	if err != nil {
-		return nil, fmt.Errorf("loading baseline %q: %w", baselineID, err)
+		return nil, fmt.Errorf("loading baseline %q: %w", baselineRef, err)
 	}
 	sarif.CompareBaseline(sarifLog, baselineLog)
 
-	summary := &BaselineSummary{Source: baselineID}
+	summary := &BaselineSummary{Source: baselineRef}
 	if len(sarifLog.Runs) > 0 {
 		for _, r := range sarifLog.Runs[0].Results {
 			switch r.BaselineState {
@@ -122,20 +190,13 @@ func (s *AnalyzeService) AnalyzeStream(ctx context.Context, req AnalyzeRequest) 
 		defer close(resultCh) // runs 2nd
 		defer close(tierCh)   // runs 1st
 
-		client := s.clientFactory(req.Config.Provider)
-
-		personaPrompt, err := analyzer.GetPersonaPrompt(ctx, req.Config.Persona)
+		personaPrompt, err := buildPersonaPrompt(ctx, req.Config)
 		if err != nil {
-			errCh <- fmt.Errorf("getting persona prompt: %w", err)
+			errCh <- err
 			return
 		}
 
-		opts := []analyzer.TieredAnalyzerOption{}
-		if len(req.Rules) > 0 {
-			opts = append(opts, analyzer.WithInstantPatterns(req.Rules))
-		}
-
-		ta := analyzer.NewTieredAnalyzer(client, opts...)
+		ta := analyzer.NewTieredAnalyzer(s.clientFactory(req.Config.Provider), tieredOptions(req.Rules)...)
 		progressive := ta.AnalyzeProgressive(ctx, req.Artifacts, req.Config.Policies, personaPrompt)
 
 		// Aggregate TieredResults by tier for SSE events
@@ -186,13 +247,15 @@ func (s *AnalyzeService) AnalyzeStream(ctx context.Context, req AnalyzeRequest) 
 		}
 
 		// Store final SARIF
-		sarifLog := sarif.Assemble(allResults, buildDescriptors(req.Config.Policies, req.Rules), scopeFromArtifacts(req.Artifacts), req.Config.Persona)
+		sarifLog := sarif.Assemble(allResults, BuildDescriptors(req.Config.Policies, req.Rules), scopeFromArtifacts(req.Artifacts), req.Config.Persona)
 
 		baselineSummary, baselineErr := s.applyBaseline(ctx, sarifLog, req.BaselineID)
 		if baselineErr != nil {
 			errCh <- baselineErr
 			return
 		}
+
+		suppressedCount := applySuppressions(sarifLog, req.SuppressionDir)
 
 		resultID, err := s.store.WriteSARIF(ctx, sarifLog)
 		if err != nil {
@@ -202,7 +265,8 @@ func (s *AnalyzeService) AnalyzeStream(ctx context.Context, req AnalyzeRequest) 
 
 		resultCh <- AnalyzeResult{
 			ResultID:      resultID,
-			TotalFindings: len(allResults),
+			TotalFindings: countFindings(sarifLog),
+			Suppressed:    suppressedCount,
 			Baseline:      baselineSummary,
 		}
 	}()
@@ -210,10 +274,100 @@ func (s *AnalyzeService) AnalyzeStream(ctx context.Context, req AnalyzeRequest) 
 	return tierCh, resultCh, errCh
 }
 
-// buildDescriptors assembles SARIF reportingDescriptors from both enabled
+// buildPersonaPrompt resolves the persona prompt and, when StrictFilter
+// is enabled, appends the appropriate applicability filter (prose vs
+// code). Mirrors the CLI's persona handling so every entrypoint
+// produces the same prompt.
+func buildPersonaPrompt(ctx context.Context, cfg config.Config) (string, error) {
+	prompt, err := analyzer.GetPersonaPrompt(ctx, cfg.Persona)
+	if err != nil {
+		return "", fmt.Errorf("getting persona prompt: %w", err)
+	}
+	if cfg.StrictFilter {
+		if analyzer.IsProsePersona(cfg.Persona) {
+			prompt += analyzer.ProseApplicabilityFilterPrompt
+		} else {
+			prompt += analyzer.ApplicabilityFilterPrompt
+		}
+	}
+	return prompt, nil
+}
+
+func tieredOptions(loadedRules []rules.Rule) []analyzer.TieredAnalyzerOption {
+	if len(loadedRules) == 0 {
+		return nil
+	}
+	return []analyzer.TieredAnalyzerOption{analyzer.WithInstantPatterns(loadedRules)}
+}
+
+// applySuppressions loads .gavel/suppressions.yaml from rootDir and
+// stamps matching results in sarifLog. A zero rootDir disables
+// suppression handling. Returns how many results ended up suppressed.
+func applySuppressions(sarifLog *sarif.Log, rootDir string) int {
+	if rootDir == "" {
+		return 0
+	}
+	supps, err := suppression.Load(rootDir)
+	if err != nil {
+		slog.Warn("failed to load suppressions", "err", err, "root", rootDir)
+		return 0
+	}
+	suppression.Apply(supps, sarifLog)
+	count := 0
+	for _, run := range sarifLog.Runs {
+		for _, r := range run.Results {
+			if len(r.Suppressions) > 0 {
+				count++
+			}
+		}
+	}
+	return count
+}
+
+func countFindings(sarifLog *sarif.Log) int {
+	if len(sarifLog.Runs) == 0 {
+		return 0
+	}
+	return len(sarifLog.Runs[0].Results)
+}
+
+// filterByLineRange keeps only results whose first location's StartLine
+// falls within [start, end] inclusive. Results without a location are
+// dropped.
+func filterByLineRange(results []sarif.Result, start, end int) []sarif.Result {
+	var out []sarif.Result
+	for _, r := range results {
+		if len(r.Locations) == 0 {
+			continue
+		}
+		line := r.Locations[0].PhysicalLocation.Region.StartLine
+		if line >= start && line <= end {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// windowedContent returns the substring of content covering
+// [start-window, end+window] (clamped to the file bounds), along with
+// the 1-indexed line where the window begins. Lines are split on "\n".
+func windowedContent(content string, start, end, window int) (string, int) {
+	lines := strings.Split(content, "\n")
+	scopeStart := start - window
+	if scopeStart < 1 {
+		scopeStart = 1
+	}
+	scopeEnd := end + window
+	if scopeEnd > len(lines) {
+		scopeEnd = len(lines)
+	}
+	return strings.Join(lines[scopeStart-1:scopeEnd], "\n"), scopeStart
+}
+
+// BuildDescriptors assembles SARIF reportingDescriptors from both enabled
 // policies and loaded rules. Rule descriptors carry help/helpUri populated
 // from the rule's remediation, CWE, and reference metadata.
-func buildDescriptors(policies map[string]config.Policy, loadedRules []rules.Rule) []sarif.ReportingDescriptor {
+func BuildDescriptors(policies map[string]config.Policy, loadedRules []rules.Rule) []sarif.ReportingDescriptor {
 	var descriptors []sarif.ReportingDescriptor
 	for name, p := range policies {
 		if p.Enabled {
