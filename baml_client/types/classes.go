@@ -21,16 +21,17 @@ import (
 )
 
 type Finding struct {
-	RuleId             string  `json:"ruleId"`
-	Level              string  `json:"level"`
-	Message            string  `json:"message"`
-	FilePath           string  `json:"filePath"`
-	StartLine          int64   `json:"startLine"`
-	EndLine            int64   `json:"endLine"`
-	Recommendation     string  `json:"recommendation"`
-	Explanation        string  `json:"explanation"`
-	Confidence         float64 `json:"confidence"`
-	FixReplacementText *string `json:"fixReplacementText"`
+	RuleId             string             `json:"ruleId"`
+	Level              string             `json:"level"`
+	Message            string             `json:"message"`
+	FilePath           string             `json:"filePath"`
+	StartLine          int64              `json:"startLine"`
+	EndLine            int64              `json:"endLine"`
+	Recommendation     string             `json:"recommendation"`
+	Explanation        string             `json:"explanation"`
+	Confidence         float64            `json:"confidence"`
+	FixReplacementText *string            `json:"fixReplacementText"`
+	RelatedLocations   *[]RelatedLocation `json:"relatedLocations"`
 }
 
 func (c *Finding) Decode(holder *cffi.CFFIValueClass, typeMap baml.TypeMap) {
@@ -77,6 +78,9 @@ func (c *Finding) Decode(holder *cffi.CFFIValueClass, typeMap baml.TypeMap) {
 		case "fixReplacementText":
 			c.FixReplacementText = baml.Decode(valueHolder).Interface().(*string)
 
+		case "relatedLocations":
+			c.RelatedLocations = baml.Decode(valueHolder).Interface().(*[]RelatedLocation)
+
 		default:
 
 			panic(fmt.Sprintf("unexpected field: %s in class Finding", key))
@@ -108,6 +112,8 @@ func (c Finding) Encode() (*cffi.HostValue, error) {
 	fields["confidence"] = c.Confidence
 
 	fields["fixReplacementText"] = c.FixReplacementText
+
+	fields["relatedLocations"] = c.RelatedLocations
 
 	return baml.EncodeClass("Finding", fields, nil)
 }
@@ -468,4 +474,64 @@ func (c GeneratedRule) Encode() (*cffi.HostValue, error) {
 
 func (c GeneratedRule) BamlTypeName() string {
 	return "GeneratedRule"
+}
+
+type RelatedLocation struct {
+	FilePath  string  `json:"filePath"`
+	StartLine int64   `json:"startLine"`
+	EndLine   *int64  `json:"endLine"`
+	Message   *string `json:"message"`
+}
+
+func (c *RelatedLocation) Decode(holder *cffi.CFFIValueClass, typeMap baml.TypeMap) {
+	typeName := holder.Name
+	if typeName.Namespace != cffi.CFFITypeNamespace_TYPES {
+		panic(fmt.Sprintf("expected cffi.CFFITypeNamespace_TYPES, got %s", string(typeName.Namespace.String())))
+	}
+	if typeName.Name != "RelatedLocation" {
+		panic(fmt.Sprintf("expected RelatedLocation, got %s", typeName.Name))
+	}
+
+	for _, field := range holder.Fields {
+		key := field.Key
+		valueHolder := field.Value
+		switch key {
+
+		case "filePath":
+			c.FilePath = baml.Decode(valueHolder).Interface().(string)
+
+		case "startLine":
+			c.StartLine = baml.Decode(valueHolder).Int()
+
+		case "endLine":
+			c.EndLine = baml.Decode(valueHolder).Interface().(*int64)
+
+		case "message":
+			c.Message = baml.Decode(valueHolder).Interface().(*string)
+
+		default:
+
+			panic(fmt.Sprintf("unexpected field: %s in class RelatedLocation", key))
+
+		}
+	}
+
+}
+
+func (c RelatedLocation) Encode() (*cffi.HostValue, error) {
+	fields := map[string]any{}
+
+	fields["filePath"] = c.FilePath
+
+	fields["startLine"] = c.StartLine
+
+	fields["endLine"] = c.EndLine
+
+	fields["message"] = c.Message
+
+	return baml.EncodeClass("RelatedLocation", fields, nil)
+}
+
+func (c RelatedLocation) BamlTypeName() string {
+	return "RelatedLocation"
 }

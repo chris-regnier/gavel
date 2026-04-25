@@ -105,6 +105,7 @@ type Result struct {
 	Level               string                 `json:"level"`
 	Message             Message                `json:"message"`
 	Locations           []Location             `json:"locations,omitempty"`
+	RelatedLocations    []Location             `json:"relatedLocations,omitempty"`
 	Fingerprints        map[string]string      `json:"fingerprints,omitempty"`
 	PartialFingerprints map[string]string      `json:"partialFingerprints,omitempty"`
 	BaselineState       string                 `json:"baselineState,omitempty"`
@@ -126,6 +127,7 @@ type Message struct {
 type Location struct {
 	PhysicalLocation PhysicalLocation  `json:"physicalLocation"`
 	LogicalLocations []LogicalLocation `json:"logicalLocations,omitempty"`
+	Message          *Message          `json:"message,omitempty"`
 }
 
 // LogicalLocation provides semantic context (e.g. enclosing function/method/class)

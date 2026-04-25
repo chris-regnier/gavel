@@ -165,7 +165,29 @@ func convertFindings(bamlFindings []types.Finding) []Finding {
 			Explanation:        f.Explanation,
 			Confidence:         f.Confidence,
 			FixReplacementText: fixText,
+			RelatedLocations:   convertRelatedLocations(f.RelatedLocations),
 		}
 	}
 	return findings
+}
+
+func convertRelatedLocations(bamlRels *[]types.RelatedLocation) []RelatedLocation {
+	if bamlRels == nil || len(*bamlRels) == 0 {
+		return nil
+	}
+	out := make([]RelatedLocation, 0, len(*bamlRels))
+	for _, r := range *bamlRels {
+		rel := RelatedLocation{
+			FilePath:  r.FilePath,
+			StartLine: int(r.StartLine),
+		}
+		if r.EndLine != nil {
+			rel.EndLine = int(*r.EndLine)
+		}
+		if r.Message != nil {
+			rel.Message = *r.Message
+		}
+		out = append(out, rel)
+	}
+	return out
 }
